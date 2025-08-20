@@ -2,7 +2,6 @@ import asyncio
 import time
 import signal
 import sys
-from maim_message import MessageServer
 
 from src.manager.async_task_manager import async_task_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
@@ -23,8 +22,8 @@ from src.manager.schedule_manager import schedule_manager
 from src.plugin_system.core.plugin_manager import plugin_manager
 from src.plugin_system.core.plugin_hot_reload import hot_reload_manager
 
-# 导入消息API和traceback模块
-from src.common.message import get_global_api
+# 导入新的gRPC API
+from src.common.message.grpc_api import get_global_api, MessageServer
 
 # 条件导入记忆系统
 if global_config.memory.enable_memory:
@@ -50,7 +49,7 @@ class MainSystem:
 
         self.individuality: Individuality = get_individuality()
 
-        # 使用消息API替代直接的FastAPI实例
+        # 使用gRPC API替代直接的MessageServer实例
         self.app: MessageServer = get_global_api()
         self.server: Server = get_global_server()
 

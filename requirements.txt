@@ -63,4 +63,7 @@ Pillow
 chromadb
 asyncio
 tavily-python
-google-generativeai == 0.8.5  
+google-generativeai == 0.8.5
+grpcio
+grpcio-tools
+protobuf

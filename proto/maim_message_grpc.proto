@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package maim_message;
+
+// 用户信息
+message UserInfo {
+  string platform = 1;
+  string user_id = 2;
+  string user_nickname = 3;
+  string user_cardname = 4;
+}
+
+// 群组信息
+message GroupInfo {
+  string platform = 1;
+  string group_id = 2;
+  string group_name = 3;
+}
+
+// 格式信息
+message FormatInfo {
+  repeated string accept_format = 1;
+}
+
+// 模板信息
+message TemplateInfo {
+  string template_id = 1;
+  string data = 2;  // JSON 字符串
+}
+
+// 消息段
+message Seg {
+  string type = 1;
+  string data = 2;  // JSON 字符串，保持原有的数据结构
+}
+
+// 基础消息信息
+message BaseMessageInfo {
+  string platform = 1;
+  string message_id = 2;
+  int64 time = 3;
+  UserInfo user_info = 4;
+  GroupInfo group_info = 5;
+  FormatInfo format_info = 6;
+  TemplateInfo template_info = 7;
+  string additional_config = 8;  // JSON 字符串
+}
+
+// 消息基类
+message MessageBase {
+  BaseMessageInfo message_info = 1;
+  Seg message_segment = 2;
+  string raw_message = 3;
+}
+
+// 消息发送请求
+message MessageSending {
+  string target_platform = 1;
+  string target_id = 2;
+  string message_type = 3;  // "text", "image", "voice", etc.
+  Seg message_content = 4;
+  string additional_data = 5;  // JSON 字符串
+}
+
+// 响应消息
+message Response {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 字符串
+  string echo = 4;  // 回显标识
+}
+
+// WebSocket 风格的消息封装
+message WSMessage {
+  string post_type = 1;  // "message", "notice", "meta_event", "response"
+  string data = 2;       // JSON 字符串，保持原有的 WebSocket 消息格式
+}
+
+// gRPC 服务定义
+service MaimMessageService {
+  // 双向流式消息传输
+  rpc StreamMessage(stream WSMessage) returns (stream WSMessage);
+  
+  // 发送消息 (单向)
+  rpc SendMessage(MessageSending) returns (Response);
+  
+  // 获取消息 (单向)
+  rpc GetMessage(MessageBase) returns (Response);
+}

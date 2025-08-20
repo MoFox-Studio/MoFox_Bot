@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+package mmc_message;
+
+// 消息传递服务定义
+service MessageService {
+    // 双向流式消息传递
+    rpc MessageStream(stream Message) returns (stream Message);
+}
+
+// 通用消息结构
+message Message {
+    // 消息ID，用于关联请求和响应
+    string message_id = 1;
+    
+    // 消息类型
+    MessageType type = 2;
+    
+    // 消息发送者信息
+    string sender_platform = 3;
+    
+    // 消息接收者信息（可选）
+    string target_platform = 4;
+    
+    // 消息负载数据（JSON格式）
+    string payload = 5;
+    
+    // 时间戳
+    int64 timestamp = 6;
+    
+    // 是否需要回执确认
+    bool require_ack = 7;
+    
+    // 响应状态（用于回执）
+    ResponseStatus status = 8;
+    
+    // 错误信息（如果有）
+    string error_message = 9;
+}
+
+// 消息类型枚举
+enum MessageType {
+    // 未知类型
+    UNKNOWN = 0;
+    
+    // 普通消息
+    NORMAL_MESSAGE = 1;
+    
+    // 命令消息
+    COMMAND_MESSAGE = 2;
+    
+    // 通知消息
+    NOTICE_MESSAGE = 3;
+    
+    // 心跳消息
+    HEARTBEAT = 4;
+    
+    // 系统消息
+    SYSTEM_MESSAGE = 5;
+    
+    // 适配器响应
+    ADAPTER_RESPONSE = 6;
+    
+    // 适配器命令
+    ADAPTER_COMMAND = 7;
+    
+    // 消息确认
+    MESSAGE_ACK = 8;
+    
+    // 连接握手
+    HANDSHAKE = 9;
+}
+
+// 响应状态枚举
+enum ResponseStatus {
+    // 未设置状态
+    STATUS_UNSET = 0;
+    
+    // 成功
+    SUCCESS = 1;
+    
+    // 处理中
+    PROCESSING = 2;
+    
+    // 失败
+    FAILED = 3;
+    
+    // 超时
+    TIMEOUT = 4;
+    
+    // 不支持的操作
+    UNSUPPORTED = 5;
+}
