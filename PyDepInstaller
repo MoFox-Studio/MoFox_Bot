@@ -1,0 +1,522 @@
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+一键扫描（本目录）并安装项目所需的全部第三方库by：LuiKlee
+用法: 
+  python install_deps.py [--upgrade] [--force] [--dry-run]
+"""
+import ast
+import subprocess
+import sys
+import os
+import re
+import hashlib
+from pathlib import Path
+import importlib.util
+import argparse
+import platform
+from functools import lru_cache
+
+# 尝试导入 rich 库用于美化输出
+try:
+    from rich.console import Console
+    from rich.progress import Progress
+    from rich.panel import Panel
+    from rich.columns import Columns
+    from rich.table import Table
+    from rich.text import Text
+    from rich.syntax import Syntax
+    console = Console()
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
+    class FakeConsole:
+        def print(self, *args, **kwargs):
+            # 模拟基本的彩色输出
+            text = " ".join(str(arg) for arg in args)
+            if kwargs.get("style", "") == "bold green":
+                print(f"\033[1;32m{text}\033[0m")
+            elif kwargs.get("style", "") == "bold red":
+                print(f"\033[1;31m{text}\033[0m")
+            elif kwargs.get("style", "") == "bold yellow":
+                print(f"\033[1;33m{text}\033[0m")
+            elif kwargs.get("style", "") == "green":
+                print(f"\033[32m{text}\033[0m")
+            elif kwargs.get("style", "") == "red":
+                print(f"\033[31m{text}\033[0m")
+            elif kwargs.get("style", "") == "yellow":
+                print(f"\033[33m{text}\033[0m")
+            elif kwargs.get("style", "") == "cyan":
+                print(f"\033[36m{text}\033[0m")
+            elif kwargs.get("style", "") == "dim":
+                print(f"\033[2m{text}\033[0m")
+            else:
+                print(text)
+    console = FakeConsole()
+
+# ---------- 配置 ----------
+PY_EXE = Path(sys.executable)
+PROJECT_ROOT = Path(__file__).parent.resolve()
+EXCLUDE_DIRS = {"venv", "env", ".venv", ".env", "__pycache__", "build", "dist", "node_modules"}
+EXCLUDE_FILES = {"install_deps.py"}  # 排除自身
+
+# ---------- 安全配置 ----------
+FORBIDDEN_PATHS = {Path('/'), Path('/etc'), Path('/root'), Path('/usr'), Path('/bin'), Path('/sbin')}
+SAFE_PACKAGE_PATTERN = re.compile(r"^[a-zA-Z0-9_\-\.]+$")  # 安全包名正则
+
+# ---------- 镜像列表 ----------
+MIRRORS = [
+    "https://pypi.tuna.tsinghua.edu.cn/simple",   # 清华
+    "https://mirrors.aliyun.com/pypi/simple/",    # 阿里
+    "https://pypi.doubanio.com/simple/",          # 豆瓣
+    "https://mirrors.bfsu.edu.cn/pypi/web/simple",# 北外
+    "https://pypi.mirrors.ustc.edu.cn/simple/",   # 中科大
+    "https://mirrors.cloud.tencent.com/pypi/simple", # 腾讯
+    "https://pypi.org/simple",                    # 官方
+]
+
+# ---------- 工具函数 ----------
+def is_stdlib(name: str) -> bool:
+    """判断是否为标准库"""
+    # 优先使用Python 3.10+的标准库列表
+    if sys.version_info >= (3, 10):
+        return name in sys.stdlib_module_names
+    
+    # 兼容旧版本的fallback
+    stdlibs = {
+        "os", "sys", "re", "time", "json", "logging", "pathlib", "argparse",
+        "ctypes", "subprocess", "importlib", "typing", "collections", "enum",
+        "functools", "itertools", "threading", "asyncio", "urllib", "http",
+        "shutil", "tempfile", "zipfile", "gzip", "csv", "sqlite3", "hashlib",
+        "base64", "binascii", "datetime", "zoneinfo", "calendar", "math",
+        "random", "secrets", "uuid", "email", "html", "xml", "socket", "ssl",
+        "ftplib", "smtplib", "imaplib", "poplib", "telnetlib", "http.server",
+        "xmlrpc", "socketserver", "wsgiref", "tkinter", "turtle", "unittest",
+        "doctest", "pdb", "trace", "traceback", "gc", "inspect", "pickle",
+        "marshal", "shelve", "dbm", "sqlite3", "gzip", "bz2", "lzma",
+        "zipfile", "tarfile", "configparser", "csv", "gettext", "locale",
+        "abc", "atexit", "copy", "mmap", "queue", "select", "signal", "stat",
+        "string", "struct", "threading", "warnings", "weakref",
+    }
+    return name in stdlibs
+
+def installed(pkg: str) -> bool:
+    """检查包是否已安装"""
+    try:
+        return importlib.util.find_spec(pkg) is not None
+    except Exception:
+        return False
+
+def get_package_version(pkg: str) -> str:
+    """获取已安装包的版本"""
+    try:
+        module = importlib.import_module(pkg)
+        return getattr(module, "__version__", "unknown")
+    except Exception:
+        return "not installed"
+
+def print_header():
+    """打印美观的头部"""
+    title = Text("Python 依赖安装工具", style="bold blue on black")
+    subtitle = Text("自动扫描并安装项目所需第三方库", style="cyan")
+    
+    if HAS_RICH:
+        console.print(Panel(
+            Columns([title, subtitle], align="center"),
+            style="bold yellow",
+            width=80
+        ))
+    else:
+        console.print("=" * 60)
+        console.print("Python 依赖安装工具".center(60), style="bold green")
+        console.print("自动扫描并安装项目所需第三方库".center(60), style="cyan")
+        console.print("=" * 60)
+
+def print_footer(success: bool):
+    """打印结束信息"""
+    if success:
+        msg = Text("✓ 所有依赖已就绪，可以运行项目", style="bold green")
+        if HAS_RICH:
+            console.print(Panel(msg, width=60, style="green"))
+        else:
+            console.print("=" * 60)
+            console.print(msg, style="bold green")
+            console.print("=" * 60)
+    else:
+        msg = Text("⚠️ 部分依赖安装失败，请检查错误信息", style="bold yellow")
+        if HAS_RICH:
+            console.print(Panel(msg, width=60, style="yellow"))
+        else:
+            console.print("=" * 60)
+            console.print(msg, style="bold yellow")
+            console.print("=" * 60)
+
+def print_package_table(packages: dict, title: str):
+    """打印包信息表格"""
+    if HAS_RICH:
+        table = Table(title=title, show_header=True, header_style="bold magenta")
+        table.add_column("包名", style="cyan")
+        table.add_column("状态", style="green")
+        table.add_column("版本")
+        
+        for pkg, status in packages.items():
+            version = get_package_version(pkg)
+            status_text = Text(status, style="bold green" if "已安装" in status else "bold yellow")
+            table.add_row(pkg, status_text, version)
+        
+        console.print(table)
+    else:
+        console.print(f"\n{title}", style="bold yellow")
+        console.print("-" * 60)
+        console.print(f"{'包名':<20}{'状态':<20}{'版本':<20}")
+        console.print("-" * 60)
+        for pkg, status in packages.items():
+            version = get_package_version(pkg)
+            console.print(f"{pkg:<20}{status:<20}{version:<20}")
+        console.print("-" * 60)
+
+def find_python_files(directory: Path) -> list:
+    """递归查找目录中的所有Python文件"""
+    py_files = []
+    for root, dirs, files in os.walk(directory):
+        # 跳过排除目录
+        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
+        
+        for file in files:
+            if file.endswith(".py") and file not in EXCLUDE_FILES:
+                py_files.append(Path(root) / file)
+    return py_files
+
+@lru_cache(maxsize=100)
+def extract_imports(file: Path) -> set:
+    """解析AST抓取所有导入（带缓存）"""
+    content = file.read_text(encoding="utf-8")
+    
+    # 移除注释以避免误解析
+    content = re.sub(r'#.*', '', content)
+    content = re.sub(r'""".*?"""', '', content, flags=re.DOTALL)
+    content = re.sub(r"'''.*?'''", '', content, flags=re.DOTALL)
+    
+    try:
+        tree = ast.parse(content, filename=str(file))
+    except SyntaxError as e:
+        error_msg = f"文件 {file} 第 {e.lineno} 行: {e.msg}"
+        console.print(f"[yellow]⚠️ 语法错误，跳过: {error_msg}[/yellow]")
+        return set()
+    except Exception as e:
+        console.print(f"[red]✖ 解析文件 {file} 时出错: {e}[/red]")
+        return set()
+    
+    pkgs = set()
+    
+    for node in ast.walk(tree):
+        # 普通导入
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                pkgs.add(alias.name.split(".")[0])
+        
+        # from ... import ...
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and node.level == 0:  # 只处理顶级导入
+                pkgs.add(node.module.split(".")[0])
+        
+        # 动态导入 __import__('module')
+        elif (isinstance(node, ast.Call) and 
+              isinstance(node.func, ast.Name) and 
+              node.func.id == "__import__" and
+              node.args and isinstance(node.args[0], ast.Str)):
+            pkgs.add(node.args[0].s.split(".")[0])
+        
+        # importlib.import_module('module')
+        elif (isinstance(node, ast.Call) and 
+              isinstance(node.func, ast.Attribute) and 
+              node.func.attr == "import_module" and
+              isinstance(node.func.value, ast.Name) and
+              node.func.value.id == "importlib" and
+              node.args and isinstance(node.args[0], ast.Str)):
+            pkgs.add(node.args[0].s.split(".")[0])
+    
+    return pkgs
+
+def pip_install(pkg: str, upgrade: bool, force: bool, dry_run: bool) -> bool:
+    """安装包，自动选择镜像源"""
+    # 安全验证：检查包名是否合法
+    if not SAFE_PACKAGE_PATTERN.match(pkg):
+        console.print(f"[bold red]✖ 无效包名: {pkg}[/bold red]")
+        return False
+    
+    if dry_run:
+        console.print(f"[cyan]模拟安装: {pkg}[/cyan]")
+        return True
+    
+    cmd = [str(PY_EXE), "-m", "pip", "install"]
+    
+    if upgrade or force:
+        cmd.append("--upgrade")
+    
+    if force:
+        cmd.append("--force-reinstall")
+    
+    # 尝试所有镜像源直到成功
+    for mirror in MIRRORS:
+        full_cmd = cmd + ["-i", mirror, pkg]
+        
+        if HAS_RICH:
+            console.print(f"[dim]{' '.join(full_cmd)}[/dim]")
+        else:
+            console.print(f"执行: {' '.join(full_cmd)}", style="dim")
+        
+        try:
+            result = subprocess.run(
+                full_cmd, 
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
+            
+            # 检查常见错误
+            if "Requirement already satisfied" in result.stdout:
+                if HAS_RICH:
+                    console.print(f"[green]✓ {pkg} 已是最新版本[/green]")
+                else:
+                    console.print(f"{pkg} 已是最新版本", style="green")
+            else:
+                if HAS_RICH:
+                    console.print(f"[bold green]✓ 成功安装: {pkg}[/bold green]")
+                else:
+                    console.print(f"成功安装: {pkg}", style="bold green")
+            return True
+        except subprocess.CalledProcessError as e:
+            error_output = e.output.strip()
+            
+            # 特殊处理权限错误
+            if "Permission denied" in error_output:
+                console.print(f"[bold red]✖ 权限不足，尝试加上 sudo 或使用虚拟环境: {pkg}[/bold red]")
+                return False
+            
+            # 特殊处理未找到包
+            if "Could not find a version" in error_output or "No matching distribution" in error_output:
+                console.print(f"[bold yellow]⚠️ 包名可能错误或包不存在: {pkg}[/bold yellow]")
+                console.print(f"[yellow]尝试在PyPI搜索: https://pypi.org/search/?q={pkg}[/yellow]")
+            
+            # 显示最后一个镜像的错误
+            if mirror == MIRRORS[-1]:
+                console.print(f"[red]✖ 所有镜像安装失败: {pkg}[/red]")
+                console.print(f"[dim]{error_output}[/dim]")
+    
+    return False
+
+def check_requirements_file():
+    """检查并读取requirements.txt文件"""
+    req_file = PROJECT_ROOT / "requirements.txt"
+    if req_file.exists():
+        console.print("[cyan]发现requirements.txt文件[/cyan]")
+        return [line.strip() for line in req_file.read_text().splitlines() 
+                if line.strip() and not line.startswith("#")]
+    return []
+
+def generate_requirements_file(packages: list):
+    """生成requirements.txt文件"""
+    req_file = PROJECT_ROOT / "requirements.txt"
+    if not req_file.exists():
+        with open(req_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(sorted(packages)) + "\n")
+        console.print(f"[green]✓ 已生成 requirements.txt 文件[/green]")
+
+def find_venv(directory: Path) -> Path:
+    """查找虚拟环境目录"""
+    venv_names = ["venv", "env", ".venv", ".env"]
+    for name in venv_names:
+        venv_path = directory / name
+        if venv_path.exists() and venv_path.is_dir():
+            return venv_path
+    return None
+
+def check_forbidden_paths():
+    """检查是否在禁止目录运行"""
+    for forbidden in FORBIDDEN_PATHS:
+        if PROJECT_ROOT == forbidden or PROJECT_ROOT.is_relative_to(forbidden):
+            console.print("[bold red]✖ 禁止在系统目录运行此脚本[/bold red]")
+            console.print(f"[red]当前目录: {PROJECT_ROOT}[/red]")
+            console.print("[yellow]请在项目目录中运行此脚本[/yellow]")
+            sys.exit(1)
+
+# ---------- 主逻辑 ----------
+def main():
+    print_header()
+    
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='安装项目依赖')
+    parser.add_argument('--upgrade', action='store_true', help='升级所有已安装的包')
+    parser.add_argument('--force', action='store_true', help='强制重新安装所有包')
+    parser.add_argument('--dry-run', action='store_true', help='模拟运行，不实际安装')
+    args = parser.parse_args()
+    
+    # 安全检查
+    check_forbidden_paths()
+    
+    console.print(f"[bold]项目目录:[/bold] [cyan]{PROJECT_ROOT}[/cyan]")
+    console.print(f"[bold]Python解释器:[/bold] [cyan]{PY_EXE}[/cyan]")
+    console.print(f"[bold]操作系统:[/bold] [cyan]{platform.system()} {platform.release()}[/cyan]")
+    
+    # 查找虚拟环境
+    venv_path = find_venv(PROJECT_ROOT)
+    if venv_path:
+        console.print(f"[bold]虚拟环境:[/bold] [cyan]{venv_path}[/cyan]")
+    
+    # 检查requirements.txt
+    req_packages = check_requirements_file()
+    
+    # 查找所有Python文件
+    console.print("[cyan]正在扫描项目中的Python文件...[/cyan]")
+    py_files = find_python_files(PROJECT_ROOT)
+    
+    if not py_files and not req_packages:
+        console.print("[red]✖ 未找到任何Python文件或requirements.txt[/red]")
+        return
+    
+    if py_files:
+        if HAS_RICH:
+            file_list = "\n".join(f"• {f.relative_to(PROJECT_ROOT)}" for f in py_files[:10])
+            if len(py_files) > 10:
+                file_list += f"\n• ...等 {len(py_files)} 个文件"
+            console.print(Panel(file_list, title="扫描到的文件", title_align="left"))
+        else:
+            console.print("扫描到的文件:", style="bold")
+            for f in py_files[:5]:
+                console.print(f"- {f.relative_to(PROJECT_ROOT)}")
+            if len(py_files) > 5:
+                console.print(f"- ...等 {len(py_files)} 个文件")
+    
+    # 提取所有依赖
+    all_pkgs = set(req_packages)  # 从requirements.txt开始
+    
+    if py_files:
+        console.print("[cyan]正在分析依赖关系...[/cyan]")
+        if HAS_RICH:
+            with Progress() as progress:
+                task = progress.add_task("[cyan]分析文件中...", total=len(py_files))
+                for py_file in py_files:
+                    all_pkgs |= extract_imports(py_file)
+                    progress.update(task, advance=1)
+        else:
+            for py_file in py_files:
+                all_pkgs |= extract_imports(py_file)
+                console.print(f"- 分析: {py_file.relative_to(PROJECT_ROOT)}", style="dim")
+    
+    # 过滤标准库
+    third_party = sorted([pkg for pkg in all_pkgs if not is_stdlib(pkg)])
+    
+    if not third_party:
+        console.print("[green]✓ 未发现需要安装的第三方库[/green]")
+        print_footer(True)
+        return
+    
+    console.print(f"[bold green]✓ 发现 {len(third_party)} 个第三方库[/bold green]")
+    
+    # 生成requirements.txt（如果不存在）
+    if not (PROJECT_ROOT / "requirements.txt").exists():
+        generate_requirements_file(third_party)
+    
+    # 分类包状态
+    pkg_status = {}
+    for pkg in third_party:
+        if installed(pkg):
+            pkg_status[pkg] = "已安装"
+        else:
+            pkg_status[pkg] = "待安装"
+    
+    # 打印包状态表格
+    print_package_table(pkg_status, "依赖状态概览")
+    
+    # 确定需要操作的包
+    to_install = []
+    to_upgrade = []
+    
+    for pkg in third_party:
+        if not installed(pkg):
+            to_install.append(pkg)
+        elif args.upgrade or args.force:
+            to_upgrade.append(pkg)
+        else:
+            # 交互式询问是否升级
+            if HAS_RICH:
+                upgrade = console.input(
+                    f"[bold]升级 [cyan]{pkg}[/cyan]? (当前版本: [yellow]{get_package_version(pkg)}[/yellow]) [[y/N]][/bold] "
+                ).strip().lower() == 'y'
+            else:
+                upgrade = input(
+                    f"升级 {pkg}? (当前版本: {get_package_version(pkg)}) [y/N] "
+                ).strip().lower() == 'y'
+            
+            if upgrade:
+                to_upgrade.append(pkg)
+    
+    # 准备安装列表
+    all_to_process = to_install + to_upgrade
+    if not all_to_process:
+        console.print("[green]✓ 没有需要安装或升级的包[/green]")
+        print_footer(True)
+        return
+    
+    # 显示安装计划
+    if to_install:
+        console.print(f"[bold]将安装 {len(to_install)} 个新包:[/bold] [cyan]{', '.join(to_install)}[/cyan]")
+    if to_upgrade:
+        console.print(f"[bold]将升级 {len(to_upgrade)} 个已安装包:[/bold] [yellow]{', '.join(to_upgrade)}[/yellow]")
+    
+    # 确认安装
+    if args.dry_run:
+        console.print("[bold yellow]模拟运行模式，不会实际安装任何包[/bold yellow]")
+    else:
+        if HAS_RICH:
+            confirm = console.input("[bold]是否继续? [[Y/n]][/bold] ").strip().lower()
+        else:
+            confirm = input("是否继续? [Y/n] ").strip().lower()
+        
+        if confirm not in ('', 'y', 'yes'):
+            console.print("[yellow]安装已取消[/yellow]")
+            return
+    
+    # 开始安装
+    console.print("[bold green]开始安装依赖...[/bold green]")
+    success = True
+    
+    # 安装进度条
+    if HAS_RICH:
+        with Progress() as progress:
+            task = progress.add_task("[cyan]安装包...", total=len(all_to_process))
+            for pkg in all_to_process:
+                progress.update(task, description=f"[cyan]安装 {pkg}...")
+                if not pip_install(pkg, upgrade=pkg in to_upgrade, force=args.force, dry_run=args.dry_run):
+                    success = False
+                    console.print(f"[red]✖ {pkg} 安装失败[/red]")
+                progress.update(task, advance=1)
+    else:
+        console.print("安装进度:", style="bold")
+        for i, pkg in enumerate(all_to_process, 1):
+            console.print(f"[{i}/{len(all_to_process)}] 安装 {pkg}...")
+            if not pip_install(pkg, upgrade=pkg in to_upgrade, force=args.force, dry_run=args.dry_run):
+                success = False
+                console.print(f"[red]✖ {pkg} 安装失败[/red]")
+    
+    # 最终结果
+    if args.dry_run:
+        console.print("[bold green]✓ 模拟运行完成[/bold green]")
+        print_footer(True)
+    elif success:
+        console.print("[bold green]✓ 所有依赖安装成功[/bold green]")
+        print_footer(True)
+    else:
+        console.print("[bold yellow]⚠️ 部分依赖安装失败，请检查错误信息[/bold yellow]")
+        print_footer(False)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]安装被用户中断[/yellow]")
+        sys.exit(1)
