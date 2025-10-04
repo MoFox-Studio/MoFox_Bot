@@ -247,7 +247,10 @@ MoFox_Bot(第三方修改版)
 
         # 注册API路由
         try:
+            from src.api.auth import router as auth_router
             from src.api.message_router import router as message_router
+
+            self.server.register_router(auth_router, prefix="/api")
             self.server.register_router(message_router, prefix="/api")
             logger.info("API路由注册成功")
         except ImportError as e:
