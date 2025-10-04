@@ -21,6 +21,7 @@ google-genai
 pandas
 peewee
 pyarrow
+pyjwt
 pydantic
 pypinyin
 python-dateutil

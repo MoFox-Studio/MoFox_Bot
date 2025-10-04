@@ -1,8 +1,9 @@
 import time
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from src.api.security import JWTCredentials, require_scope
 from src.config.config import global_config
 from src.plugin_system.apis import message_api
 
@@ -11,7 +12,10 @@ router = APIRouter()
 @router.get("/messages/recent")
 async def get_message_stats(
     days: int = Query(1, ge=1, description="指定查询过去多少天的数据"),
-    message_type: Literal["all", "sent", "received"] = Query("all", description="筛选消息类型: 'sent' (BOT发送的), 'received' (BOT接收的), or 'all' (全部)")
+    message_type: Literal["all", "sent", "received"] = Query(
+        "all", description="筛选消息类型: 'sent' (BOT发送的), 'received' (BOT接收的), or 'all' (全部)"
+    ),
+    credentials: JWTCredentials = Depends(require_scope("messages:read")),
 ):
     """
     获取BOT在指定天数内的消息统计数据。
@@ -41,7 +45,8 @@ async def get_message_stats(
                 "message_type": message_type,
                 "sent_count": sent_count,
                 "received_count": received_count,
-                "total_count": len(messages)
+                "total_count": len(messages),
+                "subject": credentials.subject,
             }
 
     except Exception as e:
