@@ -1,11 +1,14 @@
 # 使用基于时间戳的文件处理器，简单的轮转份数限制
 
 import logging
+import tarfile
 import threading
-import time
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
+from itertools import cycle
 from pathlib import Path
+from typing import TextIO
 
 import orjson
 import structlog
@@ -30,15 +33,13 @@ def get_file_handler():
         # 检查现有handler，避免重复创建
         root_logger = logging.getLogger()
         for handler in root_logger.handlers:
-            if isinstance(handler, TimestampedFileHandler):
+            if isinstance(handler, DailyCompressedFileHandler):
                 _file_handler = handler
                 return _file_handler
 
         # 使用基于时间戳的handler，简单的轮转份数限制
-        _file_handler = TimestampedFileHandler(
+        _file_handler = DailyCompressedFileHandler(
             log_dir=LOG_DIR,
-            max_bytes=5 * 1024 * 1024,  # 5MB
-            backup_count=30,
             encoding="utf-8",
         )
         # 设置文件handler的日志级别
@@ -58,93 +59,94 @@ def get_console_handler():
     return _console_handler
 
 
-class TimestampedFileHandler(logging.Handler):
-    """基于时间戳的文件处理器，简单的轮转份数限制"""
+class DailyCompressedFileHandler(logging.Handler):
+    """按天轮转并自动压缩历史日志文件的处理器"""
 
-    def __init__(self, log_dir, max_bytes=5 * 1024 * 1024, backup_count=30, encoding="utf-8"):
+    def __init__(self, log_dir: Path | str, encoding: str = "utf-8"):
         super().__init__()
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(exist_ok=True)
-        self.max_bytes = max_bytes
-        self.backup_count = backup_count
         self.encoding = encoding
         self._lock = threading.Lock()
+        self.current_file: Path | None = None
+        self._current_date: str | None = None
+        self._stream: TextIO | None = None
 
-        # 当前活跃的日志文件
-        self.current_file = None
-        self.current_stream = None
-        self._init_current_file()
+        self._archive_existing_plain_logs()
+        self._open_stream(datetime.now())
 
-    def _init_current_file(self):
-        """初始化当前日志文件"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.current_file = self.log_dir / f"app_{timestamp}.log.jsonl"
-        self.current_stream = open(self.current_file, "a", encoding=self.encoding)
+    def _archive_existing_plain_logs(self) -> None:
+        """在初始化时压缩所有非当日的残留日志文件"""
+        today = datetime.now().strftime("%Y%m%d")
+        for log_file in self.log_dir.glob("app_*.log.jsonl"):
+            if today in log_file.name:
+                continue
+            self._compress_file(log_file)
 
-    def _should_rollover(self):
-        """检查是否需要轮转"""
-        if self.current_file and self.current_file.exists():
-            return self.current_file.stat().st_size >= self.max_bytes
-        return False
+    def _open_stream(self, log_time: datetime) -> None:
+        self._current_date = log_time.strftime("%Y%m%d")
+        filename = f"app_{self._current_date}.log.jsonl"
+        self.current_file = self.log_dir / filename
+        self._stream = open(self.current_file, "a", encoding=self.encoding)
 
-    def _do_rollover(self):
-        """执行轮转：关闭当前文件，创建新文件"""
-        if self.current_stream:
-            self.current_stream.close()
+    def _compress_file(self, log_file: Path) -> None:
+        archive_path = log_file.with_name(f"{log_file.name}.tar.gz")
+        if archive_path.exists():
+            try:
+                log_file.unlink()
+            except Exception as exc:
+                print(f"[日志压缩] 无法删除已存在的日志文件 {log_file}: {exc}")
+            return
 
-        # 清理旧文件
-        self._cleanup_old_files()
-
-        # 创建新文件
-        self._init_current_file()
-
-    def _cleanup_old_files(self):
-        """清理旧的日志文件，保留指定数量"""
         try:
-            # 获取所有日志文件
-            log_files = list(self.log_dir.glob("app_*.log.jsonl"))
+            with tarfile.open(archive_path, "w:gz") as archive:
+                archive.add(log_file, arcname=log_file.name)
+            log_file.unlink()
+        except Exception as exc:
+            print(f"[日志压缩] 压缩 {log_file} 时出错: {exc}")
 
-            # 按修改时间排序
-            log_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    def _should_rotate(self, record_time: datetime) -> bool:
+        record_date = record_time.strftime("%Y%m%d")
+        return self._current_date is None or record_date != self._current_date
 
-            # 删除超出数量限制的文件
-            for old_file in log_files[self.backup_count :]:
-                try:
-                    old_file.unlink()
-                    print(f"[日志清理] 删除旧文件: {old_file.name}")
-                except Exception as e:
-                    print(f"[日志清理] 删除失败 {old_file}: {e}")
+    def _rotate(self, record_time: datetime) -> None:
+        if self._stream:
+            self._stream.close()
 
-        except Exception as e:
-            print(f"[日志清理] 清理过程出错: {e}")
+        if self.current_file and self.current_file.exists():
+            self._compress_file(self.current_file)
 
-    def emit(self, record):
-        """发出日志记录"""
+        self.current_file = None
+        self._stream = None
+        self._open_stream(record_time)
+
+    def emit(self, record):  # type: ignore[override]
+        try:
+            record_time = datetime.fromtimestamp(record.created)
+        except (OSError, OverflowError, ValueError):
+            record_time = datetime.now()
+
         try:
             with self._lock:
-                # 检查是否需要轮转
-                if self._should_rollover():
-                    self._do_rollover()
+                if self._should_rotate(record_time):
+                    self._rotate(record_time)
 
-                # 写入日志
-                if self.current_stream:
+                if self._stream is None:
+                    self._open_stream(record_time)
+
+                if self._stream:
                     msg = self.format(record)
-                    self.current_stream.write(msg + "\n")
-                    self.current_stream.flush()
-
+                    self._stream.write(msg + "\n")
+                    self._stream.flush()
         except Exception:
             self.handleError(record)
 
-    def close(self):
-        """关闭处理器"""
+    def close(self) -> None:
         with self._lock:
-            if self.current_stream:
-                self.current_stream.close()
-                self.current_stream = None
+            if self._stream:
+                self._stream.close()
+                self._stream = None
         super().close()
-
-
-# 旧的轮转文件处理器已移除，现在使用基于时间戳的处理器
 
 
 def close_handlers():
@@ -167,7 +169,7 @@ def remove_duplicate_handlers():  # sourcery skip: for-append-to-extend, list-co
     # 收集所有时间戳文件handler
     file_handlers = []
     for handler in root_logger.handlers[:]:
-        if isinstance(handler, TimestampedFileHandler):
+        if isinstance(handler, DailyCompressedFileHandler):
             file_handlers.append(handler)
 
     # 如果有多个文件handler，保留第一个，关闭其他的
@@ -281,7 +283,7 @@ def reconfigure_existing_loggers():
 
     # 重新设置根logger的所有handler的格式化器
     for handler in root_logger.handlers:
-        if isinstance(handler, TimestampedFileHandler):
+        if isinstance(handler, DailyCompressedFileHandler):
             handler.setFormatter(file_formatter)
         elif isinstance(handler, logging.StreamHandler):
             handler.setFormatter(console_formatter)
@@ -321,7 +323,7 @@ def reconfigure_existing_loggers():
 
             # 如果logger有自己的handler，重新配置它们（避免重复创建文件handler）
             for handler in original_handlers:
-                if isinstance(handler, TimestampedFileHandler):
+                if isinstance(handler, DailyCompressedFileHandler):
                     # 不重新添加，让它使用根logger的文件handler
                     continue
                 elif isinstance(handler, logging.StreamHandler):
@@ -329,335 +331,135 @@ def reconfigure_existing_loggers():
                     logger_obj.addHandler(handler)
 
 
-# 定义模块颜色映射
-MODULE_COLORS = {
-    # 核心模块
-    "main": "\033[1;97m",  # 亮白色+粗体 (主程序)
-    "api": "\033[92m",  # 亮绿色
-    "emoji": "\033[38;5;214m",  # 橙黄色，偏向橙色但与replyer和action_manager不同
-    "chat": "\033[92m",  # 亮蓝色
-    "config": "\033[93m",  # 亮黄色
-    "common": "\033[95m",  # 亮紫色
-    "tools": "\033[96m",  # 亮青色
-    "lpmm": "\033[96m",
-    "plugin_system": "\033[91m",  # 亮红色
-    "person_info": "\033[32m",  # 绿色
-    "individuality": "\033[94m",  # 显眼的亮蓝色
-    "manager": "\033[35m",  # 紫色
-    "llm_models": "\033[36m",  # 青色
-    "remote": "\033[38;5;242m",  # 深灰色，更不显眼
-    "planner": "\033[36m",
-    "memory": "\033[38;5;117m",  # 天蓝色
-    "hfc": "\033[38;5;81m",  # 稍微暗一些的青色，保持可读
-    "action_manager": "\033[38;5;208m",  # 橙色，不与replyer重复
-    "message_manager": "\033[38;5;27m",  # 深蓝色，消息管理器
-    "chatter_manager": "\033[38;5;129m",  # 紫色，聊天管理器
-    "chatter_interest_scoring": "\033[38;5;214m",  # 橙黄色，兴趣评分
-    "plan_executor": "\033[38;5;172m",  # 橙褐色，计划执行器
-    # 关系系统
-    "relation": "\033[38;5;139m",  # 柔和的紫色，不刺眼
-    # 聊天相关模块
-    "normal_chat": "\033[38;5;81m",  # 亮蓝绿色
-    "heartflow": "\033[38;5;175m",  # 柔和的粉色，不显眼但保持粉色系
-    "sub_heartflow": "\033[38;5;207m",  # 粉紫色
-    "subheartflow_manager": "\033[38;5;201m",  # 深粉色
-    "background_tasks": "\033[38;5;240m",  # 灰色
-    "chat_message": "\033[38;5;45m",  # 青色
-    "chat_stream": "\033[38;5;51m",  # 亮青色
-    "sender": "\033[38;5;67m",  # 稍微暗一些的蓝色，不显眼
-    "message_storage": "\033[38;5;33m",  # 深蓝色
-    "expressor": "\033[38;5;166m",  # 橙色
-    # 专注聊天模块
-    "replyer": "\033[38;5;166m",  # 橙色
-    "memory_activator": "\033[38;5;117m",  # 天蓝色
-    # 插件系统
-    "plugins": "\033[31m",  # 红色
-    "plugin_api": "\033[33m",  # 黄色
-    "plugin_manager": "\033[38;5;208m",  # 红色
-    "base_plugin": "\033[38;5;202m",  # 橙红色
-    "send_api": "\033[38;5;208m",  # 橙色
-    "base_command": "\033[38;5;208m",  # 橙色
-    "component_registry": "\033[38;5;214m",  # 橙黄色
-    "stream_api": "\033[38;5;220m",  # 黄色
-    "plugin_hot_reload": "\033[38;5;226m",  # 品红色
-    "config_api": "\033[38;5;226m",  # 亮黄色
-    "heartflow_api": "\033[38;5;154m",  # 黄绿色
-    "action_apis": "\033[38;5;118m",  # 绿色
-    "independent_apis": "\033[38;5;82m",  # 绿色
-    "llm_api": "\033[38;5;46m",  # 亮绿色
-    "database_api": "\033[38;5;10m",  # 绿色
-    "utils_api": "\033[38;5;14m",  # 青色
-    "message_api": "\033[38;5;6m",  # 青色
-    # 管理器模块
-    "async_task_manager": "\033[38;5;129m",  # 紫色
-    "mood": "\033[38;5;135m",  # 紫红色
-    "local_storage": "\033[38;5;141m",  # 紫色
-    "willing": "\033[38;5;147m",  # 浅紫色
-    # 工具模块
-    "tool_use": "\033[38;5;172m",  # 橙褐色
-    "tool_executor": "\033[38;5;172m",  # 橙褐色
-    "base_tool": "\033[38;5;178m",  # 金黄色
-    # 工具和实用模块
-    "prompt_build": "\033[38;5;105m",  # 紫色
-    "chat_utils": "\033[38;5;111m",  # 蓝色
-    "chat_image": "\033[38;5;117m",  # 浅蓝色
-    "maibot_statistic": "\033[38;5;129m",  # 紫色
-    # 特殊功能插件
-    "mute_plugin": "\033[38;5;240m",  # 灰色
-    "core_actions": "\033[38;5;117m",  # 深红色
-    "tts_action": "\033[38;5;58m",  # 深黄色
-    "doubao_pic_plugin": "\033[38;5;64m",  # 深绿色
-    # Action组件
-    "no_reply_action": "\033[38;5;214m",  # 亮橙色，显眼但不像警告
-    "reply_action": "\033[38;5;46m",  # 亮绿色
-    "base_action": "\033[38;5;250m",  # 浅灰色
-    # 数据库和消息
-    "database_model": "\033[38;5;94m",  # 橙褐色
-    "database": "\033[38;5;46m",  # 橙褐色
-    "maim_message": "\033[38;5;140m",  # 紫褐色
-    # 日志系统
-    "logger": "\033[38;5;8m",  # 深灰色
-    "confirm": "\033[1;93m",  # 黄色+粗体
-    # 模型相关
-    "model_utils": "\033[38;5;164m",  # 紫红色
-    "relationship_fetcher": "\033[38;5;170m",  # 浅紫色
-    "relationship_builder": "\033[38;5;93m",  # 浅蓝色
-    "sqlalchemy_init": "\033[38;5;105m",  #
-    "sqlalchemy_models": "\033[38;5;105m",
-    "sqlalchemy_database_api": "\033[38;5;105m",
-    # s4u
-    "context_web_api": "\033[38;5;240m",  # 深灰色
-    "S4U_chat": "\033[92m",  # 亮绿色
-    # API相关扩展
-    "chat_api": "\033[38;5;34m",  # 深绿色
-    "emoji_api": "\033[38;5;40m",  # 亮绿色
-    "generator_api": "\033[38;5;28m",  # 森林绿
-    "person_api": "\033[38;5;22m",  # 深绿色
-    "tool_api": "\033[38;5;76m",  # 绿色
-    "OpenAI客户端": "\033[38;5;81m",
-    "Gemini客户端": "\033[38;5;81m",
-    # 插件系统扩展
-    "plugin_base": "\033[38;5;196m",  # 红色
-    "base_event_handler": "\033[38;5;203m",  # 粉红色
-    "events_manager": "\033[38;5;209m",  # 橙红色
-    "global_announcement_manager": "\033[38;5;215m",  # 浅橙色
-    # 工具和依赖管理
-    "dependency_config": "\033[38;5;24m",  # 深蓝色
-    "dependency_manager": "\033[38;5;30m",  # 深青色
-    "manifest_utils": "\033[38;5;39m",  # 蓝色
-    "schedule_manager": "\033[38;5;27m",  # 深蓝色
-    "monthly_plan_manager": "\033[38;5;171m",
-    "plan_manager": "\033[38;5;171m",
-    "llm_generator": "\033[38;5;171m",
-    "schedule_bridge": "\033[38;5;171m",
-    "sleep_manager": "\033[38;5;171m",
-    "official_configs": "\033[38;5;171m",
-    "mmc_com_layer": "\033[38;5;67m",
-    # 聊天和多媒体扩展
-    "chat_voice": "\033[38;5;87m",  # 浅青色
-    "typo_gen": "\033[38;5;123m",  # 天蓝色
-    "utils_video": "\033[38;5;75m",  # 亮蓝色
-    "ReplyerManager": "\033[38;5;173m",  # 浅橙色
-    "relationship_builder_manager": "\033[38;5;176m",  # 浅紫色
-    "expression_selector": "\033[38;5;176m",
-    "chat_message_builder": "\033[38;5;176m",
-    # MaiZone QQ空间相关
-    "MaiZone": "\033[38;5;98m",  # 紫色
-    "MaiZone-Monitor": "\033[38;5;104m",  # 深紫色
-    "MaiZone.ConfigLoader": "\033[38;5;110m",  # 蓝紫色
-    "MaiZone-Scheduler": "\033[38;5;134m",  # 紫红色
-    "MaiZone-Utils": "\033[38;5;140m",  # 浅紫色
-    # MaiZone Refactored
-    "MaiZone.HistoryUtils": "\033[38;5;140m",
-    "MaiZone.SchedulerService": "\033[38;5;134m",
-    "MaiZone.QZoneService": "\033[38;5;98m",
-    "MaiZone.MonitorService": "\033[38;5;104m",
-    "MaiZone.ImageService": "\033[38;5;110m",
-    "MaiZone.CookieService": "\033[38;5;140m",
-    "MaiZone.ContentService": "\033[38;5;110m",
-    "MaiZone.Plugin": "\033[38;5;98m",
-    "MaiZone.SendFeedCommand": "\033[38;5;134m",
-    "MaiZone.SendFeedAction": "\033[38;5;134m",
-    "MaiZone.ReadFeedAction": "\033[38;5;134m",
-    # 网络工具
-    "web_surfing_tool": "\033[38;5;130m",  # 棕色
-    "tts": "\033[38;5;136m",  # 浅棕色
-    "poke_plugin": "\033[38;5;136m",
-    "set_emoji_like_plugin": "\033[38;5;136m",
-    # mais4u系统扩展
-    "s4u_config": "\033[38;5;18m",  # 深蓝色
-    "action": "\033[38;5;52m",  # 深红色（mais4u的action）
-    "context_web": "\033[38;5;58m",  # 深黄色
-    "gift_manager": "\033[38;5;161m",  # 粉红色
-    "prompt": "\033[38;5;99m",  # 紫色（mais4u的prompt）
-    "super_chat_manager": "\033[38;5;125m",  # 紫红色
-    "watching": "\033[38;5;131m",  # 深橙色
-    "offline_llm": "\033[38;5;236m",  # 深灰色
-    "s4u_stream_generator": "\033[38;5;60m",  # 深紫色
-    # 其他工具
-    "消息压缩工具": "\033[38;5;244m",  # 灰色
-    "lpmm_get_knowledge_tool": "\033[38;5;102m",  # 绿色
-    "message_chunker": "\033[38;5;244m",
-    "plan_generator": "\033[38;5;171m",
-    "Permission": "\033[38;5;196m",
-    "web_search_plugin": "\033[38;5;130m",
-    "url_parser_tool": "\033[38;5;130m",
-    "api_key_manager": "\033[38;5;130m",
-    "tavily_engine": "\033[38;5;130m",
-    "exa_engine": "\033[38;5;130m",
-    "ddg_engine": "\033[38;5;130m",
-    "bing_engine": "\033[38;5;130m",
-    "vector_instant_memory_v2": "\033[38;5;117m",
-    "async_memory_optimizer": "\033[38;5;117m",
-    "async_instant_memory_wrapper": "\033[38;5;117m",
-    "action_diagnostics": "\033[38;5;214m",
-    "anti_injector.message_processor": "\033[38;5;196m",
-    "anti_injector.user_ban": "\033[38;5;196m",
-    "anti_injector.statistics": "\033[38;5;196m",
-    "anti_injector.decision_maker": "\033[38;5;196m",
-    "anti_injector.counter_attack": "\033[38;5;196m",
-    "hfc.processor": "\033[38;5;81m",
-    "hfc.normal_mode": "\033[38;5;81m",
-    "wakeup": "\033[38;5;81m",
-    "cache_manager": "\033[38;5;244m",
-    "monthly_plan_db": "\033[38;5;94m",
-    "db_migration": "\033[38;5;94m",
-    "小彩蛋": "\033[38;5;214m",
-    "AioHTTP-Gemini客户端": "\033[38;5;81m",
-    "napcat_adapter": "\033[38;5;67m",  # 柔和的灰蓝色，不刺眼且低调
-    "event_manager": "\033[38;5;79m",  # 柔和的蓝绿色，稍微醒目但不刺眼
-}
-
-# 定义模块别名映射 - 将真实的logger名称映射到显示的别名
-MODULE_ALIASES = {
-    # 核心模块
-    "individuality": "人格特质",
-    "emoji": "表情包",
-    "no_reply_action": "摸鱼",
-    "reply_action": "回复",
-    "action_manager": "动作",
-    "memory_activator": "记忆",
-    "tool_use": "工具",
-    "expressor": "表达方式",
-    "plugin_hot_reload": "热重载",
-    "database": "数据库",
-    "database_model": "数据库",
-    "mood": "情绪",
-    "memory": "记忆",
-    "tool_executor": "工具",
-    "hfc": "聊天节奏",
-    "chat": "所见",
-    "anti_injector": "反注入",
-    "anti_injector.detector": "反注入检测",
-    "anti_injector.shield": "反注入加盾",
-    "plugin_manager": "插件",
-    "relationship_builder": "关系",
-    "llm_models": "模型",
-    "person_info": "人物",
-    "chat_stream": "聊天流",
-    "message_manager": "消息管理",
-    "chatter_manager": "聊天管理",
-    "chatter_interest_scoring": "兴趣评分",
-    "plan_executor": "计划执行",
-    "planner": "规划器",
-    "replyer": "言语",
-    "config": "配置",
-    "main": "主程序",
-    # API相关扩展
-    "chat_api": "聊天接口",
-    "emoji_api": "表情接口",
-    "generator_api": "生成接口",
-    "person_api": "人物接口",
-    "tool_api": "工具接口",
-    # 插件系统扩展
-    "plugin_base": "插件基类",
-    "base_event_handler": "事件处理",
-    "event_manager": "事件管理器",
-    "global_announcement_manager": "全局通知",
-    # 工具和依赖管理
-    "dependency_config": "依赖配置",
-    "dependency_manager": "依赖管理",
-    "manifest_utils": "清单工具",
-    "schedule_manager": "规划系统-日程表管理",
-    "monthly_plan_manager": "规划系统-月度计划",
-    "plan_manager": "规划系统-计划管理",
-    "llm_generator": "规划系统-LLM生成",
-    "schedule_bridge": "计划桥接",
-    "sleep_manager": "睡眠管理",
-    "official_configs": "官方配置",
-    "mmc_com_layer": "MMC通信层",
-    # 聊天和多媒体扩展
-    "chat_voice": "语音处理",
-    "typo_gen": "错字生成",
-    "src.chat.utils.utils_video": "视频分析",
-    "ReplyerManager": "回复管理",
-    "relationship_builder_manager": "关系管理",
-    # MaiZone QQ空间相关
-    "MaiZone": "Mai空间",
-    "MaiZone-Monitor": "Mai空间监控",
-    "MaiZone.ConfigLoader": "Mai空间配置",
-    "MaiZone-Scheduler": "Mai空间调度",
-    "MaiZone-Utils": "Mai空间工具",
-    # MaiZone Refactored
-    "MaiZone.HistoryUtils": "Mai空间历史",
-    "MaiZone.SchedulerService": "Mai空间调度",
-    "MaiZone.QZoneService": "Mai空间服务",
-    "MaiZone.MonitorService": "Mai空间监控",
-    "MaiZone.ImageService": "Mai空间图片",
-    "MaiZone.CookieService": "Mai空间饼干",
-    "MaiZone.ContentService": "Mai空间内容",
-    "MaiZone.Plugin": "Mai空间插件",
-    "MaiZone.SendFeedCommand": "Mai空间发说说",
-    "MaiZone.SendFeedAction": "Mai空间发说说",
-    "MaiZone.ReadFeedAction": "Mai空间读说说",
-    # 网络工具
-    "web_surfing_tool": "网络搜索",
-    # napcat ada
-    "napcat_adapter": "Napcat 适配器",
-    "tts": "语音合成",
-    # mais4u系统扩展
-    "s4u_config": "直播配置",
-    "action": "直播动作",
-    "context_web": "网络上下文",
-    "gift_manager": "礼物管理",
-    "prompt": "直播提示",
-    "super_chat_manager": "醒目留言",
-    "watching": "观看状态",
-    "offline_llm": "离线模型",
-    "s4u_stream_generator": "直播生成",
-    # 其他工具
-    "消息压缩工具": "消息压缩",
-    "lpmm_get_knowledge_tool": "知识获取",
-    "message_chunker": "消息分块",
-    "plan_generator": "计划生成",
-    "Permission": "权限管理",
-    "web_search_plugin": "网页搜索插件",
-    "url_parser_tool": "URL解析工具",
-    "api_key_manager": "API密钥管理",
-    "tavily_engine": "Tavily引擎",
-    "exa_engine": "Exa引擎",
-    "ddg_engine": "DDG引擎",
-    "bing_engine": "Bing引擎",
-    "vector_instant_memory_v2": "向量瞬时记忆",
-    "async_memory_optimizer": "异步记忆优化器",
-    "async_instant_memory_wrapper": "异步瞬时记忆包装器",
-    "action_diagnostics": "动作诊断",
-    "anti_injector.message_processor": "反注入消息处理器",
-    "anti_injector.user_ban": "反注入用户封禁",
-    "anti_injector.statistics": "反注入统计",
-    "anti_injector.decision_maker": "反注入决策者",
-    "anti_injector.counter_attack": "反注入反击",
-    "hfc.processor": "聊天节奏处理器",
-    "hfc.normal_mode": "聊天节奏普通模式",
-    "wakeup": "唤醒",
-    "cache_manager": "缓存管理",
-    "monthly_plan_db": "月度计划数据库",
-    "db_migration": "数据库迁移",
-    "小彩蛋": "小彩蛋",
-    "AioHTTP-Gemini客户端": "AioHTTP-Gemini客户端",
-}
-
+# 日志配色支持 - 通过 get_logger 注册元数据
 RESET_COLOR = "\033[0m"
+
+
+NAMED_COLOR_CODES = {
+    "black": "\033[30m",
+    "red": "\033[31m",
+    "green": "\033[32m",
+    "yellow": "\033[33m",
+    "blue": "\033[34m",
+    "magenta": "\033[35m",
+    "cyan": "\033[36m",
+    "white": "\033[37m",
+    "bright_black": "\033[90m",
+    "bright_red": "\033[91m",
+    "bright_green": "\033[92m",
+    "bright_yellow": "\033[93m",
+    "bright_blue": "\033[94m",
+    "bright_magenta": "\033[95m",
+    "bright_cyan": "\033[96m",
+    "bright_white": "\033[97m",
+}
+
+DEFAULT_COLOR_SEQUENCE = [
+    "cyan",
+    "magenta",
+    "yellow",
+    "green",
+    "blue",
+    "bright_cyan",
+    "bright_magenta",
+    "bright_yellow",
+    "bright_green",
+    "bright_blue",
+]
+
+_default_color_cycle = cycle(DEFAULT_COLOR_SEQUENCE)
+
+
+@dataclass
+class LoggerMetadata:
+    name: str
+    alias: str
+    prefix: str | None = None
+    color_value: str | None = None
+    color_code: str | None = None
+
+
+LOGGER_METADATA: dict[str, LoggerMetadata] = {}
+
+
+def _assign_default_color() -> tuple[str | None, str | None]:
+    color_value = next(_default_color_cycle)
+    return color_value, NAMED_COLOR_CODES.get(color_value)
+
+
+def _resolve_color(color: str | None) -> tuple[str | None, str | None]:
+    if color is None:
+        return None, None
+
+    value = color.strip()
+    if value in NAMED_COLOR_CODES:
+        return value, NAMED_COLOR_CODES[value]
+
+    if value.startswith("\033"):
+        return value, value
+
+    return value, NAMED_COLOR_CODES.get(value)
+
+
+def _ensure_metadata(name: str) -> LoggerMetadata:
+    metadata = LOGGER_METADATA.get(name)
+    if metadata is None:
+        color_value, color_code = _assign_default_color()
+        metadata = LoggerMetadata(
+            name=name,
+            alias=name,
+            color_value=color_value,
+            color_code=color_code,
+        )
+        LOGGER_METADATA[name] = metadata
+    elif metadata.color_code is None and metadata.color_value is None:
+        color_value, color_code = _assign_default_color()
+        metadata.color_value = color_value
+        metadata.color_code = color_code
+    return metadata
+
+
+def update_logger_metadata(
+    name: str,
+    *,
+    alias: str | None = None,
+    prefix: str | None = None,
+    color: str | None = None,
+) -> LoggerMetadata:
+    metadata = _ensure_metadata(name)
+
+    if alias is not None:
+        metadata.alias = alias
+
+    if prefix is not None:
+        metadata.prefix = prefix
+
+    if color is not None:
+        color_value, color_code = _resolve_color(color)
+        if color_value is not None:
+            metadata.color_value = color_value
+        if color_code is not None:
+            metadata.color_code = color_code
+
+    return metadata
+
+
+def inject_logger_metadata(logger, method_name, event_dict):
+    logger_name = event_dict.get("logger_name")
+
+    metadata = None
+    if isinstance(logger_name, str) and logger_name:
+        metadata = _ensure_metadata(logger_name)
+
+    if metadata is not None:
+        event_dict.setdefault("alias", metadata.alias)
+        if metadata.prefix is not None:
+            event_dict.setdefault("prefix", metadata.prefix)
+        event_dict.setdefault("color", metadata.color_value)
+    else:
+        event_dict.setdefault("color", None)
+
+    return event_dict
 
 
 class ModuleColoredConsoleRenderer:
@@ -740,21 +542,35 @@ class ModuleColoredConsoleRenderer:
 
         # lite模式不显示级别，只给时间戳着色
 
-        # 获取模块颜色，用于full模式下的整体着色
+        # 获取模块颜色和展示名称
         module_color = ""
-        if self._colors and self._enable_module_colors and logger_name:
-            module_color = MODULE_COLORS.get(logger_name, "")
+        display_name = ""
+        prefix = ""
+        alias = ""
 
-        # 模块名称（带颜色和别名支持）
         if logger_name:
-            # 获取别名，如果没有别名则使用原名称
-            display_name = MODULE_ALIASES.get(logger_name, logger_name)
+            metadata = _ensure_metadata(logger_name)
+            alias = metadata.alias or logger_name
+            prefix = metadata.prefix or ""
 
             if self._colors and self._enable_module_colors:
-                if module_color:
-                    module_part = f"{module_color}[{display_name}]{RESET_COLOR}"
-                else:
-                    module_part = f"[{display_name}]"
+                module_color = metadata.color_code or ""
+        else:
+            alias = event_dict.get("alias", "")
+            prefix = event_dict.get("prefix", "")
+            if self._colors and self._enable_module_colors:
+                color_value = event_dict.get("color")
+                if isinstance(color_value, str):
+                    module_color = NAMED_COLOR_CODES.get(color_value, "")
+
+        if prefix:
+            display_name = f"{prefix}{alias or logger_name}"
+        else:
+            display_name = alias or logger_name
+
+        if display_name:
+            if self._colors and self._enable_module_colors and module_color:
+                module_part = f"{module_color}[{display_name}]{RESET_COLOR}"
             else:
                 module_part = f"[{display_name}]"
             parts.append(module_part)
@@ -850,9 +666,11 @@ def configure_structlog():
         processors=[
             structlog.contextvars.merge_contextvars,
             structlog.processors.add_log_level,
+            structlog.stdlib.add_logger_name,
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,
             structlog.processors.TimeStamper(fmt=get_timestamp_format(), utc=False),
+            inject_logger_metadata,
             # 根据输出类型选择不同的渲染器
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
@@ -895,7 +713,7 @@ console_formatter = structlog.stdlib.ProcessorFormatter(
 # 获取根logger并配置格式化器
 root_logger = logging.getLogger()
 for handler in root_logger.handlers:
-    if isinstance(handler, TimestampedFileHandler):
+    if isinstance(handler, DailyCompressedFileHandler):
         handler.setFormatter(file_formatter)
     else:
         handler.setFormatter(console_formatter)
@@ -942,13 +760,23 @@ raw_logger: structlog.stdlib.BoundLogger = structlog.get_logger()
 binds: dict[str, Callable] = {}
 
 
-def get_logger(name: str | None) -> structlog.stdlib.BoundLogger:
-    """获取logger实例，支持按名称绑定"""
+def get_logger(
+    name: str | None,
+    *,
+    alias: str | None = None,
+    prefix: str | None = None,
+    color: str | None = None,
+) -> structlog.stdlib.BoundLogger:
+    """获取logger实例，支持动态配置别名、前缀和颜色"""
+
     if name is None:
         return raw_logger
+
+    update_logger_metadata(name, alias=alias, prefix=prefix, color=color)
+
     logger = binds.get(name)  # type: ignore
     if logger is None:
-        logger: structlog.stdlib.BoundLogger = structlog.get_logger(name).bind(logger_name=name)
+        logger = structlog.get_logger(name).bind(logger_name=name)
         binds[name] = logger
     return logger
 
@@ -964,9 +792,6 @@ def initialize_logging():
     configure_third_party_loggers()
     reconfigure_existing_loggers()
 
-    # 启动日志清理任务
-    start_log_cleanup_task()
-
     # 输出初始化信息
     logger = get_logger("logger")
     console_level = LOG_CONFIG.get("console_log_level", LOG_CONFIG.get("log_level", "INFO"))
@@ -975,54 +800,7 @@ def initialize_logging():
     logger.info("日志系统已初始化:")
     logger.info(f"  - 控制台级别: {console_level}")
     logger.info(f"  - 文件级别: {file_level}")
-    logger.info("  - 轮转份数: 30个文件|自动清理: 30天前的日志")
-
-
-def cleanup_old_logs():
-    """清理过期的日志文件"""
-    try:
-        cleanup_days = 30  # 硬编码30天
-        cutoff_date = datetime.now() - timedelta(days=cleanup_days)
-        deleted_count = 0
-        deleted_size = 0
-
-        # 遍历日志目录
-        for log_file in LOG_DIR.glob("*.log*"):
-            try:
-                file_time = datetime.fromtimestamp(log_file.stat().st_mtime)
-                if file_time < cutoff_date:
-                    file_size = log_file.stat().st_size
-                    log_file.unlink()
-                    deleted_count += 1
-                    deleted_size += file_size
-            except Exception as e:
-                logger = get_logger("logger")
-                logger.warning(f"清理日志文件 {log_file} 时出错: {e}")
-
-        if deleted_count > 0:
-            logger = get_logger("logger")
-            logger.info(f"清理了 {deleted_count} 个过期日志文件，释放空间 {deleted_size / 1024 / 1024:.2f} MB")
-
-    except Exception as e:
-        logger = get_logger("logger")
-        logger.error(f"清理旧日志文件时出错: {e}")
-
-
-def start_log_cleanup_task():
-    """启动日志清理任务"""
-
-    def cleanup_task():
-        while True:
-            time.sleep(24 * 60 * 60)  # 每24小时执行一次
-            cleanup_old_logs()
-
-    cleanup_thread = threading.Thread(target=cleanup_task, daemon=True)
-    cleanup_thread.start()
-
-    logger = get_logger("logger")
-    logger.info("已启动日志清理任务，将自动清理30天前的日志文件（轮转份数限制: 30个文件）")
-
-
+    logger.info("  - 轮转策略: 每日0点切分，历史日志自动压缩为tar.gz并永久保留")
 def shutdown_logging():
     """优雅关闭日志系统，释放所有文件句柄"""
     logger = get_logger("logger")
