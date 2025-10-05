@@ -464,7 +464,7 @@ MoFox_Bot(第三方修改版)
         try:
             if self.server:
                 await self.server.shutdown()
-                logger.info("服务器极关闭")
+                logger.info("服务器已关闭")
         except Exception as e:
             logger.warning(f"关闭服务器时出错: {e}")
 
