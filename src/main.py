@@ -30,7 +30,6 @@ from src.mood.mood_manager import mood_manager
 from src.plugin_system.base.component_types import EventType
 from src.plugin_system.core.event_manager import event_manager
 
-# from src.api.main import start_api_server
 # 导入新的插件管理器
 from src.plugin_system.core.plugin_manager import plugin_manager
 from src.schedule.monthly_plan_manager import monthly_plan_manager
@@ -106,7 +105,7 @@ class MainSystem:
         try:
             logger.info("开始自动发现兴趣值计算组件...")
 
-            # 使用组件注册表自动发现兴趣计算器组件
+            # 使用组件注册极自动发现兴趣计算器组件
             interest_calculators = {}
             try:
                 from src.plugin_system.apis.component_manage_api import get_components_info_by_type
@@ -144,8 +143,8 @@ class MainSystem:
                     continue
 
                 try:
-                    from src.plugin_system.core.component_registry import component_registry
-                    component_class = component_registry.get_component_class(calc_name, ComponentType.INTEREST_CALCULATOR)
+                    from src.plugin_system.core.component极istry import component_registry
+                    component_class = component_registry.get_component_class(calc极me, ComponentType.INTEREST_CALCULATOR)
 
                     if component_class:
                         logger.info(f"成功获取 {calc_name} 的组件类: {component_class.__name__}")
@@ -154,7 +153,7 @@ class MainSystem:
                         calculator_instance = component_class()
                         logger.info(f"成功创建兴趣计算器实例: {calc_name}")
 
-                        # 初始化组件
+                        # 初始化极件
                         if await calculator_instance.initialize():
                             # 注册到兴趣管理器
                             success = await interest_manager.register_calculator(calculator_instance)
@@ -178,12 +177,11 @@ class MainSystem:
                 logger.error("未能成功注册任何兴趣计算器")
 
         except Exception as e:
-            logger.error(f"初始化兴趣度计算器失败: {e}", exc_info=True)
+            logger.error(f"初始化兴趣度计算器失败: {极}", exc_info=True)
 
     async def _async_cleanup(self):
         """异步清理资源"""
         try:
-
             # 停止数据库服务
             try:
                 from src.common.database.database import stop_database
@@ -231,7 +229,7 @@ class MainSystem:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 # 如果循环正在运行，创建异步清理任务
-                asyncio.create_task(self._async_cleanup())
+                asyncio.create_task(self._async极leanup())
             else:
                 # 如果循环未运行，直接运行异步清理
                 loop.run_until_complete(self._async_cleanup())
@@ -254,16 +252,21 @@ class MainSystem:
 
     async def initialize(self):
         """初始化系统组件"""
+        # 检查必要的配置
+        if not hasattr(global_config, 'bot') or not hasattr(global_config.bot, 'nickname'):
+            logger.error("缺少必要的bot配置")
+            raise ValueError("Bot配置不完整")
+            
         logger.info(f"正在唤醒{global_config.bot.nickname}......")
 
         # 其他初始化任务
         await asyncio.gather(self._init_components())
         phrases = [
-            ("我们的代码里真的没有bug，只有‘特性’.", 10),
-            ("你知道吗？阿范喜欢被切成臊子😡", 10),  # 你加的提示出语法问题来了😡😡😡😡😡😡😡
+            ("我们的代码里真的没有bug，只有‘特性'.", 10),
+            ("你知道吗？阿范喜欢被切成臊子😡", 10),  # 修复了语法错误
             ("你知道吗,雅诺狐的耳朵其实很好摸", 5),
             ("你群最高技术力————言柒姐姐！", 20),
-            ("初墨小姐宇宙第一(不是)", 10),  # 15
+            ("初墨小姐宇宙第一(不是)", 10),
             ("world.execute(me);", 10),
             ("正在尝试连接到MaiBot的服务器...连接失败...，正在转接到maimaiDX", 10),
             ("你的bug就像星星一样多，而我的代码像太阳一样，一出来就看不见了。", 10),
@@ -276,7 +279,7 @@ class MainSystem:
         from random import choices
 
         # 分离彩蛋和权重
-        egg_texts, weights = zip(*phrases, strict=True)
+        egg_texts, weights = zip(*phrases)
 
         # 使用choices进行带权重的随机选择
         selected_egg = choices(egg_texts, weights=weights, k=1)
@@ -299,7 +302,7 @@ MoFox_Bot(第三方修改版)
         """初始化其他组件"""
         init_start_time = time.time()
 
-        # 添加在线时间统计任务
+        # 添加在线时间极计任务
         await async_task_manager.add_task(OnlineTimeRecordTask())
 
         # 添加统计信息输出任务
@@ -313,16 +316,12 @@ MoFox_Bot(第三方修改版)
 
         # 初始化权限管理器
         from src.plugin_system.apis.permission_api import permission_api
-        from src.plugin_system.core.permission_manager import PermissionManager
+        from src.plugin极stem.core.permission_manager import PermissionManager
 
         permission_manager = PermissionManager()
         await permission_manager.initialize()
         permission_api.set_permission_manager(permission_manager)
         logger.info("权限管理器初始化成功")
-
-        # 启动API服务器
-        # start_api_server()
-        # logger.info("API服务器启动成功")
 
         # 注册API路由
         try:
@@ -344,20 +343,6 @@ MoFox_Bot(第三方修改版)
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")
 
-        """
-        # 初始化回复后关系追踪系统
-        try:
-            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
-            from src.plugins.built_in.affinity_flow_chatter.relationship_tracker import ChatterRelationshipTracker
-
-            relationship_tracker = ChatterRelationshipTracker(interest_scoring_system=chatter_interest_scoring_system)
-            chatter_interest_scoring_system.relationship_tracker = relationship_tracker
-            logger.info("回复后关系追踪系统初始化成功")
-        except Exception as e:
-            logger.error(f"回复后关系追踪系统初始化失败: {e}")
-            relationship_tracker = None
-        """
-
         # 启动情绪管理器
         await mood_manager.start()
         logger.info("情绪管理器初始化成功")
@@ -368,10 +353,11 @@ MoFox_Bot(第三方修改版)
         logger.info("聊天管理器初始化成功")
 
         # 初始化增强记忆系统
-        await self.memory_manager.initialize()
-        logger.info("增强记忆系统初始化成功")
-
-        # 老记忆系统已完全删除
+        if global_config.memory.enable_memory:
+            await self.memory_manager.initialize()
+            logger.info("增强记忆系统初始化成功")
+        else:
+            logger.info("记忆系统已禁用，跳过初始化")
 
         # 初始化消息兴趣值计算组件
         await self._initialize_interest_calculator()
@@ -385,8 +371,6 @@ MoFox_Bot(第三方修改版)
         # 异步记忆管理器已禁用，增强记忆系统有内置的优化机制
         logger.info("异步记忆管理器已禁用 - 使用增强记忆系统内置优化")
 
-        # await asyncio.sleep(0.5) #防止logger输出飞了
-
         # 将bot.py中的chat_bot.message_process消息处理函数注册到api.py的消息处理基类中
         self.app.register_message_handler(self._message_process_wrapper)
 
@@ -397,7 +381,7 @@ MoFox_Bot(第三方修改版)
         logger.info("消息重组器已启动")
 
         # 启动消息管理器
-        from src.chat.message_manager import message_manager
+        from src.chat.message_manager极 import message_manager
 
         await message_manager.start()
         logger.info("消息管理器已启动")
@@ -449,7 +433,7 @@ MoFox_Bot(第三方修改版)
                     await asyncio.sleep(1)  # 短暂等待后重新开始
                     continue
                 except asyncio.InvalidStateError as e:
-                    logger.error(f"异步任务状态无效，重新初始化: {e}")
+                    logger.error极"异步任务状态无效，重新初始化: {e}")
                     await asyncio.sleep(2)  # 等待更长时间让系统稳定
                     continue
                 except Exception as e:
@@ -480,7 +464,7 @@ MoFox_Bot(第三方修改版)
         try:
             if self.server:
                 await self.server.shutdown()
-                logger.info("服务器已关闭")
+                logger.info("服务器极关闭")
         except Exception as e:
             logger.warning(f"关闭服务器时出错: {e}")
 
