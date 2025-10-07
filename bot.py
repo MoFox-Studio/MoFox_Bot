@@ -363,7 +363,7 @@ class WebUIManager:
     _drain_task = None
 
     @staticmethod
-    def _resolve_webui_dir():
+    def _resolve_webui_dir() -> Path | None:
         """解析 webui 目录路径 - 保持原有逻辑但使用Path对象"""
         try:
             env_dir = os.getenv("WEBUI_DIR") or os.getenv("WEBUI_PATH")
