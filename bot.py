@@ -1,4 +1,3 @@
-# import asyncio
 import asyncio
 import os
 import platform
@@ -29,9 +28,9 @@ MAX_EULA_CHECK_ATTEMPTS = 30
 MAX_ENV_FILE_SIZE = 1024 * 1024  # 1MB限制
 
 # 设置工作目录为脚本所在目录
-script_dir = os.path.dirname(os.path.abspath(__file__))
+script_dir = Path(__file__).parent.absolute()
 os.chdir(script_dir)
-logger.info("工作目录已设置")
+logger.info("工作目录已设置: %s", script_dir)
 
 
 class ConfigManager:
@@ -51,7 +50,7 @@ class ConfigManager:
                     logger.info("已从template/template.env创建.env文件")
                     logger.warning("请编辑.env文件，将EULA_CONFIRMED设置为true并配置其他必要参数")
                 except Exception as e:
-                    logger.error(f"创建.env文件失败: {e}")
+                    logger.error("创建.env文件失败: %s", e)
                     sys.exit(1)
             else:
                 logger.error("未找到.env文件和template.env模板文件")
@@ -67,7 +66,7 @@ class ConfigManager:
         # 检查文件大小
         file_size = env_file.stat().st_size
         if file_size == 0 or file_size > MAX_ENV_FILE_SIZE:
-            logger.error(f".env文件大小异常: {file_size}字节")
+            logger.error(".env文件大小异常: %d字节", file_size)
             return False
 
         # 检查文件内容是否包含必要字段
@@ -77,7 +76,7 @@ class ConfigManager:
                 logger.error(".env文件缺少EULA_CONFIRMED字段")
                 return False
         except Exception as e:
-            logger.error(f"读取.env文件失败: {e}")
+            logger.error("读取.env文件失败: %s", e)
             return False
 
         return True
@@ -94,7 +93,7 @@ class ConfigManager:
             logger.info("环境变量加载成功")
             return True
         except Exception as e:
-            logger.error(f"加载环境变量失败: {e}")
+            logger.error("加载环境变量失败: %s", e)
             return False
 
 
@@ -103,7 +102,7 @@ class EULAManager:
 
     @staticmethod
     async def check_eula():
-        """检查EULA和隐私条款确认状态"""
+        """检查EULA和隐私条款确认状态 - 保持原有逻辑"""
         confirm_logger = get_logger("confirm")
 
         if not ConfigManager.safe_load_dotenv():
@@ -137,14 +136,15 @@ class EULAManager:
 
                 if attempts % 5 == 0:
                     confirm_logger.critical(
-                        f"请修改 .env 文件中的 EULA_CONFIRMED=true (尝试 {attempts}/{MAX_EULA_CHECK_ATTEMPTS})"
+                        "请修改 .env 文件中的 EULA_CONFIRMED=true (尝试 %d/%d)",
+                        attempts, MAX_EULA_CHECK_ATTEMPTS
                     )
 
             except KeyboardInterrupt:
                 confirm_logger.info("用户取消，程序退出")
                 sys.exit(0)
             except Exception as e:
-                confirm_logger.error(f"检查EULA状态失败: {e}")
+                confirm_logger.error("检查EULA状态失败: %s", e)
                 if attempts >= MAX_EULA_CHECK_ATTEMPTS:
                     confirm_logger.error("达到最大检查次数，程序退出")
                     sys.exit(1)
@@ -165,7 +165,7 @@ class TaskManager:
             logger.info("没有待取消的任务")
             return True
 
-        logger.info(f"正在取消 {len(remaining_tasks)} 个剩余任务...")
+        logger.info("正在取消 %d 个剩余任务...", len(remaining_tasks))
 
         # 取消任务
         for task in remaining_tasks:
@@ -178,7 +178,7 @@ class TaskManager:
             # 检查任务结果
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    logger.warning(f"任务 {i} 取消时发生异常: {result}")
+                    logger.warning("任务 %d 取消时发生异常: %s", i, result)
 
             logger.info("所有剩余任务已成功取消")
             return True
@@ -186,7 +186,7 @@ class TaskManager:
             logger.warning("等待任务取消超时，强制继续关闭")
             return False
         except Exception as e:
-            logger.error(f"等待任务取消时发生异常: {e}")
+            logger.error("等待任务取消时发生异常: %s", e)
             return False
 
     @staticmethod
@@ -194,14 +194,13 @@ class TaskManager:
         """停止所有异步任务"""
         try:
             from src.manager.async_task_manager import async_task_manager
-
             await async_task_manager.stop_and_wait_all_tasks()
             return True
         except ImportError:
             logger.warning("异步任务管理器不可用，跳过任务停止")
             return False
         except Exception as e:
-            logger.error(f"停止异步任务失败: {e}")
+            logger.error("停止异步任务失败: %s", e)
             return False
 
 
@@ -210,20 +209,16 @@ class ShutdownManager:
 
     @staticmethod
     async def graceful_shutdown(loop=None):
-        """优雅关闭程序"""
+        """优雅关闭程序 - 使用更精确的时间测量"""
         try:
             logger.info("正在优雅关闭麦麦...")
-            start_time = time.time()
+            start_time = time.perf_counter()  # 更精确的性能计时
 
             # 停止 WebUI 开发服务（如果在运行）
             try:
-                # WebUIManager 可能在后文定义，这里只在运行阶段引用
-                await WebUIManager.stop_dev_server()  # type: ignore[name-defined]
-            except NameError:
-                # 若未定义（例如异常提前退出），忽略
-                pass
+                await WebUIManager.stop_dev_server()
             except Exception as e:
-                logger.warning(f"停止WebUI开发服务时出错: {e}")
+                logger.warning("停止WebUI开发服务时出错: %s", e)
 
             # 停止异步任务
             tasks_stopped = await TaskManager.stop_async_tasks()
@@ -233,18 +228,18 @@ class ShutdownManager:
             if loop and not loop.is_closed():
                 tasks_cancelled = await TaskManager.cancel_pending_tasks(loop)
 
-            shutdown_time = time.time() - start_time
+            shutdown_time = time.perf_counter() - start_time
             success = tasks_stopped and tasks_cancelled
 
             if success:
-                logger.info(f"麦麦优雅关闭完成，耗时: {shutdown_time:.2f}秒")
+                logger.info("麦麦优雅关闭完成，耗时: %.2f秒", shutdown_time)
             else:
-                logger.warning(f"麦麦关闭完成，但部分操作未成功，耗时: {shutdown_time:.2f}秒")
+                logger.warning("麦麦关闭完成，但部分操作未成功，耗时: %.2f秒", shutdown_time)
 
             return success
 
         except Exception as e:
-            logger.error(f"麦麦关闭失败: {e}", exc_info=True)
+            logger.error("麦麦关闭失败: %s", exc_info=True)
             return False
 
 
@@ -257,27 +252,24 @@ async def create_event_loop_context():
         asyncio.set_event_loop(loop)
         yield loop
     except Exception as e:
-        logger.error(f"创建事件循环失败: {e}")
+        logger.error("创建事件循环失败: %s", e)
         raise
     finally:
         if loop and not loop.is_closed():
             try:
                 await ShutdownManager.graceful_shutdown(loop)
             except Exception as e:
-                logger.error(f"关闭事件循环时出错: {e}")
+                logger.error("关闭事件循环时出错: %s", e)
             finally:
                 try:
                     loop.close()
                     logger.info("事件循环已关闭")
                 except Exception as e:
-                    logger.error(f"关闭事件循环失败: {e}")
+                    logger.error("关闭事件循环失败: %s", e)
 
 
 class DatabaseManager:
     """数据库连接管理器"""
-
-    def __init__(self):
-        self._connection = None
 
     async def __aenter__(self):
         """异步上下文管理器入口"""
@@ -286,24 +278,24 @@ class DatabaseManager:
             from src.config.config import global_config
 
             logger.info("正在初始化数据库连接...")
-            start_time = time.time()
+            start_time = time.perf_counter()
 
-            # 使用线程执行器运行潜在的阻塞操作
-            await initialize_sql_database( global_config.database)
-            elapsed_time = time.time() - start_time
+            await initialize_sql_database(global_config.database)
+            elapsed_time = time.perf_counter() - start_time
             logger.info(
-                f"数据库连接初始化成功，使用 {global_config.database.database_type} 数据库，耗时: {elapsed_time:.2f}秒"
+                "数据库连接初始化成功，使用 %s 数据库，耗时: %.2f秒",
+                global_config.database.database_type, elapsed_time
             )
 
             return self
         except Exception as e:
-            logger.error(f"数据库连接初始化失败: {e}")
+            logger.error("数据库连接初始化失败: %s", e)
             raise
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器出口"""
         if exc_type:
-            logger.error(f"数据库操作发生异常: {exc_val}")
+            logger.error("数据库操作发生异常: %s", exc_val)
         return False
 
 
@@ -312,7 +304,7 @@ class ConfigurationValidator:
 
     @staticmethod
     def validate_configuration():
-        """验证关键配置"""
+        """验证关键配置 - 保持原有逻辑但优化错误信息"""
         try:
             from src.config.config import global_config
 
@@ -320,7 +312,7 @@ class ConfigurationValidator:
             required_sections = ["database", "bot"]
             for section in required_sections:
                 if not hasattr(global_config, section):
-                    logger.error(f"配置中缺少{section}配置节")
+                    logger.error("配置中缺少%s配置节", section)
                     return False
 
             # 验证数据库配置
@@ -330,8 +322,8 @@ class ConfigurationValidator:
                 return False
 
             if db_config.database_type not in SUPPORTED_DATABASES:
-                logger.error(f"不支持的数据库类型: {db_config.database_type}")
-                logger.info(f"支持的数据库类型: {', '.join(SUPPORTED_DATABASES)}")
+                logger.error("不支持的数据库类型: %s", db_config.database_type)
+                logger.info("支持的数据库类型: %s", ", ".join(SUPPORTED_DATABASES))
                 return False
 
             logger.info("配置验证通过")
@@ -341,7 +333,7 @@ class ConfigurationValidator:
             logger.error("无法导入全局配置模块")
             return False
         except Exception as e:
-            logger.error(f"配置验证失败: {e}")
+            logger.error("配置验证失败: %s", e)
             return False
 
 
@@ -359,9 +351,8 @@ class EasterEgg:
 
         text = "多年以后，面对AI行刑队，张三将会回想起他2023年在会议上讨论人工智能的那个下午"
         rainbow_colors = [Fore.RED, Fore.YELLOW, Fore.GREEN, Fore.CYAN, Fore.BLUE, Fore.MAGENTA]
-        rainbow_text = ""
-        for i, char in enumerate(text):
-            rainbow_text += rainbow_colors[i % len(rainbow_colors)] + char
+        # 使用生成器表达式提高性能
+        rainbow_text = "".join(rainbow_colors[i % len(rainbow_colors)] + char for i, char in enumerate(text))
         logger.info(rainbow_text)
 
 
@@ -372,23 +363,21 @@ class WebUIManager:
     _drain_task = None
 
     @staticmethod
-    def _resolve_webui_dir() -> Path | None:
-        """解析 webui 目录，优先使用同级目录 MoFox_Bot/webui，其次回退到上级目录 ../webui。
-
-        也支持通过环境变量 WEBUI_DIR/WEBUI_PATH 指定绝对或相对路径。
-        """
+    def _resolve_webui_dir():
+        """解析 webui 目录路径 - 保持原有逻辑但使用Path对象"""
         try:
             env_dir = os.getenv("WEBUI_DIR") or os.getenv("WEBUI_PATH")
             if env_dir:
                 p = Path(env_dir).expanduser()
                 if not p.is_absolute():
-                    p = (Path(__file__).resolve().parent / p).resolve()
+                    p = Path(__file__).resolve().parent / p
                 if p.exists():
-                    return p
+                    return p.resolve()
+            
             script_dir = Path(__file__).resolve().parent
             candidates = [
-                script_dir / "webui",             # MoFox_Bot/webui（优先）
-                script_dir.parent / "webui",       # 上级目录/webui（兼容最初需求）
+                script_dir / "webui",
+                script_dir.parent / "webui",
             ]
             for c in candidates:
                 if c.exists():
@@ -398,11 +387,8 @@ class WebUIManager:
             return None
 
     @staticmethod
-    async def start_dev_server(timeout: float = 60.0) -> bool:
-        """启动 `npm run dev` 并在超时内检测是否成功。
-
-        返回 True 表示检测到成功信号；False 表示失败/超时/进程退出。
-        """
+    async def start_dev_server(timeout=60.0):
+        """启动 `npm run dev`"""
         try:
             webui_dir = WebUIManager._resolve_webui_dir()
             if not webui_dir:
@@ -413,12 +399,10 @@ class WebUIManager:
                 logger.info("WebUI 开发服务器已在运行，跳过重复启动")
                 return True
 
-            logger.info(f"正在启动 WebUI 开发服务器: npm run dev (cwd={webui_dir})")
+            logger.info("正在启动 WebUI 开发服务器: npm run dev (cwd=%s)", webui_dir)
             npm_exe = "npm.cmd" if platform.system().lower() == "windows" else "npm"
             proc = await asyncio.create_subprocess_exec(
-                npm_exe,
-                "run",
-                "dev",
+                npm_exe, "run", "dev",
                 cwd=str(webui_dir),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
@@ -426,45 +410,34 @@ class WebUIManager:
             WebUIManager._process = proc
 
             success_keywords = [
-                "compiled successfully",
-                "ready in",
-                "local:",
-                "listening on",
-                "running at:",
-                "started server",
-                "app running at:",
-                "ready - started server",
-                "vite v",  # Vite 一般会输出版本与 ready in
+                "compiled successfully", "ready in", "local:", "listening on",
+                "running at:", "started server", "app running at:", 
+                "ready - started server", "vite v",
             ]
             failure_keywords = [
-                "err!",
-                "error",
-                "eaddrinuse",
-                "address already in use",
-                "syntaxerror",
-                "fatal",
-                "npm ERR!",
+                "err!", "error", "eaddrinuse", "address already in use",
+                "syntaxerror", "fatal", "npm ERR!",
             ]
 
-            start_ts = time.time()
+            start_ts = time.perf_counter()
             detected_success = False
 
             while True:
                 if proc.returncode is not None:
                     if proc.returncode != 0:
-                        logger.error(f"WebUI 进程提前退出，退出码: {proc.returncode}")
+                        logger.error("WebUI 进程提前退出，退出码: %d", proc.returncode)
                     else:
                         logger.warning("WebUI 进程已退出")
                     break
 
                 try:
-                    line = await asyncio.wait_for(proc.stdout.readline(), timeout=1.0)  # type: ignore[arg-type]
+                    line = await asyncio.wait_for(proc.stdout.readline(), timeout=1.0)
                 except asyncio.TimeoutError:
                     line = b""
 
-                if line:
+                if line:  # 保持原有空行检查逻辑
                     text = line.decode(errors="ignore").rstrip()
-                    logger.info(f"[webui] {text}")
+                    logger.info("[webui] %s", text)
                     low = text.lower()
                     if any(k in low for k in success_keywords):
                         detected_success = True
@@ -473,21 +446,21 @@ class WebUIManager:
                         detected_success = False
                         break
 
-                if time.time() - start_ts > timeout:
+                if time.perf_counter() - start_ts > timeout:
                     logger.warning("WebUI 启动检测超时")
                     break
 
-            # 后台继续读取剩余输出，避免缓冲区阻塞
+            # 后台继续读取剩余输出
             async def _drain_rest():
                 try:
                     while True:
-                        line = await proc.stdout.readline()  # type: ignore[union-attr]
+                        line = await proc.stdout.readline()
                         if not line:
                             break
                         text = line.decode(errors="ignore").rstrip()
-                        logger.info(f"[webui] {text}")
+                        logger.info("[webui] %s", text)
                 except Exception as e:
-                    logger.debug(f"webui 日志读取停止: {e}")
+                    logger.debug("webui 日志读取停止: %s", e)
 
             WebUIManager._drain_task = asyncio.create_task(_drain_rest())
             return bool(detected_success)
@@ -496,12 +469,12 @@ class WebUIManager:
             logger.error("未找到 npm，请确认已安装 Node.js 并将 npm 加入 PATH")
             return False
         except Exception as e:
-            logger.error(f"启动 WebUI 开发服务器失败: {e}")
+            logger.error("启动 WebUI 开发服务器失败: %s", e)
             return False
 
     @staticmethod
-    async def stop_dev_server(timeout: float = 5.0) -> bool:
-        """停止 WebUI 开发服务器（如果在运行）。"""
+    async def stop_dev_server(timeout=5.0):
+        """停止 WebUI 开发"""
         proc = WebUIManager._process
         if not proc:
             return True
@@ -512,7 +485,7 @@ class WebUIManager:
                 except ProcessLookupError:
                     pass
                 except Exception as e:
-                    logger.debug(f"发送终止信号失败: {e}")
+                    logger.debug("发送终止信号失败: %s", e)
 
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=timeout)
@@ -533,6 +506,7 @@ class WebUIManager:
             WebUIManager._process = None
             WebUIManager._drain_task = None
 
+
 class MaiBotMain:
     """麦麦机器人主程序类"""
 
@@ -548,7 +522,7 @@ class MaiBotMain:
             else:
                 logger.info("Windows系统，跳过时区设置")
         except Exception as e:
-            logger.warning(f"时区设置失败: {e}")
+            logger.warning("时区设置失败: %s", e)
 
     async def initialize_database(self):
         """初始化数据库连接"""
@@ -559,20 +533,18 @@ class MaiBotMain:
         """异步初始化数据库表结构"""
         logger.info("正在初始化数据库表结构...")
         try:
-            start_time = time.time()
+            start_time = time.perf_counter()
             from src.common.database.sqlalchemy_models import initialize_database as init_db
-
             await init_db()
-            elapsed_time = time.time() - start_time
-            logger.info(f"数据库表结构初始化完成，耗时: {elapsed_time:.2f}秒")
+            elapsed_time = time.perf_counter() - start_time
+            logger.info("数据库表结构初始化完成，耗时: %.2f秒", elapsed_time)
         except Exception as e:
-            logger.error(f"数据库表结构初始化失败: {e}")
+            logger.error("数据库表结构初始化失败: %s", e)
             raise
 
     def create_main_system(self):
         """创建MainSystem实例"""
         from src.main import MainSystem
-
         self.main_system = MainSystem()
         return self.main_system
 
@@ -599,7 +571,6 @@ class MaiBotMain:
 
         # 初始化知识库
         from src.chat.knowledge.knowledge_lib import initialize_lpmm_knowledge
-
         initialize_lpmm_knowledge()
 
         # 显示彩蛋
@@ -609,17 +580,15 @@ class MaiBotMain:
 async def wait_for_user_input():
     """等待用户输入（异步方式）"""
     try:
-        # 在非生产环境下，使用异步方式等待输入
         if os.getenv("ENVIRONMENT") != "production":
             logger.info("程序执行完成，按 Ctrl+C 退出...")
-            # 简单的异步等待，避免阻塞事件循环
             while True:
                 await asyncio.sleep(1)
     except KeyboardInterrupt:
         logger.info("用户中断程序")
         return True
     except Exception as e:
-        logger.error(f"等待用户输入时发生错误: {e}")
+        logger.error("等待用户输入时发生错误: %s", e)
         return False
 
 
@@ -628,12 +597,12 @@ async def main_async():
     exit_code = 0
     main_task = None
 
-    async with create_event_loop_context():
+    async with create_event_loop_context() as loop:
         try:
             # 确保环境文件存在
             ConfigManager.ensure_env_file()
 
-            # 启动 WebUI 开发服务器（成功/失败都继续后续步骤）
+            # 启动 WebUI 开发服务器
             webui_ok = await WebUIManager.start_dev_server(timeout=60)
             if webui_ok:
                 logger.info("WebUI 启动成功，继续下一步骤")
@@ -664,30 +633,30 @@ async def main_async():
                 except asyncio.CancelledError:
                     logger.info("主任务已取消")
                 except Exception as e:
-                    logger.error(f"主任务取消时发生错误: {e}")
+                    logger.error("主任务取消时发生错误: %s", e)
 
         except KeyboardInterrupt:
             logger.warning("收到中断信号，正在优雅关闭...")
             if main_task and not main_task.done():
                 main_task.cancel()
         except Exception as e:
-            logger.error(f"主程序发生异常: {e}")
-            logger.debug(f"异常详情: {traceback.format_exc()}")
+            logger.error("主程序发生异常: %s", e)
+            logger.debug("异常详情: %s", traceback.format_exc())
             exit_code = 1
 
     return exit_code
 
 
-if __name__ == "__main__":
-    exit_code = 0
+def main():
+    """主函数入口"""
     try:
-        exit_code = asyncio.run(main_async())
+        return asyncio.run(main_async())
     except KeyboardInterrupt:
         logger.info("程序被用户中断")
-        exit_code = 130
+        return 130
     except Exception as e:
-        logger.error(f"程序启动失败: {e}")
-        exit_code = 1
+        logger.error("程序启动失败: %s", e)
+        return 1
     finally:
         # 确保日志系统正确关闭
         try:
@@ -695,4 +664,6 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"关闭日志系统时出错: {e}")
 
-    sys.exit(exit_code)
+
+if __name__ == "__main__":
+    sys.exit(main())
