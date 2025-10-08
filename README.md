@@ -2,25 +2,28 @@
 
 # 🌟 MoFox_Bot
 **🚀 基于 MaiCore 的增强版 AI 智能体，提供更完善的功能和更好的使用体验**
-<p>
-  <a href="https://www.python.org/">
-    <img src="https://img.shields.io/badge/Python-3.10+-3776ab?logo=python&logoColor=white&style=for-the-badge" alt="Python">
+</div>
+
+<p align="center">
+  <a href="https://raw.githubusercontent.com/MoFox-Studio/MoFox_Bot/refs/heads/master/LICENSE">
+    <img src="https://img.shields.io/github/license/MoFox-Studio/MoFox_Bot" alt="license">
   </a>
-  <a href="https://github.com/MoFox-Studio/MoFox_Bot/blob/master/LICENSE">
-    <img src="https://img.shields.io/badge/License-GPLv3-d73a49?logo=gnu&logoColor=white&style=for-the-badge" alt="License">
+  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=edb641" alt="python">
+  <a href="https://github.com/Microsoft/pyright">
+    <img src="https://img.shields.io/badge/types-pyright-797952.svg?logo=python&logoColor=edb641" alt="pyright">
   </a>
-  <a href="https://github.com/MoFox-Studio/MoFox_Bot/graphs/contributors">
-    <img src="https://img.shields.io/badge/Contributors-Welcome-brightgreen?logo=github&logoColor=white&style=for-the-badge" alt="Contributors">
+  <a href="https://github.com/astral-sh/ruff">
+    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json" alt="ruff">
+  <a href="https://deepwiki.com/MoFox-Studio/MoFox_Bot"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
   </a>
-  <a href="https://github.com/MoFox-Studio/MoFox_Bot/stargazers">
-    <img src="https://img.shields.io/github/stars/MoFox-Studio/MoFox_Bot?style=for-the-badge&logo=star&logoColor=white&color=yellow&label=Stars" alt="Stars">
+  <br />
+  <a href="https://qm.qq.com/q/YwZTZl7BG8">
+    <img src="https://img.shields.io/badge/墨狐狐的大学-169850076-violet?style=flat-square" alt="QQ Chat Group">
   </a>
-  <a href="https://github.com/MoFox-Studio/MoFox_Bot/releases">
-    <img src="https://img.shields.io/github/v/release/MoFox-Studio/MoFox_Bot?style=for-the-badge&logo=github&logoColor=white&color=orange" alt="Release">
+    <a href="https://qm.qq.com/q/Lmm1LZnewg">
+    <img src="https://img.shields.io/badge/墨狐狐技术部-1064097634-orange?style=flat-square" alt="QQ Chat Group">
   </a>
 </p>
- 
-</div>
  
 ---
  
