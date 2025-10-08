@@ -902,6 +902,8 @@ class Prompt:
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
             "safety_guidelines_block": self.parameters.safety_guidelines_block
             or context_data.get("safety_guidelines_block", ""),
+            "bot_name": self.parameters.bot_name,
+            "bot_nickname": self.parameters.bot_nickname,
         }
 
     def format(self, *args, **kwargs) -> str:
