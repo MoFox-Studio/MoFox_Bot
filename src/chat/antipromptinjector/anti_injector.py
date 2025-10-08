@@ -221,33 +221,41 @@ class AntiPromptInjector:
         self, result: ProcessResult, modified_content: str | None, reason: str, message_data: dict
     ) -> None:
         """处理违禁消息的数据库存储，根据处理模式决定如何处理"""
-        if result == ProcessResult.BLOCKED_INJECTION or result == ProcessResult.COUNTER_ATTACK:
-            # 严格模式和反击模式：删除违禁消息记录
-            if self.config.process_mode in ["strict", "counter_attack"]:
-                await self._delete_message_from_storage(message_data)
-                logger.info(f"[{self.config.process_mode}模式] 违禁消息已从数据库中删除: {reason}")
+        mode = self.config.process_mode
+        message_id = message_data.get("message_id")
 
-        elif result == ProcessResult.SHIELDED:
-            # 宽松模式：替换消息内容为加盾版本
-            if modified_content and self.config.process_mode == "lenient":
-                # 更新消息数据中的内容
-                message_data["processed_plain_text"] = modified_content
-                message_data["raw_message"] = modified_content
-                await self._update_message_in_storage(message_data, modified_content)
-                logger.info(f"[宽松模式] 违禁消息内容已替换为加盾版本: {reason}")
+        if not message_id:
+            logger.warning("无法处理消息存储：缺少 message_id")
+            return
 
-        elif result in [ProcessResult.BLOCKED_INJECTION, ProcessResult.SHIELDED] and self.config.process_mode == "auto":
-            # 自动模式：根据威胁等级决定
+        if mode == "strict":
             if result == ProcessResult.BLOCKED_INJECTION:
-                # 高威胁：删除记录
+                await self._delete_message_from_storage(message_data)
+                logger.info(f"[严格模式] 违禁消息已从数据库中删除: {reason}")
+            elif result == ProcessResult.SHIELDED:
+                if modified_content:
+                    await self._update_message_in_storage(message_data, modified_content)
+                    logger.info(f"[严格模式] 违禁消息内容已替换为加盾版本: {reason}")
+
+        elif mode == "lenient":
+            if result == ProcessResult.SHIELDED:
+                if modified_content:
+                    await self._update_message_in_storage(message_data, modified_content)
+                    logger.info(f"[宽松模式] 违禁消息内容已替换为加盾版本: {reason}")
+
+        elif mode == "auto":
+            if result == ProcessResult.BLOCKED_INJECTION:
                 await self._delete_message_from_storage(message_data)
                 logger.info(f"[自动模式] 高威胁消息已删除: {reason}")
-            elif result == ProcessResult.SHIELDED and modified_content:
-                # 中等威胁：替换内容
-                message_data["processed_plain_text"] = modified_content
-                message_data["raw_message"] = modified_content
-                await self._update_message_in_storage(message_data, modified_content)
-                logger.info(f"[自动模式] 中等威胁消息已加盾: {reason}")
+            elif result == ProcessResult.SHIELDED:
+                if modified_content:
+                    await self._update_message_in_storage(message_data, modified_content)
+                    logger.info(f"[自动模式] 中等威胁消息已加盾: {reason}")
+
+        elif mode == "counter_attack":
+            if result == ProcessResult.COUNTER_ATTACK:
+                await self._delete_message_from_storage(message_data)
+                logger.info(f"[反击模式] 违禁消息已从数据库中删除: {reason}")
 
     @staticmethod
     async def _delete_message_from_storage(message_data: dict) -> None:
@@ -265,7 +273,6 @@ class AntiPromptInjector:
             async with get_db_session() as session:
                 # 删除对应的消息记录
                 stmt = delete(Messages).where(Messages.message_id == message_id)
-                # 注意: 异步会话需要 await 执行，否则 result 是 coroutine，无法获取 rowcount
                 result = await session.execute(stmt)
                 await session.commit()
 
