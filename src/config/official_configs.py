@@ -99,12 +99,6 @@ class PersonalityConfig(ValidatedConfigBase):
     )
 
 
-class RelationshipConfig(ValidatedConfigBase):
-    """关系配置类"""
-
-    enable_relationship: bool = Field(default=True, description="是否启用关系")
-    relation_frequency: float = Field(default=1.0, description="关系频率")
-
 
 class ChatConfig(ValidatedConfigBase):
     """聊天配置类"""
@@ -132,8 +126,7 @@ class ChatConfig(ValidatedConfigBase):
     interruption_min_probability: float = Field(
         default=0.1, ge=0.0, le=1.0, description="最低打断概率（即使达到较高打断次数，也保证有此概率的打断机会）"
     )
-    interruption_afc_reduction: float = Field(default=0.05, ge=0.0, le=1.0, description="每次连续打断降低的afc阈值数值")
-
+    
     # DEPRECATED: interruption_probability_factor (已废弃的配置项)
     # 新的线性概率模型不再需要复杂的概率因子
     # 保留此字段是为了向后兼容，现有配置文件不会报错
@@ -697,6 +690,12 @@ class AffinityFlowConfig(ValidatedConfigBase):
     mention_bot_adjustment_threshold: float = Field(default=0.3, description="提及bot后的调整阈值")
     mention_bot_interest_score: float = Field(default=0.6, description="提及bot的兴趣分")
     base_relationship_score: float = Field(default=0.5, description="基础人物关系分")
+
+    # 关系追踪系统参数
+    enable_relationship_tracking: bool = Field(default=True, description="是否启用关系追踪系统")
+    relationship_tracking_probability: float = Field(default=0.7, description="关系追踪执行概率 (0.0-1.0)，用于减少API调用压力")
+    relationship_tracking_interval_min: int = Field(default=300, description="关系追踪最小间隔时间（秒）")
+    relationship_tracking_cooldown_hours: float = Field(default=1.0, description="同一用户关系追踪冷却时间（小时）")
 
 
 class ProactiveThinkingConfig(ValidatedConfigBase):

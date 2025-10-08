@@ -903,8 +903,20 @@ class DefaultReplyer:
                             person_id = PersonInfoManager.get_person_id(platform, user_id)
                             person_info_manager = get_person_info_manager()
                             sender_name = await person_info_manager.get_value(person_id, "person_name") or "未知用户"
+
+                            # 检查是否是机器人自己，如果是则显示为（你）
+                            if user_id == str(global_config.bot.qq_account):
+                                sender_name = f"{global_config.bot.nickname}(你)"
                         else:
                             sender_name = "未知用户"
+
+                        # 处理消息内容中的用户引用，确保bot回复在消息内容中也正确显示
+                        from src.chat.utils.chat_message_builder import replace_user_references_sync
+                        msg_content = replace_user_references_sync(
+                            msg_content,
+                            platform,
+                            replace_bot_name=True
+                        )
 
                         # 添加兴趣度信息
                         interest_score = interest_scores.get(msg_id, 0.0)
@@ -1002,8 +1014,20 @@ class DefaultReplyer:
                     person_id = PersonInfoManager.get_person_id(platform, user_id)
                     person_info_manager = get_person_info_manager()
                     sender_name = await person_info_manager.get_value(person_id, "person_name") or "未知用户"
+
+                    # 检查是否是机器人自己，如果是则显示为（你）
+                    if user_id == str(global_config.bot.qq_account):
+                        sender_name = f"{global_config.bot.nickname}(你)"
                 else:
                     sender_name = "未知用户"
+
+                # 处理消息内容中的用户引用，确保bot回复在消息内容中也正确显示
+                from src.chat.utils.chat_message_builder import replace_user_references_sync
+                msg_content = replace_user_references_sync(
+                    msg_content,
+                    platform,
+                    replace_bot_name=True
+                )
 
                 # 添加兴趣度信息
                 interest_score = interest_scores.get(msg_id, 0.0)
@@ -1678,7 +1702,7 @@ class DefaultReplyer:
             return ""
 
     async def build_relation_info(self, sender: str, target: str):
-        if not global_config.relationship.enable_relationship:
+        if not global_config.affinity_flow.enable_relationship_tracking:
             return ""
 
         # 获取用户ID

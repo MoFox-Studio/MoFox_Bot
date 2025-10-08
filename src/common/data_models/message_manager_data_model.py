@@ -42,7 +42,6 @@ class StreamContext(BaseDataModel):
     processing_task: asyncio.Task | None = None
     interruption_count: int = 0  # 打断计数器
     last_interruption_time: float = 0.0  # 上次打断时间
-    afc_threshold_adjustment: float = 0.0  # afc阈值调整量
 
     # 独立分发周期字段
     next_check_time: float = field(default_factory=time.time)  # 下次检查时间
@@ -140,23 +139,14 @@ class StreamContext(BaseDataModel):
         await self._sync_interruption_count_to_stream()
 
     async def reset_interruption_count(self):
-        """重置打断计数和afc阈值调整"""
+        """重置打断计数"""
         self.interruption_count = 0
         self.last_interruption_time = 0.0
-        self.afc_threshold_adjustment = 0.0
 
         # 同步打断计数到ChatStream
         await self._sync_interruption_count_to_stream()
 
-    def apply_interruption_afc_reduction(self, reduction_value: float):
-        """应用打断导致的afc阈值降低"""
-        self.afc_threshold_adjustment += reduction_value
-        logger.debug(f"应用afc阈值降低: {reduction_value}, 总调整量: {self.afc_threshold_adjustment}")
-
-    def get_afc_threshold_adjustment(self) -> float:
-        """获取当前的afc阈值调整量"""
-        return self.afc_threshold_adjustment
-
+    
     async def _sync_interruption_count_to_stream(self):
         """同步打断计数到ChatStream"""
         try:

@@ -50,6 +50,16 @@ class ChatterActionPlanner:
         self.generator = ChatterPlanGenerator(chat_id)
         self.executor = ChatterPlanExecutor(action_manager)
 
+        # 初始化关系追踪器
+        if global_config.affinity_flow.enable_relationship_tracking:
+            from .relationship_tracker import ChatterRelationshipTracker
+            self.relationship_tracker = ChatterRelationshipTracker()
+            self.executor.set_relationship_tracker(self.relationship_tracker)
+            logger.info(f"关系追踪器已初始化 (chat_id: {chat_id})")
+        else:
+            self.relationship_tracker = None
+            logger.info(f"关系系统已禁用，跳过关系追踪器初始化 (chat_id: {chat_id})")
+
         # 使用新的统一兴趣度管理系统
 
         # 规划器统计

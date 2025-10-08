@@ -979,7 +979,7 @@ class Prompt:
         Returns:
             str: 关系信息字符串
         """
-        if not global_config.relationship.enable_relationship:
+        if not global_config.affinity_flow.enable_relationship_tracking:
             return ""
 
         from src.person_info.relationship_fetcher import relationship_fetcher_manager

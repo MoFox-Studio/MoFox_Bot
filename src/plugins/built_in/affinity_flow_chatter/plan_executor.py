@@ -184,9 +184,16 @@ class ChatterPlanExecutor:
 
             # 获取用户ID - 兼容对象和字典
             if hasattr(action_info.action_message, "user_info"):
+                # DatabaseMessages对象情况
                 user_id = action_info.action_message.user_info.user_id
             else:
-                user_id = action_info.action_message.get("user_info", {}).get("user_id")
+                # 字典情况（向后兼容）- 适配扁平化消息字典结构
+                # 首先尝试从扁平化结构直接获取用户信息
+                user_id = action_info.action_message.get("user_id")
+
+                # 如果扁平化结构中没有用户信息，再尝试从嵌套的user_info获取
+                if not user_id:
+                    user_id = action_info.action_message.get("user_info", {}).get("user_id")
 
             if user_id == str(global_config.bot.qq_account):
                 logger.warning("尝试回复自己，跳过此动作以防止死循环。")
@@ -231,11 +238,19 @@ class ChatterPlanExecutor:
         except Exception as e:
             error_message = str(e)
             logger.error(f"执行回复动作失败: {action_info.action_type}, 错误: {error_message}")
-        """
-        # 记录用户关系追踪
+        # 记录用户关系追踪 - 使用后台异步执行，防止阻塞主流程
         if success and action_info.action_message:
-            await self._track_user_interaction(action_info, plan, reply_content)
-        """
+            logger.debug(f"准备执行关系追踪: success={success}, action_message存在={bool(action_info.action_message)}")
+            logger.debug(f"关系追踪器状态: {self.relationship_tracker is not None}")
+
+            # 直接使用后台异步任务执行关系追踪，避免阻塞主回复流程
+            import asyncio
+            asyncio.create_task(self._track_user_interaction(action_info, plan, reply_content))
+            logger.debug("关系追踪已启动为后台异步任务")
+        else:
+            logger.debug(f"跳过关系追踪: success={success}, action_message存在={bool(action_info.action_message)}")
+            # 将机器人回复添加到已读消息中
+            await self._add_bot_reply_to_read_messages(action_info, plan, reply_content)
         execution_time = time.time() - start_time
         self.execution_stats["execution_times"].append(execution_time)
 
@@ -344,29 +359,54 @@ class ChatterPlanExecutor:
     async def _track_user_interaction(self, action_info: ActionPlannerInfo, plan: Plan, reply_content: str):
         """追踪用户交互 - 集成回复后关系追踪"""
         try:
+            logger.debug("🔍 开始执行用户交互追踪")
+
             if not action_info.action_message:
+                logger.debug("❌ 跳过追踪：action_message为空")
                 return
 
-            # 获取用户信息 - 处理对象和字典两种情况
-            if hasattr(action_info.action_message, "user_info"):
-                # 对象情况
-                user_info = action_info.action_message.user_info
-                user_id = user_info.user_id
-                user_name = user_info.user_nickname or user_id
-                user_message = action_info.action_message.content
+            # 获取用户信息 - 处理DatabaseMessages对象
+            if hasattr(action_info.action_message, "user_id"):
+                # DatabaseMessages对象情况
+                user_id = action_info.action_message.user_id
+                user_name = action_info.action_message.user_nickname or user_id
+                # 使用processed_plain_text作为消息内容，如果没有则使用display_message
+                user_message = (
+                    action_info.action_message.processed_plain_text
+                    or action_info.action_message.display_message
+                    or ""
+                )
+                logger.debug(f"📝 从DatabaseMessages获取用户信息: user_id={user_id}, user_name={user_name}")
             else:
-                # 字典情况
-                user_info = action_info.action_message.get("user_info", {})
-                user_id = user_info.get("user_id")
-                user_name = user_info.get("user_nickname") or user_id
-                user_message = action_info.action_message.get("content", "")
+                # 字典情况（向后兼容）- 适配扁平化消息字典结构
+                # 首先尝试从扁平化结构直接获取用户信息
+                user_id = action_info.action_message.get("user_id")
+                user_name = action_info.action_message.get("user_nickname") or user_id
+
+                # 如果扁平化结构中没有用户信息，再尝试从嵌套的user_info获取
+                if not user_id:
+                    user_info = action_info.action_message.get("user_info", {})
+                    user_id = user_info.get("user_id")
+                    user_name = user_info.get("user_nickname") or user_id
+                    logger.debug(f"📝 从嵌套user_info获取用户信息: user_id={user_id}, user_name={user_name}")
+                else:
+                    logger.debug(f"📝 从扁平化结构获取用户信息: user_id={user_id}, user_name={user_name}")
+
+                # 获取消息内容，优先使用processed_plain_text
+                user_message = (
+                    action_info.action_message.get("processed_plain_text", "")
+                    or action_info.action_message.get("display_message", "")
+                    or action_info.action_message.get("content", "")
+                )
 
             if not user_id:
-                logger.debug("跳过追踪：缺少用户ID")
+                logger.debug("❌ 跳过追踪：缺少用户ID")
                 return
 
             # 如果有设置关系追踪器，执行回复后关系追踪
             if self.relationship_tracker:
+                logger.debug(f"✅ 关系追踪器存在，开始为用户 {user_id} 执行追踪")
+
                 # 记录基础交互信息（保持向后兼容）
                 self.relationship_tracker.add_interaction(
                     user_id=user_id,
@@ -375,18 +415,101 @@ class ChatterPlanExecutor:
                     bot_reply=reply_content,
                     reply_timestamp=time.time(),
                 )
+                logger.debug(f"📊 已添加基础交互信息: {user_name}({user_id})")
 
                 # 执行新的回复后关系追踪
                 await self.relationship_tracker.track_reply_relationship(
                     user_id=user_id, user_name=user_name, bot_reply_content=reply_content, reply_timestamp=time.time()
                 )
+                logger.debug(f"🎯 已执行回复后关系追踪: {user_id}")
 
-                logger.debug(f"已执行用户交互追踪: {user_id}")
+            else:
+                logger.debug("❌ 关系追踪器不存在，跳过追踪")
 
         except Exception as e:
             logger.error(f"追踪用户交互时出错: {e}")
             logger.debug(f"action_message类型: {type(action_info.action_message)}")
             logger.debug(f"action_message内容: {action_info.action_message}")
+
+    async def _add_bot_reply_to_read_messages(self, action_info: ActionPlannerInfo, plan: Plan, reply_content: str):
+        """将机器人回复添加到已读消息中"""
+        try:
+            if not reply_content or not plan.chat_id:
+                logger.debug("跳过添加已读消息：回复内容为空或缺少chat_id")
+                return
+
+            # 获取chat_stream对象
+            from src.plugin_system.apis.chat_api import get_chat_manager
+
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(plan.chat_id)
+
+            if not chat_stream:
+                logger.warning(f"无法获取chat_stream: {plan.chat_id}")
+                return
+
+            # 构建机器人回复的DatabaseMessages对象
+            from src.common.data_models.database_data_model import DatabaseMessages
+
+            current_time = time.time()
+
+            # 构建用户信息
+            bot_user_id = str(global_config.bot.qq_account)
+            bot_nickname = global_config.bot.nickname
+
+            # 创建机器人回复消息
+            bot_message = DatabaseMessages(
+                message_id=f"bot_reply_{int(current_time * 1000)}",  # 生成唯一ID
+                time=current_time,
+                chat_id=plan.chat_id,
+                reply_to=None,  # 不是回复消息
+                interest_value=None,  # 机器人回复不需要兴趣值
+                processed_plain_text=reply_content,
+                display_message=reply_content,
+                is_read=True,  # 标记为已读
+                is_emoji=False,
+                is_picid=False,
+                is_command=False,
+                is_notify=False,
+
+                # 用户信息
+                user_id=bot_user_id,
+                user_nickname=bot_nickname,
+                user_cardname=bot_nickname,
+                user_platform="qq",
+
+                # 聊天上下文信息
+                chat_info_user_id=chat_stream.user_info.user_id if chat_stream.user_info else bot_user_id,
+                chat_info_user_nickname=chat_stream.user_info.user_nickname if chat_stream.user_info else bot_nickname,
+                chat_info_user_cardname=chat_stream.user_info.user_cardname if chat_stream.user_info else bot_nickname,
+                chat_info_user_platform=chat_stream.platform,
+                chat_info_stream_id=chat_stream.stream_id,
+                chat_info_platform=chat_stream.platform,
+                chat_info_create_time=chat_stream.create_time,
+                chat_info_last_active_time=chat_stream.last_active_time,
+
+                # 群组信息（如果是群聊）
+                chat_info_group_id=chat_stream.group_info.group_id if chat_stream.group_info else None,
+                chat_info_group_name=chat_stream.group_info.group_name if chat_stream.group_info else None,
+                chat_info_group_platform=chat_stream.group_info.group_platform if chat_stream.group_info else None,
+
+                # 动作信息
+                actions=["bot_reply"],
+                should_reply=False,
+                should_act=False
+            )
+
+            # 添加到chat_stream的已读消息中
+            if hasattr(chat_stream, 'stream_context') and chat_stream.stream_context:
+                chat_stream.stream_context.history_messages.append(bot_message)
+                logger.debug(f"机器人回复已添加到已读消息: {reply_content[:50]}...")
+            else:
+                logger.warning("chat_stream没有stream_context，无法添加已读消息")
+
+        except Exception as e:
+            logger.error(f"添加机器人回复到已读消息时出错: {e}")
+            logger.debug(f"plan.chat_id: {plan.chat_id}")
+            logger.debug(f"reply_content: {reply_content[:100] if reply_content else 'None'}")
 
     def get_execution_stats(self) -> dict[str, Any]:
         """获取执行统计信息"""

@@ -37,7 +37,6 @@ from src.config.official_configs import (
     PersonalityConfig,
     PlanningSystemConfig,
     ProactiveThinkingConfig,
-    RelationshipConfig,
     ResponsePostProcessConfig,
     ResponseSplitterConfig,
     SleepSystemConfig,
@@ -377,7 +376,6 @@ class Config(ValidatedConfigBase):
     database: DatabaseConfig = Field(..., description="数据库配置")
     bot: BotConfig = Field(..., description="机器人基本配置")
     personality: PersonalityConfig = Field(..., description="个性配置")
-    relationship: RelationshipConfig = Field(..., description="关系配置")
     chat: ChatConfig = Field(..., description="聊天配置")
     message_receive: MessageReceiveConfig = Field(..., description="消息接收配置")
     normal_chat: NormalChatConfig = Field(..., description="普通聊天配置")

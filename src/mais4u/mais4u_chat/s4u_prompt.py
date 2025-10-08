@@ -154,7 +154,7 @@ class PromptBuilder:
             )
 
         relation_prompt = ""
-        if global_config.relationship.enable_relationship and who_chat_in_group:
+        if global_config.affinity_flow.enable_relationship_tracking and who_chat_in_group:
             relationship_fetcher = relationship_fetcher_manager.get_fetcher(chat_stream.stream_id)
 
             # 将 (platform, user_id, nickname) 转换为 person_id

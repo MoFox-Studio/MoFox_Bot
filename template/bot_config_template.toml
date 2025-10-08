@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.4"
+version = "7.2.6"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -126,13 +126,6 @@ thinking_timeout = 40 # MoFox-Bot一次回复最长思考规划时间，超过�
 interruption_enabled = true # 是否启用消息打断系统
 interruption_max_limit = 5 # 每个聊天流的最大打断次数
 interruption_min_probability = 0.05 # 最低打断概率（反比例函数趋近的下限值）
-interruption_afc_reduction = 0.05 # 每次连续打断降低的afc阈值数值
-
-# DEPRECATED: interruption_probability_factor (已废弃的配置项)
-# 新的反比例函数概率模型不再需要复杂的概率因子
-# 公式：打断概率 = 1.4 / (当前打断次数 + 2.0) + 最低概率
-# 特性：第1次80% → 第2次35% → 第3次15% → 趋近于最低概率
-# interruption_probability_factor = 0.8 # 此配置已废弃，请删除
 
 # 动态消息分发系统配置
 dynamic_distribution_enabled = true # 是否启用动态消息分发周期调整
@@ -142,10 +135,6 @@ dynamic_distribution_max_interval = 30.0 # 最大分发间隔（秒）
 dynamic_distribution_jitter_factor = 0.2 # 分发间隔随机扰动因子
 max_concurrent_distributions = 10 # 最大并发处理的消息流数量，可以根据API性能和服务器负载调整
 
-
-[relationship]
-enable_relationship = true # 是否启用关系系统
-relation_frequency = 1 # 关系频率，MoFox-Bot构建关系的频率
 
 
 [message_receive]
@@ -554,21 +543,21 @@ chat_ids = [
 
 [affinity_flow]
 # 兴趣评分系统参数
-reply_action_interest_threshold = 0.62 # 回复动作兴趣阈值
-non_reply_action_interest_threshold = 0.48 # 非回复动作兴趣阈值
-high_match_interest_threshold = 0.6 # 高匹配兴趣阈值
+reply_action_interest_threshold = 1.1 # 回复动作兴趣阈值
+non_reply_action_interest_threshold = 0.9 # 非回复动作兴趣阈值
+high_match_interest_threshold = 0.7 # 高匹配兴趣阈值
 medium_match_interest_threshold = 0.4 # 中匹配兴趣阈值
 low_match_interest_threshold = 0.2 # 低匹配兴趣阈值
-high_match_keyword_multiplier = 4.5 # 高匹配关键词兴趣倍率
-medium_match_keyword_multiplier = 2.75 # 中匹配关键词兴趣倍率
-low_match_keyword_multiplier = 1.15 # 低匹配关键词兴趣倍率
+high_match_keyword_multiplier = 5 # 高匹配关键词兴趣倍率
+medium_match_keyword_multiplier = 3.75 # 中匹配关键词兴趣倍率
+low_match_keyword_multiplier = 1.3 # 低匹配关键词兴趣倍率
 match_count_bonus = 0.02 # 匹配数关键词加成值
 max_match_bonus = 0.25 # 最大匹配数加成值
 
 # 回复决策系统参数
-no_reply_threshold_adjustment = 0.03 # 不回复兴趣阈值调整值
-reply_cooldown_reduction = 3 # 回复后减少的不回复计数
-max_no_reply_count = 5 # 最大不回复计数次数
+no_reply_threshold_adjustment = 0.01 # 不回复兴趣阈值调整值
+reply_cooldown_reduction = 5 # 回复后减少的不回复计数
+max_no_reply_count = 20 # 最大不回复计数次数
 
 # 综合评分权重
 keyword_match_weight = 0.4 # 兴趣关键词匹配度权重
@@ -576,9 +565,15 @@ mention_bot_weight = 0.3 # 提及bot分数权重
 relationship_weight = 0.3 # 人物关系分数权重
 
 # 提及bot相关参数
-mention_bot_adjustment_threshold = 0.3 # 提及bot后的调整阈值
-mention_bot_interest_score = 0.6 # 提及bot的兴趣分
+mention_bot_adjustment_threshold = 0.5 # 提及bot后的调整阈值
+mention_bot_interest_score = 2.5 # 提及bot的兴趣分
 base_relationship_score = 0.3 # 基础人物关系分
+
+# 关系追踪系统参数
+enable_relationship_tracking = true # 是否启用关系追踪系统
+relationship_tracking_probability = 0.7 # 关系追踪执行概率 (0.0-1.0)，用于减少API调用压力
+relationship_tracking_interval_min = 300 # 关系追踪最小间隔时间（秒）
+relationship_tracking_cooldown_hours = 1.0 # 同一用户关系追踪冷却时间（小时）
 
 [proactive_thinking] # 主动思考（主动发起对话）功能配置
 # --- 总开关 ---
