@@ -62,7 +62,7 @@ class TTSVoicePlugin(BasePlugin):
         if top_key in manual_load_keys:
             try:
                 plugin_file = Path(__file__).resolve()
-                bot_root = plugin_file.parent.parent.parent
+                bot_root = plugin_file.parent.parent.parent.parent.parent
                 config_file = bot_root / "config" / "plugins" / self.plugin_name / self.config_file_name
                 
                 if not config_file.is_file():
