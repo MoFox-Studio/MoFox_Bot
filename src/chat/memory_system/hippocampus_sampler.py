@@ -199,9 +199,8 @@ class HippocampusSampler:
                 logger.warning("无法从消息样本生成可读文本")
                 return None
 
-            # 添加当前日期信息
-            current_date = f"当前日期: {datetime.now().isoformat()}"
-            input_text = f"{current_date}\n{readable_text}"
+            # 直接使用对话文本，不添加系统标识符
+            input_text = readable_text
 
             logger.debug(f"开始构建记忆，文本长度: {len(input_text)}")
 
@@ -550,9 +549,7 @@ class HippocampusSampler:
     async def _build_fused_conversation_text(self, fused_messages: list[list[dict[str, Any]]]) -> str:
         """构建融合后的对话文本"""
         try:
-            # 添加批次标识
-            current_date = f"海马体批量采样 - {datetime.now().isoformat()}\n"
-            conversation_parts = [current_date]
+            conversation_parts = []
 
             for group_idx, message_group in enumerate(fused_messages):
                 if not message_group:
