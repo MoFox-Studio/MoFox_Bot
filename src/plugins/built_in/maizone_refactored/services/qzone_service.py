@@ -187,10 +187,28 @@ class QZoneService:
 
     async def _get_intercom_context(self, stream_id: str) -> str | None:
         """
-        获取互通组的聊天上下文。
+        获取用户的跨场景聊天上下文。
         """
-        # 实际的逻辑已迁移到 cross_context_api
-        return await cross_context_api.get_intercom_group_context_by_name("maizone_context_group")
+        if not stream_id:
+            return None
+        
+        from src.chat.message_receive.chat_stream import get_chat_manager
+        chat_manager = get_chat_manager()
+        stream = await chat_manager.get_stream(stream_id)
+        
+        if not stream or not stream.user_info:
+            return None
+
+        user_id = stream.user_info.user_id
+        platform = stream.platform
+
+        # 调用新的以用户为中心的上下文获取函数
+        return await cross_context_api.get_user_centric_context(
+            user_id=user_id,
+            platform=platform,
+            limit=10,  # 可以根据需要调整获取的消息数量
+            exclude_chat_id=stream_id
+        )
 
     async def _reply_to_own_feed_comments(self, feed: dict, api_client: dict):
         """处理对自己说说的评论并进行回复"""

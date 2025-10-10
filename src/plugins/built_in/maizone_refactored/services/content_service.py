@@ -13,11 +13,11 @@ import aiohttp
 from maim_message import UserInfo
 
 from src.chat.message_receive.chat_stream import get_chat_manager
+from src.plugin_system.apis.cross_context_api import get_user_centric_context
 from src.common.logger import get_logger
 from src.config.api_ada_configs import TaskConfig
 from src.llm_models.utils_model import LLMRequest
 from src.plugin_system.apis import config_api, generator_api, llm_api
-from src.plugin_system.apis.cross_context_api import get_chat_history_by_group_name
 
 # 导入旧的工具函数，我们稍后会考虑是否也需要重构它
 from ..utils.history_utils import get_send_history
@@ -89,9 +89,13 @@ class ContentService:
                 prompt += f"\n作为参考，这里有一些最近的聊天记录：\n---\n{context}\n---"
 
             # 添加跨群聊上下文
-            cross_context = await get_chat_history_by_group_name("maizone_context_group")
-            if cross_context and "找不到名为" not in cross_context:
-                prompt += f"\n\n---跨群聊参考---\n{cross_context}\n---"
+            bot_user_id = config_api.get_global_config("bot.qq_account")
+            if bot_user_id:
+                cross_context = await get_user_centric_context(
+                    user_id=bot_user_id, platform="qq", limit=5
+                )  # limit可以根据需要调整
+                if cross_context:
+                    prompt += f"\n\n---跨群聊参考---\n{cross_context}\n---"
 
             # 添加历史记录以避免重复
             prompt += "\n\n---历史说说记录---\n"
