@@ -207,11 +207,12 @@ class ChatterManager:
 
         return active_tasks
 
-    def cancel_all_stream_tasks(self, stream_id: str) -> int:
+    def cancel_all_stream_tasks(self, stream_id: str, exclude_reply: bool = False) -> int:
         """取消指定流的所有处理任务（包括多重回复）
 
         Args:
             stream_id: 流ID
+            exclude_reply: 是否排除回复任务
 
         Returns:
             int: 成功取消的任务数量
@@ -221,10 +222,15 @@ class ChatterManager:
 
         tasks = self._processing_tasks[stream_id]
         cancelled_count = 0
+        remaining_tasks = []
 
-        logger.info(f"开始取消流 {stream_id} 的所有处理任务，共 {len(tasks)} 个")
+        logger.info(f"开始取消流 {stream_id} 的处理任务，共 {len(tasks)} 个")
 
         for task in tasks:
+            if exclude_reply and "reply" in task.get_name().lower():
+                remaining_tasks.append(task)
+                continue
+
             try:
                 if not task.done():
                     task.cancel()
@@ -233,8 +239,12 @@ class ChatterManager:
             except Exception as e:
                 logger.warning(f"取消任务时出错: {e}")
 
-        # 清理任务记录
-        del self._processing_tasks[stream_id]
+        if remaining_tasks:
+            self._processing_tasks[stream_id] = remaining_tasks
+        else:
+            if stream_id in self._processing_tasks:
+                del self._processing_tasks[stream_id]
+
         logger.info(f"流 {stream_id} 的任务取消完成，成功取消 {cancelled_count} 个任务")
         return cancelled_count
 

@@ -352,11 +352,16 @@ class MessageManager:
         if not global_config.chat.interruption_enabled or not chat_stream:
             return
 
-        # 🌟 修复：获取所有处理任务（包括多重回复）
+        # 获取所有处理任务
         all_processing_tasks = self.chatter_manager.get_all_processing_tasks(chat_stream.stream_id)
 
         if all_processing_tasks:
-            # 计算打断概率 - 使用新的线性概率模型
+            # 检查是否有回复任务正在进行
+            if chat_stream.context_manager.context.is_replying:
+                logger.debug(f"聊天流 {chat_stream.stream_id} 正在回复，跳过打断检查")
+                return
+
+            # 计算打断概率
             interruption_probability = chat_stream.context_manager.context.calculate_interruption_probability(
                 global_config.chat.interruption_max_limit
             )
@@ -364,39 +369,28 @@ class MessageManager:
             # 检查是否已达到最大打断次数
             if chat_stream.context_manager.context.interruption_count >= global_config.chat.interruption_max_limit:
                 logger.debug(
-                    f"聊天流 {chat_stream.stream_id} 已达到最大打断次数 {chat_stream.context_manager.context.interruption_count}/{global_config.chat.interruption_max_limit}，跳过打断检查"
+                    f"聊天流 {chat_stream.stream_id} 已达到最大打断次数，跳过打断检查"
                 )
                 return
 
             # 根据概率决定是否打断
             if random.random() < interruption_probability:
-                logger.info(f"聊天流 {chat_stream.stream_id} 触发消息打断，打断概率: {interruption_probability:.2f}，检测到 {len(all_processing_tasks)} 个任务")
+                logger.info(f"聊天流 {chat_stream.stream_id} 触发消息打断 (概率: {interruption_probability:.2f})")
 
-                # 🌟 修复：取消所有任务（包括多重回复）
-                cancelled_count = self.chatter_manager.cancel_all_stream_tasks(chat_stream.stream_id)
+                # 取消所有非回复任务
+                cancelled_count = self.chatter_manager.cancel_all_stream_tasks(chat_stream.stream_id, exclude_reply=True)
 
                 if cancelled_count > 0:
                     logger.info(f"消息打断成功取消 {cancelled_count} 个任务: {chat_stream.stream_id}")
-                else:
-                    logger.warning(f"消息打断未能取消任何任务: {chat_stream.stream_id}")
 
                 # 增加打断计数
                 await chat_stream.context_manager.context.increment_interruption_count()
 
-                # 🚀 新增：打断后立即重新进入聊天流程
+                # 立即重新处理
                 await self._trigger_immediate_reprocess(chat_stream)
 
-                # 检查是否已达到最大次数
-                if chat_stream.context_manager.context.interruption_count >= global_config.chat.interruption_max_limit:
-                    logger.warning(
-                        f"聊天流 {chat_stream.stream_id} 已达到最大打断次数 {chat_stream.context_manager.context.interruption_count}/{global_config.chat.interruption_max_limit}，后续消息将不再打断"
-                    )
-                else:
-                    logger.info(
-                        f"聊天流 {chat_stream.stream_id} 已打断并重新进入处理流程，当前打断次数: {chat_stream.context_manager.context.interruption_count}/{global_config.chat.interruption_max_limit}"
-                    )
             else:
-                logger.debug(f"聊天流 {chat_stream.stream_id} 未触发打断，打断概率: {interruption_probability:.2f}，检测到 {len(all_processing_tasks)} 个任务")
+                logger.debug(f"聊天流 {chat_stream.stream_id} 未触发打断 (概率: {interruption_probability:.2f})")
 
     async def _trigger_immediate_reprocess(self, chat_stream: ChatStream):
         """打断后立即重新进入聊天流程"""

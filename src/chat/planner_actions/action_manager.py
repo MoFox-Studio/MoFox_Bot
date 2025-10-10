@@ -248,6 +248,7 @@ class ChatterActionManager:
             else:
                 # 生成回复
                 try:
+                    chat_stream.context_manager.context.is_replying = True
                     success, response_set, _ = await generator_api.generate_reply(
                         chat_stream=chat_stream,
                         reply_message=target_message,
@@ -265,6 +266,8 @@ class ChatterActionManager:
                 except asyncio.CancelledError:
                     logger.debug(f"{log_prefix} 并行执行：回复生成任务已被取消")
                     return {"action_type": "reply", "success": False, "reply_text": "", "loop_info": None}
+                finally:
+                    chat_stream.context_manager.context.is_replying = False
 
                 # 发送并存储回复
                 loop_info, reply_text, cycle_timers_reply = await self._send_and_store_reply(

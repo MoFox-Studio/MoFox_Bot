@@ -42,6 +42,7 @@ class StreamContext(BaseDataModel):
     processing_task: asyncio.Task | None = None
     interruption_count: int = 0  # 打断计数器
     last_interruption_time: float = 0.0  # 上次打断时间
+    is_replying: bool = False  # 是否正在回复
 
     # 独立分发周期字段
     next_check_time: float = field(default_factory=time.time)  # 下次检查时间
