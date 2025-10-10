@@ -420,8 +420,9 @@ class ChatBot:
             await message.process()
 
             # 在这里打印[所见]日志，确保在所有处理和过滤之前记录
+            chat_name = chat.group_info.group_name if chat.group_info else "私聊"
             logger.info(
-                f"\u001b[38;5;118m{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
+                f"[{chat_name}]{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
             )
 
             # 过滤检查
