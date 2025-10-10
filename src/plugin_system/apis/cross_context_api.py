@@ -182,13 +182,22 @@ async def get_user_centric_context(
                 timestamp=time.time(),
                 limit=limit * 5,  # 获取更多消息以供筛选
             )
-            user_messages = [msg for msg in messages if msg.get("user_id") == user_id][-limit:]
+            chat_name = await chat_manager.get_stream_name(stream.stream_id) or stream.stream_id
+            is_group = stream.group_info is not None
 
-            if user_messages:
-                chat_name = await chat_manager.get_stream_name(stream.stream_id) or stream.stream_id
+            if is_group:
+                # 对于群聊，只获取该用户的发言
+                relevant_messages = [msg for msg in messages if msg.get("user_id") == user_id][-limit:]
+                title = f'[以下是该用户在"{chat_name}"的近期发言]\n'
+            else:
+                # 对于私聊，获取双方的聊天记录
+                relevant_messages = messages[-limit:]
+                title = f'[以下是与该用户的近期私聊"{chat_name}"的记录]\n'
+
+            if relevant_messages:
                 if chat_name not in user_messages_map:
-                    user_messages_map[chat_name] = []
-                user_messages_map[chat_name].extend(user_messages)
+                    user_messages_map[chat_name] = {"messages": [], "title": title}
+                user_messages_map[chat_name]["messages"].extend(relevant_messages)
         except Exception as e:
             logger.error(f"获取用户 {user_id} 在聊天 {stream.stream_id} 的消息失败: {e}")
             continue
@@ -198,11 +207,13 @@ async def get_user_centric_context(
 
     # 构建最终的上下文字符串
     cross_context_parts = []
-    for chat_name, messages in user_messages_map.items():
+    for chat_name, data in user_messages_map.items():
+        messages = data["messages"]
+        title = data["title"]
         # 按时间戳对消息进行排序
         messages.sort(key=lambda x: x.get("time", 0))
         formatted_messages, _ = await build_readable_messages_with_id(messages, timestamp_mode="relative")
-        cross_context_parts.append(f'[以下是该用户在"{chat_name}"的近期发言]\n{formatted_messages}')
+        cross_context_parts.append(f"{title}{formatted_messages}")
 
     if not cross_context_parts:
         return None
