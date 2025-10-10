@@ -49,49 +49,41 @@ class TTSVoicePlugin(BasePlugin):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.tts_service = None
-        # 新增配置缓存
-        self._config_cache = None
 
     def _get_config_wrapper(self, key: str, default: Any = None) -> Any:
         """
         配置获取的包装器，用于解决 get_config 无法直接获取动态表（如 tts_styles）和未在 schema 中定义的节的问题。
         由于插件系统的 schema 为空时不会加载未定义的键，这里手动读取配置文件以获取所需配置。
         """
-        # 需要手动加载的顶级配置节（移除未定义的 spatial_effects）
-        manual_load_keys = ["tts_styles", "tts_advanced", "tts"]
+        # 需要手动加载的顶级配置节
+        manual_load_keys = ["tts_styles", "spatial_effects", "tts_advanced", "tts"]
         top_key = key.split('.')[0]
 
-        # 仅当需要手动加载且缓存为空时加载配置
-        if top_key in manual_load_keys and self._config_cache is None:
-            try:
-                # 优化：使用标准插件路径
-                config_path = Path(__file__).parent / "config" / self.config_file_name
-                
-                if not config_path.exists():
-                    logger.error(f"TTS config file not found at {config_path}")
-                    self._config_cache = {}
-                else:
-                    # 使用 toml.load 代替 toml.loads 以提高性能
-                    self._config_cache = toml.load(config_path)
-            except toml.TomlDecodeError as e:
-                logger.error(f"Invalid TOML syntax in config: {e}")
-                self._config_cache = {}
-            except FileNotFoundError:
-                logger.error(f"Config file missing: {config_path}")
-                self._config_cache = {}
-            except Exception as e:
-                logger.error(f"Unexpected config error: {e}", exc_info=True)
-                self._config_cache = {}
-
-        # 从缓存中获取配置
         if top_key in manual_load_keys:
-            value = self._config_cache
-            for k in key.split('.'):
-                if isinstance(value, dict):
-                    value = value.get(k)
-                else:
+            try:
+                plugin_file = Path(__file__).resolve()
+                bot_root = plugin_file.parent.parent.parent.parent.parent
+                config_file = bot_root / "config" / "plugins" / self.plugin_name / self.config_file_name
+                
+                if not config_file.is_file():
+                    logger.error(f"TTS config file not found at robustly constructed path: {config_file}")
                     return default
-            return value if value is not None else default
+                
+                full_config = toml.loads(config_file.read_text(encoding="utf-8"))
+
+                # 支持点状路径访问
+                value = full_config
+                for k in key.split('.'):
+                    if isinstance(value, dict):
+                        value = value.get(k)
+                    else:
+                        return default
+                
+                return value if value is not None else default
+                
+            except Exception as e:
+                logger.error(f"Failed to manually load '{key}' from config: {e}", exc_info=True)
+                return default
         
         return self.get_config(key, default)
 
