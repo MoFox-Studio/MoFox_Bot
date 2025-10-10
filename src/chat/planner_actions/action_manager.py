@@ -345,10 +345,10 @@ class ChatterActionManager:
                 context = chat_stream.context_manager
                 if context.context.interruption_count > 0:
                     old_count = context.context.interruption_count
-                    old_afc_adjustment = context.context.get_afc_threshold_adjustment()
+                    # old_afc_adjustment = context.context.get_afc_threshold_adjustment()
                     await context.context.reset_interruption_count()
                     logger.debug(
-                        f"动作执行成功，重置聊天流 {stream_id} 的打断计数: {old_count} -> 0, afc调整: {old_afc_adjustment} -> 0"
+                        f"动作执行成功，重置聊天流 {stream_id} 的打断计数: {old_count} -> 0"
                     )
         except Exception as e:
             logger.warning(f"重置打断计数时出错: {e}")
