@@ -72,3 +72,5 @@ aiofiles
 inkfox
 mcp
 sse-starlette
+soundfile
+pedalboard
