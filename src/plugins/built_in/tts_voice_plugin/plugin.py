@@ -114,7 +114,7 @@ class TTSVoicePlugin(BasePlugin):
         """
         components = []
         if self.get_config("components.action_enabled", True):
-            components.appendTTSVoiceAction.get_action_info(), TTSVoiceAction))
+            components.append((TTSVoiceAction.get_action_info(), TTSVoiceAction))
         if self.get_config("components.command_enabled", True):
             components.append((TTSVoiceCommand.get_plus_command_info(), TTSVoiceCommand))
         return components
