@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.9"
+version = "7.2.10"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -528,6 +528,11 @@ enable = true
 # limit 是一个可选的整数（但需要以字符串形式写入），用于指定从该聊天流中获取的消息数量，如果未指定，默认为5
 [[cross_context.groups]]
 name = "项目A技术讨论组"
+# s4u_ignore_whitelist: (可选, 默认为 false)
+# 如果设置为 true, 并且 prompt_mode 为 "s4u",
+# Bot将获取目标用户在所有与Bot的私聊中的消息, 即使该私聊没有被明确配置在下面的 chat_ids 中。
+# 这有助于构建更完整的用户画像, 但可能会增加token消耗。
+s4u_ignore_whitelist = false
 chat_ids = [
     ["group", "169850076", "10"],  # 假设这是“开发群”的ID, 从这个群里拿10条消息
     ["group", "1025509724", "5"],   # 假设这是“产品群”的ID，拿5条

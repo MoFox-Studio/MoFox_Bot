@@ -1047,8 +1047,8 @@ class Prompt:
 
         from src.plugin_system.apis import cross_context_api
 
-        other_chat_raw_ids = await cross_context_api.get_context_groups(chat_id)
-        if not other_chat_raw_ids:
+        context_group = await cross_context_api.get_context_group(chat_id)
+        if not context_group:
             return ""
 
         chat_stream = await get_chat_manager().get_stream(chat_id)
@@ -1056,9 +1056,18 @@ class Prompt:
             return ""
 
         if prompt_mode == "normal":
-            return await cross_context_api.build_cross_context_normal(chat_stream, other_chat_raw_ids)
+            current_chat_raw_id = (
+                chat_stream.group_info.group_id if chat_stream.group_info else chat_stream.user_info.user_id
+            )
+            current_type = "group" if chat_stream.group_info else "private"
+            other_chat_infos = [
+                chat_info
+                for chat_info in context_group.chat_ids
+                if chat_info[:2] != [current_type, str(current_chat_raw_id)]
+            ]
+            return await cross_context_api.build_cross_context_normal(chat_stream, other_chat_infos)
         elif prompt_mode == "s4u":
-            return await cross_context_api.build_cross_context_s4u(chat_stream, other_chat_raw_ids, target_user_info)
+            return await cross_context_api.build_cross_context_s4u(chat_stream, context_group, target_user_info)
 
         return ""
 

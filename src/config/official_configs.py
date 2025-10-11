@@ -633,6 +633,9 @@ class ContextGroup(ValidatedConfigBase):
     """上下文共享组配置"""
 
     name: str = Field(..., description="共享组的名称")
+    s4u_ignore_whitelist: bool = Field(
+        default=False, description="在s4u模式下, 是否无视白名单, 获取用户所有私聊消息"
+    )
     chat_ids: list[list[str]] = Field(
         ...,
         description='属于该组的聊天ID列表，格式为 [["type", "chat_id"], ...]，例如 [["group", "123456"], ["private", "789012"]]',
