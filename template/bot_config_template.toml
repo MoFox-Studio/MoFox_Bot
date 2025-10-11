@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.7"
+version = "7.2.6"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -518,34 +518,28 @@ insomnia_duration_minutes = [30, 60] # 单次失眠状态的持续时间范围�
 # 入睡后，经过一段延迟后触发失眠判定的延迟时间（分钟），设置为范围以增加随机性
 insomnia_trigger_delay_minutes = [15, 45]
 
-[cross_context] # 跨上下文共享配置
-# 总开关，用于一键启用或禁用所有跨上下文功能
+[cross_context] # 跨群聊/私聊上下文共享配置
+# 这是总开关，用于一键启用或禁用此功能
 enable = true
-
-# --- 用户中心上下文检索 ---
-# 当回复特定用户时，自动从该用户参与的其他聊天中检索最近对话，以提供更丰富的上下文。
-# mode: "disabled" - 禁用此功能
-#       "all" - 对所有聊天启用（黑名单除外）
-#       "whitelist" - 仅对白名单内的聊天启用
-user_centric_retrieval_mode = "disabled"
-user_centric_retrieval_limit = 5 # 检索附加上下文时，获取的最大历史消息数量
-user_centric_retrieval_stream_limit = 3 # 检索附加上下文时，检索的聊天流数量上限，0为不限制
-
-# 白名单 (仅当 mode = "whitelist" 时生效)
-# 如果列表为空，则功能不应用于任何聊天
-# 格式: [["type", "id"], ...]  (type: "group" 或 "private")
-whitelist_chats = [
-    # ["group", "123456"],
-    # ["private", "789012"]
+# 在这里定义您的“共享组”
+# 只有在同一个组内的聊天才会共享上下文
+# 格式：chat_ids = [["type", "id"], ["type", "id"], ...]
+# type 可选 "group" 或 "private"
+[[cross_context.groups]]
+name = "项目A技术讨论组"
+chat_ids = [
+    ["group", "169850076"],  # 假设这是“开发群”的ID
+    ["group", "1025509724"],   # 假设这是“产品群”的ID
+    ["private", "123456789"] # 假设这是某个用户的私聊
 ]
-
-# 黑名单 (当 mode = "all" 时生效)
-# 如果列表为空，则功能应用于所有聊天
-# 格式: [["type", "id"], ...]
-blacklist_chats = [
-    # ["group", "987654"]
+# 定义QQ空间互通组
+# 同一个组的chat_id会共享上下文，用于生成更相关的说说
+[[cross_context.maizone_context_group]]
+name = "Maizone默认互通组"
+chat_ids = [
+    ["group", "111111"], # 示例群聊1
+    ["private", "222222"]  # 示例私聊2
 ]
-
 
 [affinity_flow]
 # 兴趣评分系统参数

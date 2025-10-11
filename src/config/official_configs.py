@@ -640,19 +640,10 @@ class ContextGroup(ValidatedConfigBase):
 
 
 class CrossContextConfig(ValidatedConfigBase):
-    """跨上下文共享配置"""
+    """跨群聊上下文共享配置"""
 
-    enable: bool = Field(default=True, description="是否启用跨上下文共享功能")
-    user_centric_retrieval_mode: Literal["disabled", "all", "whitelist"] = Field(
-        default="disabled", description="用户中心上下文检索模式"
-    )
-    user_centric_retrieval_limit: int = Field(default=5, ge=1, le=50, description="用户中心上下文检索数量上限")
-    user_centric_retrieval_stream_limit: int = Field(
-        default=3, ge=0, description="用户中心上下文检索的聊天流数量上限，0为不限制"
-    )
-    whitelist_chats: list[list[str]] = Field(default_factory=list, description="白名单聊天列表")
-    blacklist_chats: list[list[str]] = Field(default_factory=list, description="黑名单聊天列表")
-    # DEPRECATED: groups: list[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
+    enable: bool = Field(default=False, description="是否启用跨群聊上下文共享功能")
+    groups: list[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
 
 
 class CommandConfig(ValidatedConfigBase):
