@@ -43,9 +43,6 @@ class PlanManager:
                 await delete_plans_by_ids(delete_ids)  # type: ignore
                 plans = await get_active_plans_for_month(target_month)
 
-            if plans:
-                plan_texts = "\n".join([f"  {i + 1}. {plan.plan_text}" for i, plan in enumerate(plans)])
-                logger.info(f"当前月度计划内容:\n{plan_texts}")
             return True
 
     async def _generate_monthly_plans_logic(self, target_month: str | None = None) -> bool:
