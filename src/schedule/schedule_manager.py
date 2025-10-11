@@ -5,7 +5,7 @@ from typing import Any
 import orjson
 from sqlalchemy import select
 
-from src.common.database.sqlalchemy_models import Schedule, get_db_session
+from src.common.database.sqlalchemy_models import MonthlyPlan, Schedule, get_db_session
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.manager.async_task_manager import AsyncTask, async_task_manager
@@ -108,7 +108,7 @@ class ScheduleManager:
             if schedule_data:
                 await self._save_schedule_to_db(today_str, schedule_data)
                 self.today_schedule = schedule_data
-                self._log_generated_schedule(today_str, schedule_data)
+                self._log_generated_schedule(today_str, schedule_data, sampled_plans)
 
                 if sampled_plans:
                     used_plan_ids = [plan.id for plan in sampled_plans]
@@ -133,8 +133,16 @@ class ScheduleManager:
             await session.commit()
 
     @staticmethod
-    def _log_generated_schedule(date_str: str, schedule_data: list[dict[str, Any]]):
-        schedule_str = f"✅ 成功生成并保存今天的日程 ({date_str})：\n"
+    def _log_generated_schedule(
+        date_str: str, schedule_data: list[dict[str, Any]], sampled_plans: list[MonthlyPlan]
+    ):
+        schedule_str = f"成功生成并保存今天的日程 ({date_str})：\n"
+
+        if sampled_plans:
+            plan_texts = "\n".join([f"  - {plan.plan_text}" for plan in sampled_plans])
+            schedule_str += f"本次日程参考的月度计划:\n{plan_texts}\n"
+
+        schedule_str += "今日日程详情:\n"
         for item in schedule_data:
             schedule_str += f"  - {item.get('time_range', '未知时间')}: {item.get('activity', '未知活动')}\n"
         logger.info(schedule_str)
