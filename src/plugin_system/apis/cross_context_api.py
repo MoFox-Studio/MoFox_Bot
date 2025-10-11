@@ -45,16 +45,52 @@ async def get_context_group(chat_id: str) -> ContextGroup | None:
     return None
 
 
-async def build_cross_context_normal(chat_stream: ChatStream, other_chat_infos: list[list[str]]) -> str:
+async def build_cross_context_normal(chat_stream: ChatStream, context_group: ContextGroup) -> str:
     """
-    构建跨群聊/私聊上下文 (Normal模式)
+    构建跨群聊/私聊上下文 (Normal模式)。
+
+    根据共享组的配置（白名单或黑名单模式），获取相关聊天的近期消息，并格式化为字符串。
+
+    Args:
+        chat_stream: 当前的聊天流对象。
+        context_group: 当前聊天所在的上下文共享组配置。
+
+    Returns:
+        一个包含格式化后的跨上下文消息的字符串，如果无消息则为空字符串。
     """
     cross_context_messages = []
-    for chat_info in other_chat_infos:
-        chat_type, chat_raw_id, limit = chat_info[0], chat_info[1], int(chat_info[2]) if len(chat_info) > 2 else 5
+    chat_manager = get_chat_manager()
+    
+    chat_infos_to_fetch = []
+    if context_group.mode == "blacklist":
+        # 黑名单模式：获取所有聊天，并排除在 chat_ids 中定义过的聊天
+        blacklisted_ids = {tuple(info[:2]) for info in context_group.chat_ids}
+        for stream_id, stream in chat_manager.streams.items():
+            is_group = stream.group_info is not None
+            chat_type = "group" if is_group else "private"
+            
+            # 安全地获取 raw_id
+            if is_group and stream.group_info:
+                raw_id = stream.group_info.group_id
+            elif not is_group and stream.user_info:
+                raw_id = stream.user_info.user_id
+            else:
+                continue  # 如果缺少关键信息则跳过
+
+            # 如果当前聊天不在黑名单中，则添加到待获取列表
+            if (chat_type, str(raw_id)) not in blacklisted_ids:
+                chat_infos_to_fetch.append([chat_type, str(raw_id), str(context_group.default_limit)])
+    else:
+        # 白名单模式：直接使用配置中定义的 chat_ids
+        chat_infos_to_fetch = context_group.chat_ids
+
+    # 遍历待获取列表，抓取并格式化消息
+    for chat_info in chat_infos_to_fetch:
+        chat_type, chat_raw_id, limit_str = chat_info[0], chat_info[1], chat_info[2] if len(chat_info) > 2 else str(context_group.default_limit)
+        limit = int(limit_str)
         is_group = chat_type == "group"
-        stream_id = get_chat_manager().get_stream_id(chat_stream.platform, chat_raw_id, is_group=is_group)
-        if not stream_id:
+        stream_id = chat_manager.get_stream_id(chat_stream.platform, chat_raw_id, is_group=is_group)
+        if not stream_id or stream_id == chat_stream.stream_id:
             continue
 
         try:
@@ -64,7 +100,7 @@ async def build_cross_context_normal(chat_stream: ChatStream, other_chat_infos: 
                 limit=limit,
             )
             if messages:
-                chat_name = await get_chat_manager().get_stream_name(stream_id) or chat_raw_id
+                chat_name = await chat_manager.get_stream_name(stream_id) or chat_raw_id
                 formatted_messages, _ = await build_readable_messages_with_id(messages, timestamp_mode="relative")
                 cross_context_messages.append(f'[以下是来自"{chat_name}"的近期消息]\n{formatted_messages}')
         except Exception as e:
@@ -95,19 +131,45 @@ async def build_cross_context_s4u(
     )
     current_type = "group" if chat_stream.group_info else "private"
 
-    other_chat_infos = [
-        chat_info
-        for chat_info in context_group.chat_ids
-        if chat_info[:2] != [current_type, str(current_chat_raw_id)]
-    ]
+    # 根据模式（黑名单/白名单）决定需要处理哪些聊天
+    chat_infos_to_process = []
+    if context_group.mode == "blacklist":
+        # 黑名单模式：获取除当前聊天和黑名单内聊天之外的所有聊天
+        blacklisted_ids = {tuple(info[:2]) for info in context_group.chat_ids}
+        for stream_id, stream in chat_manager.streams.items():
+            if stream_id == chat_stream.stream_id:
+                continue  # 排除当前聊天
+            
+            is_group = stream.group_info is not None
+            chat_type = "group" if is_group else "private"
+            
+            # 安全地获取 raw_id
+            if is_group and stream.group_info:
+                raw_id = stream.group_info.group_id
+            elif not is_group and stream.user_info:
+                raw_id = stream.user_info.user_id
+            else:
+                continue # 如果缺少关键信息则跳过
 
-    # 1. 处理在白名单内的聊天
-    for chat_info in other_chat_infos:
-        chat_type, chat_raw_id, limit = (
+            # 如果不在黑名单中，则加入处理列表
+            if (chat_type, str(raw_id)) not in blacklisted_ids:
+                chat_infos_to_process.append([chat_type, str(raw_id), str(context_group.default_limit)])
+    else:  # 白名单模式
+        # 白名单模式：只获取在 chat_ids 中且非当前聊天的聊天
+        chat_infos_to_process = [
+            chat_info
+            for chat_info in context_group.chat_ids
+            if chat_info[:2] != [current_type, str(current_chat_raw_id)]
+        ]
+
+    # 1. 处理筛选出的目标聊天
+    for chat_info in chat_infos_to_process:
+        chat_type, chat_raw_id, limit_str = (
             chat_info[0],
             chat_info[1],
-            int(chat_info[2]) if len(chat_info) > 2 else 5,
+            chat_info[2] if len(chat_info) > 2 else str(context_group.default_limit),
         )
+        limit = int(limit_str)
         is_group = chat_type == "group"
         stream_id = chat_manager.get_stream_id(chat_stream.platform, chat_raw_id, is_group=is_group)
         if not stream_id:
@@ -141,7 +203,7 @@ async def build_cross_context_s4u(
 
         if private_stream_id and not is_already_processed:
             try:
-                limit = 5  # 使用默认值
+                limit = context_group.default_limit
                 messages = await get_raw_msg_before_timestamp_with_chat(
                     chat_id=private_stream_id, timestamp=time.time(), limit=limit * 4
                 )

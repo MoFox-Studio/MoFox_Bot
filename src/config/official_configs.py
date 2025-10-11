@@ -630,15 +630,28 @@ class SleepSystemConfig(ValidatedConfigBase):
 
 
 class ContextGroup(ValidatedConfigBase):
-    """上下文共享组配置"""
+    """
+    上下文共享组配置
 
-    name: str = Field(..., description="共享组的名称")
+    定义了一个聊天上下文的共享范围和规则。
+    """
+
+    name: str = Field(..., description="共享组的名称，用于唯一标识一个共享组")
+    mode: Literal["whitelist", "blacklist"] = Field(
+        default="whitelist",
+        description="共享模式。'whitelist'表示仅共享chat_ids中列出的聊天；'blacklist'表示共享除chat_ids中列出的所有聊天。",
+    )
+    default_limit: int = Field(
+        default=5,
+        description="在'blacklist'模式下，对于未明确指定数量的聊天，默认获取的消息条数。也用于s4u_ignore_whitelist开启时获取私聊消息的数量。",
+    )
     s4u_ignore_whitelist: bool = Field(
-        default=False, description="在s4u模式下, 是否无视白名单, 获取用户所有私聊消息"
+        default=False,
+        description="在s4u模式下，是否无视白名单，获取目标用户与Bot的所有私聊消息，以构建更完整的用户画像。",
     )
     chat_ids: list[list[str]] = Field(
         ...,
-        description='属于该组的聊天ID列表，格式为 [["type", "chat_id"], ...]，例如 [["group", "123456"], ["private", "789012"]]',
+        description='定义组内成员的列表。格式为 [["type", "id", "limit"(可选)]]。type为"group"或"private"，id为群号或用户ID，limit为可选的消息条数。',
     )
 
 

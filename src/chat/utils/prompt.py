@@ -1060,12 +1060,7 @@ class Prompt:
                 chat_stream.group_info.group_id if chat_stream.group_info else chat_stream.user_info.user_id
             )
             current_type = "group" if chat_stream.group_info else "private"
-            other_chat_infos = [
-                chat_info
-                for chat_info in context_group.chat_ids
-                if chat_info[:2] != [current_type, str(current_chat_raw_id)]
-            ]
-            return await cross_context_api.build_cross_context_normal(chat_stream, other_chat_infos)
+            return await cross_context_api.build_cross_context_normal(chat_stream, context_group)
         elif prompt_mode == "s4u":
             return await cross_context_api.build_cross_context_s4u(chat_stream, context_group, target_user_info)
 

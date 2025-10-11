@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.10"
+version = "7.2.11"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -528,6 +528,14 @@ enable = true
 # limit 是一个可选的整数（但需要以字符串形式写入），用于指定从该聊天流中获取的消息数量，如果未指定，默认为5
 [[cross_context.groups]]
 name = "项目A技术讨论组"
+# mode: (可选, 默认为 "whitelist")
+# "whitelist": 白名单模式，只有在 chat_ids 中明确列出的聊天才会共享上下文。
+# "blacklist": 黑名单模式，除了在 chat_ids 中列出的聊天外，所有其他聊天都会共享上下文。
+mode = "whitelist"
+# default_limit: (可选, 默认为 5)
+# 在 "blacklist" 模式下，未在 chat_ids 中指定的聊天将默认获取此数量的消息。
+# 同时，当 s4u_ignore_whitelist 设置为 true 时，获取用户私聊消息的数量也将使用此值。
+default_limit = 5
 # s4u_ignore_whitelist: (可选, 默认为 false)
 # 如果设置为 true, 并且 prompt_mode 为 "s4u",
 # Bot将获取目标用户在所有与Bot的私聊中的消息, 即使该私聊没有被明确配置在下面的 chat_ids 中。
