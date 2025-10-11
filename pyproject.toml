@@ -1,8 +1,8 @@
 [project]
-name = "MaiBot"
+name = "MoFox-Bot"
 version = "0.8.1"
-description = "MaiCore 是一个基于大语言模型的可交互智能体"
-requires-python = ">=3.10"
+description = "MoFox-Bot 是一个基于大语言模型的可交互智能体"
+requires-python = ">=3.11"
 dependencies = [
     "aiohttp>=3.12.14",
     "aiohttp-cors>=0.8.1",
@@ -21,7 +21,7 @@ dependencies = [
     "google>=3.0.0",
     "google-genai>=1.29.0",
     "httpx>=0.28.1",
-    "rjieba>=0.42.1",
+    "rjieba>=0.1.13",
     "json-repair>=0.47.6",
     "json5>=0.12.1",
     "jsonlines>=4.0.0",
