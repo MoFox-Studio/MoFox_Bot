@@ -190,7 +190,7 @@ class QZoneService:
         获取互通组的聊天上下文。
         """
         # 实际的逻辑已迁移到 cross_context_api
-        return await cross_context_api.get_intercom_group_context_by_name("maizone_context_group")
+        return await cross_context_api.get_intercom_group_context("maizone_context_group")
 
     async def _reply_to_own_feed_comments(self, feed: dict, api_client: dict):
         """处理对自己说说的评论并进行回复"""
