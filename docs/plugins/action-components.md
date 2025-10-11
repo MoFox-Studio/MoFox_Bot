@@ -43,7 +43,7 @@ class ExampleAction(BaseAction):
 
 这部分由Adapter传递给处理器。
 
-以 MaiBot-Napcat-Adapter 为例，可选项目如下：
+以 MoFox-Bot-Napcat-Adapter 为例，可选项目如下：
 | 类型 | 说明 | 格式 |
 | --- | --- | --- |
 | text | 文本消息 | str |

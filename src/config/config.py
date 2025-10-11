@@ -58,7 +58,7 @@ install(extra_lines=3)
 # 配置主程序日志格式
 logger = get_logger("config")
 
-# 获取当前文件所在目录的父目录的父目录（即MaiBot项目根目录）
+# 获取当前文件所在目录的父目录的父目录（即MoFox-Bot项目根目录）
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONFIG_DIR = os.path.join(PROJECT_ROOT, "config")
 TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "template")

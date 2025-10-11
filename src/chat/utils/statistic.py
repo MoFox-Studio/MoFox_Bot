@@ -868,7 +868,7 @@ class StatisticOutputTask(AsyncTask):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MaiBot运行统计报告</title>
+    <title>MoFox-Bot运行统计报告</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
@@ -970,7 +970,7 @@ class StatisticOutputTask(AsyncTask):
 """
             + f"""
     <div class="container">
-        <h1>MaiBot运行统计报告</h1>
+        <h1>MoFox-Bot运行统计报告</h1>
         <p class="info-item"><strong>统计截止时间:</strong> {now.strftime("%Y-%m-%d %H:%M:%S")}</p>
 
         <div class="tabs">

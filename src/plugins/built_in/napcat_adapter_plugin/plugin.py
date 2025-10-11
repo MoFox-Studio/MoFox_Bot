@@ -172,11 +172,11 @@ async def graceful_shutdown():
         except Exception as e:
             logger.warning(f"关闭WebSocket连接时出错: {e}")
 
-        # 关闭 MaiBot 连接
+        # 关闭 MoFox-Bot 连接
         try:
             await mmc_stop_com()
         except Exception as e:
-            logger.warning(f"关闭MaiBot连接时出错: {e}")
+            logger.warning(f"关闭MoFox-Bot连接时出错: {e}")
 
         # 取消所有剩余任务
         current_task = asyncio.current_task()
@@ -234,9 +234,9 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
         asyncio.create_task(message_process())
         asyncio.create_task(check_timeout_response())
 
-    async def _start_maibot_connection(self):
-        """非阻塞方式启动MaiBot连接，等待主服务启动后再连接"""
-        # 等待一段时间让MaiBot主服务完全启动
+    async def _start_mofox_bot_connection(self):
+        """非阻塞方式启动MoFox-Bot连接，等待主服务启动后再连接"""
+        # 等待一段时间让MoFox-Bot主服务完全启动
         await asyncio.sleep(5)
 
         max_attempts = 10
@@ -244,19 +244,19 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
 
         while attempt < max_attempts:
             try:
-                logger.info(f"尝试连接MaiBot (第{attempt + 1}次)")
+                logger.info(f"尝试连接MoFox-Bot (第{attempt + 1}次)")
                 await mmc_start_com(self.plugin_config)
-                message_send_instance.maibot_router = router
-                logger.info("MaiBot router连接已建立")
+                message_send_instance.mofox_bot_router = router
+                logger.info("MoFox-Bot router连接已建立")
                 return
             except Exception as e:
                 attempt += 1
                 if attempt >= max_attempts:
-                    logger.error(f"MaiBot连接失败，已达到最大重试次数: {e}")
+                    logger.error(f"MoFox-Bot连接失败，已达到最大重试次数: {e}")
                     return
                 else:
                     delay = min(2 + attempt, 10)  # 逐渐增加延迟，最大10秒
-                    logger.warning(f"MaiBot连接失败: {e}，{delay}秒后重试")
+                    logger.warning(f"MoFox-Bot连接失败: {e}，{delay}秒后重试")
                     await asyncio.sleep(delay)
 
 

@@ -1,5 +1,5 @@
 """
-MaiBot 端的消息切片处理模块
+MoFox-Bot 端的消息切片处理模块
 用于接收和重组来自 Napcat-Adapter 的切片消息
 """
 

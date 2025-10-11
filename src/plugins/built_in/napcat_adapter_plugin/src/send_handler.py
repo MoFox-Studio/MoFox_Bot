@@ -46,7 +46,7 @@ class SendHandler:
     async def handle_message(self, raw_message_base_dict: dict) -> None:
         raw_message_base: MessageBase = MessageBase.from_dict(raw_message_base_dict)
         message_segment: Seg = raw_message_base.message_segment
-        logger.info("接收到来自MaiBot的消息，处理中")
+        logger.info("接收到来自MoFox-Bot的消息，处理中")
         if message_segment.type == "command":
             logger.info("处理命令")
             return await self.send_command(raw_message_base)
@@ -196,7 +196,7 @@ class SendHandler:
                 # 对于其他命令，使用默认超时
                 response = await self.send_message_to_napcat(action, params)
 
-            # 发送响应回MaiBot
+            # 发送响应回MoFox-Bot
             await self.send_adapter_command_response(raw_message_base, response, request_id)
 
             if response.get("status") == "ok":
@@ -253,7 +253,7 @@ class SendHandler:
                 False,
             )
         elif seg.type == "face":
-            logger.warning("MaiBot 发送了qq原生表情，暂时不支持")
+            logger.warning("MoFox-Bot 发送了qq原生表情，暂时不支持")
         elif seg.type == "image":
             image = seg.data
             new_payload = self.build_payload(payload, self.handle_image_message(image), False)
@@ -637,7 +637,7 @@ class SendHandler:
         self, original_message: MessageBase, response_data: dict, request_id: str
     ) -> None:
         """
-        发送适配器命令响应回MaiBot
+        发送适配器命令响应回MoFox-Bot
 
         Args:
             original_message: 原始消息

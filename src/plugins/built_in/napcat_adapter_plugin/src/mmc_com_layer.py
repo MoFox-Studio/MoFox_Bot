@@ -32,7 +32,7 @@ def create_router(plugin_config: dict):
 
 
 async def mmc_start_com(plugin_config: dict | None = None):
-    """启动MaiBot连接"""
+    """启动MoFox-Bot连接"""
     logger.debug("正在连接MoFox-Bot")
     if plugin_config:
         create_router(plugin_config)
@@ -43,6 +43,6 @@ async def mmc_start_com(plugin_config: dict | None = None):
 
 
 async def mmc_stop_com():
-    """停止MaiBot连接"""
+    """停止MoFox-Bot连接"""
     if router:
         await router.stop()

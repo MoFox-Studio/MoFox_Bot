@@ -26,17 +26,17 @@ class MessageSending:
         self.plugin_config = plugin_config
 
     async def _attempt_reconnect(self):
-        """尝试重新连接MaiBot router"""
+        """尝试重新连接MoFox-Bot router"""
         if self._connection_retries < self._max_retries:
             self._connection_retries += 1
-            logger.warning(f"尝试重新连接MaiBot router (第{self._connection_retries}次)")
+            logger.warning(f"尝试重新连接MoFox-Bot router (第{self._connection_retries}次)")
             try:
                 # 重新导入router
                 from ..mmc_com_layer import router
 
                 self.maibot_router = router
                 if self.maibot_router is not None:
-                    logger.info("MaiBot router重连成功")
+                    logger.info("MoFox-Bot router重连成功")
                     self._connection_retries = 0  # 重置重试计数
                     return True
             except Exception as e:
@@ -54,32 +54,32 @@ class MessageSending:
         try:
             # 检查maibot_router是否已初始化
             if self.maibot_router is None:
-                logger.warning("MaiBot router未初始化，尝试重新连接")
+                logger.warning("MoFox-Bot router未初始化，尝试重新连接")
                 if not await self._attempt_reconnect():
-                    logger.error("MaiBot router重连失败，无法发送消息")
-                    logger.error("请检查与MaiBot之间的连接")
+                    logger.error("MoFox-Bot router重连失败，无法发送消息")
+                    logger.error("请检查与MoFox-Bot之间的连接")
                     return False
             # 检查是否需要切片发送
             message_dict = message_base.to_dict()
 
             if chunker.should_chunk_message(message_dict):
-                logger.info("消息过大，进行切片发送到 MaiBot")
+                logger.info("消息过大，进行切片发送到 MoFox-Bot")
 
                 # 切片消息
                 chunks = chunker.chunk_message(message_dict)
 
                 # 逐个发送切片
                 for i, chunk in enumerate(chunks):
-                    logger.debug(f"发送切片 {i + 1}/{len(chunks)} 到 MaiBot")
+                    logger.debug(f"发送切片 {i + 1}/{len(chunks)} 到 MoFox-Bot")
 
                     # 获取对应的客户端并发送切片
                     platform = message_base.message_info.platform
 
                     # 再次检查router状态（防止运行时被重置）
                     if self.maibot_router is None or not hasattr(self.maibot_router, "clients"):
-                        logger.warning("MaiBot router连接已断开，尝试重新连接")
+                        logger.warning("MoFox-Bot router连接已断开，尝试重新连接")
                         if not await self._attempt_reconnect():
-                            logger.error("MaiBot router重连失败，切片发送中止")
+                            logger.error("MoFox-Bot router重连失败，切片发送中止")
                             return False
 
                     if platform not in self.maibot_router.clients:
@@ -111,7 +111,7 @@ class MessageSending:
 
         except Exception as e:
             logger.error(f"发送消息失败: {str(e)}")
-            logger.error("请检查与MaiBot之间的连接")
+            logger.error("请检查与MoFox-Bot之间的连接")
             return False
 
 

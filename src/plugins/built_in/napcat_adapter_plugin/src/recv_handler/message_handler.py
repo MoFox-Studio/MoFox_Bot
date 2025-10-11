@@ -304,7 +304,7 @@ class MessageHandler:
 
         # 消息缓冲功能已移除，直接处理消息
 
-        logger.debug(f"准备发送消息到MaiBot，消息段数量: {len(seg_message)}")
+        logger.debug(f"准备发送消息到MoFox-Bot，消息段数量: {len(seg_message)}")
         for i, seg in enumerate(seg_message):
             logger.debug(f"消息段 {i}: type={seg.type}, data={str(seg.data)[:100]}...")
 
