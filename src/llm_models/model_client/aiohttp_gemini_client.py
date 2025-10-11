@@ -470,9 +470,11 @@ class AiohttpGeminiClient(BaseClient):
         self, method: str, endpoint: str, data: dict | None = None, stream: bool = False
     ) -> aiohttp.ClientResponse:
         """
-        发起一个 HTTP 请求到 Gemini API。
+        向 Gemini API 发起一个 HTTP 请求，并增加了重试逻辑。
 
         此方法封装了 aiohttp 的请求逻辑，包括 URL 构建、认证、超时和错误处理。
+        - 对于网络连接相关的 `aiohttp.ClientError`，它会最多重试3次。
+        - 对于 HTTP 状态码错误（如 4xx, 5xx），它会立即失败，不会重试。
         为了健壮性，它在每次调用时都会创建一个新的 aiohttp.ClientSession。
 
         Args:
@@ -486,30 +488,44 @@ class AiohttpGeminiClient(BaseClient):
 
         Raises:
             RespNotOkException: 如果 HTTP 响应状态码表示错误。
-            NetworkConnectionError: 如果发生 aiohttp 客户端错误（例如，连接问题）。
+            NetworkConnectionError: 如果在所有重试尝试后仍然发生 aiohttp 客户端错误。
         """
         api_key = self.api_provider.get_api_key()
         url = f"{self.base_url}/{endpoint}?key={api_key}"
-        try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=300),
-                headers={"Content-Type": "application/json", "User-Agent": "MMC-AioHTTP-Gemini-Client/1.0"},
-            ) as session:
-                if method.upper() == "POST":
-                    response = await session.post(
-                        url, json=data, headers={"Accept": "text/event-stream" if stream else "application/json"}
-                    )
-                else:
-                    response = await session.get(url)
 
-                # 检查HTTP状态码
-                if response.status >= 400:
-                    error_text = await response.text()
-                    raise RespNotOkException(response.status, error_text)
+        max_retries = 3
+        last_exception = None
 
-                return response
-        except aiohttp.ClientError as e:
-            raise NetworkConnectionError() from e
+        for attempt in range(max_retries):
+            try:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=300),
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.113 Safari/537.36",
+                    },
+                ) as session:
+                    if method.upper() == "POST":
+                        response = await session.post(
+                            url, json=data, headers={"Accept": "text/event-stream" if stream else "application/json"}
+                        )
+                    else:
+                        response = await session.get(url)
+
+                    # 检查HTTP状态码 - 如果是错误，立即失败，不重试
+                    if response.status >= 400:
+                        error_text = await response.text()
+                        raise RespNotOkException(response.status, error_text)
+
+                    # 成功，返回响应
+                    return response
+
+            except aiohttp.ClientError as e:
+                last_exception = e
+                await asyncio.sleep(1)  # 等待1秒后重试
+
+        # 如果所有重试都失败了
+        raise NetworkConnectionError() from last_exception
 
     async def get_response(
         self,
