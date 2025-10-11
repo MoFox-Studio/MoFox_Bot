@@ -40,13 +40,23 @@ async def message_recv(server_connection: Server.ServerConnection):
     asyncio.create_task(notice_handler.set_server_connection(server_connection))
     await send_handler.set_server_connection(server_connection)
     async for raw_message in server_connection:
-        # 只在debug模式下记录原始消息
-        if logger.level <= 10:  # DEBUG level
-            logger.debug(f"{raw_message[:1500]}..." if (len(raw_message) > 1500) else raw_message)
-        decoded_raw_message: dict = json.loads(raw_message)
+        message_str = ""
         try:
-            # 首先尝试解析原始消息
-            decoded_raw_message: dict = json.loads(raw_message)
+            # 确保消息是字符串
+            if isinstance(raw_message, bytes):
+                message_str = raw_message.decode('utf-8', errors='ignore')
+            elif isinstance(raw_message, str):
+                message_str = raw_message
+            else:
+                logger.warning(f"接收到未知类型的消息: {type(raw_message)}")
+                continue
+
+            # 只在debug模式下记录原始消息
+            if logger.level <= 10:  # DEBUG level
+                logger.debug(f"{message_str[:1500]}..." if (len(message_str) > 1500) else message_str)
+
+            # 解析消息
+            decoded_raw_message: dict = json.loads(message_str)
 
             # 检查是否是切片消息 (来自 MMC)
             if chunker.is_chunk_message(decoded_raw_message):
@@ -71,10 +81,10 @@ async def message_recv(server_connection: Server.ServerConnection):
 
         except json.JSONDecodeError as e:
             logger.error(f"消息解析失败: {e}")
-            logger.debug(f"原始消息: {raw_message[:500]}...")
+            logger.debug(f"原始消息: {message_str[:500]}...")
         except Exception as e:
             logger.error(f"处理消息时出错: {e}")
-            logger.debug(f"原始消息: {raw_message[:500]}...")
+            logger.debug(f"原始消息: {message_str[:500]}...")
 
 
 async def message_process():
@@ -229,7 +239,7 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
         logger.info("开始启动Napcat Adapter")
 
         # 创建单独的异步任务，防止阻塞主线程
-        asyncio.create_task(self._start_maibot_connection())
+        asyncio.create_task(self._start_mofox_bot_connection())
         asyncio.create_task(napcat_server(self.plugin_config))
         asyncio.create_task(message_process())
         asyncio.create_task(check_timeout_response())
@@ -246,7 +256,7 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
             try:
                 logger.info(f"尝试连接MoFox-Bot (第{attempt + 1}次)")
                 await mmc_start_com(self.plugin_config)
-                message_send_instance.mofox_bot_router = router
+                setattr(message_send_instance, 'mofox_bot_router', router)
                 logger.info("MoFox-Bot router连接已建立")
                 return
             except Exception as e:
@@ -404,16 +414,16 @@ class NapcatAdapterPlugin(BasePlugin):
     def register_events(self):
         # 注册事件
         for e in event_types.NapcatEvent.ON_RECEIVED:
-            event_manager.register_event(e, allowed_triggers=[self.plugin_name])
+            event_manager.register_event(e.value, allowed_triggers=[self.plugin_name])
 
         for e in event_types.NapcatEvent.ACCOUNT:
-            event_manager.register_event(e, allowed_subscribers=[f"{e.value}_handler"])
+            event_manager.register_event(e.value, allowed_subscribers=[f"{e.value}_handler"])
 
         for e in event_types.NapcatEvent.GROUP:
-            event_manager.register_event(e, allowed_subscribers=[f"{e.value}_handler"])
+            event_manager.register_event(e.value, allowed_subscribers=[f"{e.value}_handler"])
 
         for e in event_types.NapcatEvent.MESSAGE:
-            event_manager.register_event(e, allowed_subscribers=[f"{e.value}_handler"])
+            event_manager.register_event(e.value, allowed_subscribers=[f"{e.value}_handler"])
 
     def get_plugin_components(self):
         self.register_events()
