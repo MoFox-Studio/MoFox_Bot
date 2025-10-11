@@ -1,8 +1,10 @@
 from maim_message import Router, RouteConfig, TargetConfig
+
 from src.common.logger import get_logger
-import os
-from .send_handler import send_handler
+from src.common.server import get_global_server
 from src.plugin_system.apis import config_api
+
+from .send_handler import send_handler
 
 logger = get_logger("napcat_adapter")
 
@@ -13,8 +15,9 @@ def create_router(plugin_config: dict):
     """创建路由器实例"""
     global router
     platform_name = config_api.get_plugin_config(plugin_config, "maibot_server.platform_name", "qq")
-    host = os.getenv("HOST", "127.0.0.1")
-    port = os.getenv("PORT", "8000")
+    server = get_global_server()
+    host = server.host
+    port = server.port
     logger.debug(f"初始化MaiBot连接，使用地址：{host}:{port}")
     route_config = RouteConfig(
         route_config={

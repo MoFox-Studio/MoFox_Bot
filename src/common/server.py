@@ -1,19 +1,22 @@
 import os
-
+import socket
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # 新增导入
 from rich.traceback import install
-from uvicorn import Config
-from uvicorn import Server as UvicornServer
+from uvicorn import Config, Server as UvicornServer
+
+from src.common.logger import get_logger
 
 install(extra_lines=3)
+
+logger = get_logger("Server")
 
 
 class Server:
     def __init__(self, host: str | None = None, port: int | None = None, app_name: str = "MaiMCore"):
         self.app = FastAPI(title=app_name)
-        self._host: str = "127.0.0.1"
-        self._port: int = 8080
+        self.host: str = "127.0.0.1"
+        self.port: int = 8080
         self._server: UvicornServer | None = None
         self.set_address(host, port)
 
@@ -60,14 +63,23 @@ class Server:
     def set_address(self, host: str | None = None, port: int | None = None):
         """设置服务器地址和端口"""
         if host:
-            self._host = host
+            self.host = host
         if port:
-            self._port = port
+            self.port = port
+
+    def _is_port_in_use(self, port: int):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            return s.connect_ex(("127.0.0.1", port)) == 0
 
     async def run(self):
         """启动服务器"""
+        while self._is_port_in_use(self.port):
+            logger.warning(f"端口 {self.port} 已被占用，正在尝试下一个端口...")
+            self.port += 1
+
+        logger.info(f"将在 http://{self.host}:{self.port} 上启动服务器")
         # 禁用 uvicorn 默认日志和访问日志
-        config = Config(app=self.app, host=self._host, port=self._port, log_config=None, access_log=False)
+        config = Config(app=self.app, host=self.host, port=self.port, log_config=None, access_log=False)
         self._server = UvicornServer(config=config)
         try:
             await self._server.serve()
