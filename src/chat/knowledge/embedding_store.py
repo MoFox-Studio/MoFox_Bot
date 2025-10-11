@@ -125,123 +125,59 @@ class EmbeddingStore:
         self.idx2hash = None
 
     @staticmethod
-    def _get_embedding(s: str) -> list[float]:
-        """获取字符串的嵌入向量，使用完全同步的方式避免事件循环问题"""
-        # 创建新的事件循环并在完成后立即关闭
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            # 创建新的LLMRequest实例
-            from src.config.config import model_config
-            from src.llm_models.utils_model import LLMRequest
-
-            llm = LLMRequest(model_set=model_config.model_task_config.embedding, request_type="embedding")
-
-            # 使用新的事件循环运行异步方法
-            embedding, _ = loop.run_until_complete(llm.get_embedding(s))
-
-            if embedding and len(embedding) > 0:
-                return embedding
-            else:
-                logger.error(f"获取嵌入失败: {s}")
-                return []
-
-        except Exception as e:
-            logger.error(f"获取嵌入时发生异常: {s}, 错误: {e}")
-            return []
-        finally:
-            # 确保事件循环被正确关闭
-            try:
-                loop.close()
-            except Exception:
-                ...
-
-    @staticmethod
     def _get_embeddings_batch_threaded(
-        strs: list[str], chunk_size: int = 10, max_workers: int = 10, progress_callback=None
+        strs: list[str],
+        main_loop: asyncio.AbstractEventLoop,
+        chunk_size: int = 10,
+        max_workers: int = 10,
+        progress_callback=None,
     ) -> list[tuple[str, list[float]]]:
-        """使用多线程批量获取嵌入向量
-
-        Args:
-            strs: 要获取嵌入的字符串列表
-            chunk_size: 每个线程处理的数据块大小
-            max_workers: 最大线程数
-            progress_callback: 进度回调函数，接收一个参数表示完成的数量
-
-        Returns:
-            包含(原始字符串, 嵌入向量)的元组列表，保持与输入顺序一致
-        """
+        """使用多线程批量获取嵌入向量, 并通过 run_coroutine_threadsafe 在主事件循环中运行异步任务"""
         if not strs:
             return []
 
-        # 分块
-        chunks = []
-        for i in range(0, len(strs), chunk_size):
-            chunk = strs[i : i + chunk_size]
-            chunks.append((i, chunk))  # 保存起始索引以维持顺序
+        # 导入必要的模块
+        from src.config.config import model_config
+        from src.llm_models.utils_model import LLMRequest
 
-        # 结果存储，使用字典按索引存储以保证顺序
+        # 在主线程（即主事件循环所在的线程）中创建LLMRequest实例
+        # 这样可以确保它绑定到正确的事件循环
+        llm = LLMRequest(model_set=model_config.model_task_config.embedding, request_type="embedding")
+
+        # 分块
+        chunks = [(i, strs[i : i + chunk_size]) for i in range(0, len(strs), chunk_size)]
         results = {}
 
         def process_chunk(chunk_data):
-            """处理单个数据块的函数"""
+            """在工作线程中运行的函数"""
             start_idx, chunk_strs = chunk_data
             chunk_results = []
 
-            # 为每个线程创建独立的LLMRequest实例
-            from src.config.config import model_config
-            from src.llm_models.utils_model import LLMRequest
+            for i, s in enumerate(chunk_strs):
+                embedding = []
+                try:
+                    # 将异步的 get_embedding 调用提交到主事件循环
+                    future = asyncio.run_coroutine_threadsafe(llm.get_embedding(s), main_loop)
+                    # 同步等待结果，延长超时时间
+                    embedding_result, _ = future.result(timeout=60)
 
-            try:
-                # 创建线程专用的LLM实例
-                llm = LLMRequest(model_set=model_config.model_task_config.embedding, request_type="embedding")
+                    if embedding_result and len(embedding_result) > 0:
+                        embedding = embedding_result
+                    else:
+                        logger.error(f"获取嵌入失败（返回为空）: {s}")
 
-                for i, s in enumerate(chunk_strs):
-                    try:
-                        # 在线程中创建独立的事件循环
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        try:
-                            embedding = loop.run_until_complete(llm.get_embedding(s))
-                        finally:
-                            loop.close()
-
-                        if embedding and len(embedding) > 0:
-                            chunk_results.append((start_idx + i, s, embedding[0]))  # embedding[0] 是实际的向量
-                        else:
-                            logger.error(f"获取嵌入失败: {s}")
-                            chunk_results.append((start_idx + i, s, []))
-
-                        # 每完成一个嵌入立即更新进度
-                        if progress_callback:
-                            progress_callback(1)
-
-                    except Exception as e:
-                        logger.error(f"获取嵌入时发生异常: {s}, 错误: {e}")
-                        chunk_results.append((start_idx + i, s, []))
-
-                        # 即使失败也要更新进度
-                        if progress_callback:
-                            progress_callback(1)
-
-            except Exception as e:
-                logger.error(f"创建LLM实例失败: {e}")
-                # 如果创建LLM实例失败，返回空结果
-                for i, s in enumerate(chunk_strs):
-                    chunk_results.append((start_idx + i, s, []))
-                    # 即使失败也要更新进度
+                except Exception as e:
+                    logger.error(f"在线程中获取嵌入时发生异常: {s}, 错误: {type(e).__name__}: {e}")
+                finally:
+                    chunk_results.append((start_idx + i, s, embedding))
                     if progress_callback:
                         progress_callback(1)
 
             return chunk_results
 
-        # 使用线程池处理
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # 提交所有任务
             future_to_chunk = {executor.submit(process_chunk, chunk): chunk for chunk in chunks}
 
-            # 收集结果（进度已在process_chunk中实时更新）
             for future in as_completed(future_to_chunk):
                 try:
                     chunk_results = future.result()
@@ -249,22 +185,14 @@ class EmbeddingStore:
                         results[idx] = (s, embedding)
                 except Exception as e:
                     chunk = future_to_chunk[future]
-                    logger.error(f"处理数据块时发生异常: {chunk}, 错误: {e}")
-                    # 为失败的块添加空结果
+                    logger.error(f"处理数据块时发生严重异常: {chunk}, 错误: {e}")
                     start_idx, chunk_strs = chunk
-                    for i, s in enumerate(chunk_strs):
-                        results[start_idx + i] = (s, [])
+                    for i, s_item in enumerate(chunk_strs):
+                        if (start_idx + i) not in results:
+                            results[start_idx + i] = (s_item, [])
 
         # 按原始顺序返回结果
-        ordered_results = []
-        for i in range(len(strs)):
-            if i in results:
-                ordered_results.append(results[i])
-            else:
-                # 防止遗漏
-                ordered_results.append((strs[i], []))
-
-        return ordered_results
+        return [results.get(i, (strs[i], [])) for i in range(len(strs))]
 
     @staticmethod
     def get_test_file_path():
@@ -274,9 +202,17 @@ class EmbeddingStore:
         """保存测试字符串的嵌入到本地（使用多线程优化）"""
         logger.info("开始保存测试字符串的嵌入向量...")
 
+        # 获取当前正在运行的事件循环
+        try:
+            main_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error("无法获取正在运行的事件循环。请确保在异步上下文中调用此方法。")
+            return
+
         # 使用多线程批量获取测试字符串的嵌入
         embedding_results = self._get_embeddings_batch_threaded(
             EMBEDDING_TEST_STRINGS,
+            main_loop,
             chunk_size=min(self.chunk_size, len(EMBEDDING_TEST_STRINGS)),
             max_workers=min(self.max_workers, len(EMBEDDING_TEST_STRINGS)),
         )
@@ -288,8 +224,6 @@ class EmbeddingStore:
                 test_vectors[str(idx)] = embedding
             else:
                 logger.error(f"获取测试字符串嵌入失败: {s}")
-                # 使用原始单线程方法作为后备
-                test_vectors[str(idx)] = self._get_embedding(s)
 
         with open(self.get_test_file_path(), "w", encoding="utf-8") as f:
             f.write(orjson.dumps(test_vectors, option=orjson.OPT_INDENT_2).decode("utf-8"))
@@ -321,9 +255,17 @@ class EmbeddingStore:
 
         logger.info("开始检验嵌入模型一致性...")
 
+        # 获取当前正在运行的事件循环
+        try:
+            main_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            logger.error("无法获取正在运行的事件循环。请确保在异步上下文中调用此方法。")
+            return False
+
         # 使用多线程批量获取当前模型的嵌入
         embedding_results = self._get_embeddings_batch_threaded(
             EMBEDDING_TEST_STRINGS,
+            main_loop,
             chunk_size=min(self.chunk_size, len(EMBEDDING_TEST_STRINGS)),
             max_workers=min(self.max_workers, len(EMBEDDING_TEST_STRINGS)),
         )
@@ -383,11 +325,20 @@ class EmbeddingStore:
                 progress.update(task, advance=already_processed)
 
             if new_strs:
+                try:
+                    main_loop = asyncio.get_running_loop()
+                except RuntimeError:
+                    logger.error("无法获取正在运行的事件循环。请确保在异步上下文中调用此方法。")
+                    # 更新进度条以反映未处理的项目
+                    progress.update(task, advance=len(new_strs))
+                    return
+
                 # 使用实例配置的参数，智能调整分块和线程数
                 optimal_chunk_size = max(
                     MIN_CHUNK_SIZE,
                     min(
-                        self.chunk_size, len(new_strs) // self.max_workers if self.max_workers > 0 else self.chunk_size
+                        self.chunk_size,
+                        len(new_strs) // self.max_workers if self.max_workers > 0 else self.chunk_size,
                     ),
                 )
                 optimal_max_workers = min(
@@ -404,12 +355,13 @@ class EmbeddingStore:
                 # 批量获取嵌入，并实时更新进度
                 embedding_results = self._get_embeddings_batch_threaded(
                     new_strs,
+                    main_loop,
                     chunk_size=optimal_chunk_size,
                     max_workers=optimal_max_workers,
                     progress_callback=update_progress,
                 )
 
-                # 存入结果（不再需要在这里更新进度，因为已经在回调中更新了）
+                # 存入结果
                 for s, embedding in embedding_results:
                     item_hash = self.namespace + "-" + get_sha256(s)
                     if embedding:  # 只有成功获取到嵌入才存入
