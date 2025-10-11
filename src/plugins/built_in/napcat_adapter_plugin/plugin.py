@@ -234,7 +234,7 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
         asyncio.create_task(message_process())
         asyncio.create_task(check_timeout_response())
 
-    async def _start_mofox_bot_connection(self):
+    async def _start_maibot_connection(self):
         """非阻塞方式启动MoFox-Bot连接，等待主服务启动后再连接"""
         # 等待一段时间让MoFox-Bot主服务完全启动
         await asyncio.sleep(5)
@@ -246,7 +246,7 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
             try:
                 logger.info(f"尝试连接MoFox-Bot (第{attempt + 1}次)")
                 await mmc_start_com(self.plugin_config)
-                message_send_instance.mofox_bot_router = router
+                message_send_instance.maibot_router = router
                 logger.info("MoFox-Bot router连接已建立")
                 return
             except Exception as e:
