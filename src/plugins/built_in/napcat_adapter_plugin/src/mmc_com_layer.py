@@ -18,7 +18,7 @@ def create_router(plugin_config: dict):
     server = get_global_server()
     host = server.host
     port = server.port
-    logger.debug(f"初始化MaiBot连接，使用地址：{host}:{port}")
+    logger.debug(f"初始化MoFox-Bot连接，使用地址：{host}:{port}")
     route_config = RouteConfig(
         route_config={
             platform_name: TargetConfig(
@@ -33,7 +33,7 @@ def create_router(plugin_config: dict):
 
 async def mmc_start_com(plugin_config: dict | None = None):
     """启动MaiBot连接"""
-    logger.debug("正在连接MaiBot")
+    logger.debug("正在连接MoFox-Bot")
     if plugin_config:
         create_router(plugin_config)
 
