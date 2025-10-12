@@ -106,10 +106,12 @@ class EULAManager:
         """检查EULA和隐私条款确认状态"""
         confirm_logger = get_logger("confirm")
 
+        # 只在开始时加载一次，避免重复读取文件
         if not ConfigManager.safe_load_dotenv():
             confirm_logger.error("无法加载环境变量，EULA检查失败")
             sys.exit(1)
 
+        # 从 os.environ 读取（避免重复 I/O）
         eula_confirmed = os.getenv("EULA_CONFIRMED", "").lower()
         if eula_confirmed == "true":
             logger.info("EULA已通过环境变量确认")
@@ -128,8 +130,7 @@ class EULAManager:
                 await asyncio.sleep(EULA_CHECK_INTERVAL)
                 attempts += 1
 
-                # 重新加载环境变量
-                ConfigManager.safe_load_dotenv()
+                # 从 os.environ 读取，避免重复 I/O
                 eula_confirmed = os.getenv("EULA_CONFIRMED", "").lower()
                 if eula_confirmed == "true":
                     confirm_logger.info("EULA确认成功，感谢您的同意")
