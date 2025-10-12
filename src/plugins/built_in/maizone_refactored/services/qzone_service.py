@@ -458,7 +458,7 @@ class QZoneService:
                             raise RuntimeError(f"获取 cookie 失败: {data}")
                         return data["data"]
 
-            except aiohttp.ClientError as e:  # noqa: PERF203
+            except aiohttp.ClientError as e:
                 if attempt < max_retries - 1:
                     logger.warning(f"无法连接到Napcat服务(尝试 {attempt + 1}/{max_retries}): {url}，错误: {e!s}")
                     await asyncio.sleep(retry_delay)

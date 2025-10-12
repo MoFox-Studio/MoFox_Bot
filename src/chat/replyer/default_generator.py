@@ -26,7 +26,6 @@ from src.chat.utils.memory_mappings import get_memory_type_chinese_label
 from src.chat.utils.prompt import Prompt, PromptParameters, global_prompt_manager
 from src.chat.utils.timer_calculator import Timer
 from src.chat.utils.utils import get_chat_type_and_target_info
-from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.individuality.individuality import get_individuality
@@ -256,7 +255,7 @@ class DefaultReplyer:
         enable_tool: bool = True,
         from_plugin: bool = True,
         stream_id: str | None = None,
-        reply_message: DatabaseMessages | None = None,
+        reply_message: dict[str, Any] | None = None,
     ) -> tuple[bool, dict[str, Any] | None, str | None]:
         # sourcery skip: merge-nested-ifs
         """
@@ -1105,7 +1104,7 @@ class DefaultReplyer:
         extra_info: str = "",
         available_actions: dict[str, ActionInfo] | None = None,
         enable_tool: bool = True,
-        reply_message: DatabaseMessages | dict[str, Any] | None = None,
+        reply_message: dict[str, Any] | None = None,
     ) -> str:
         """
         构建回复器上下文
@@ -1123,11 +1122,6 @@ class DefaultReplyer:
         """
         if available_actions is None:
             available_actions = {}
-
-        # 确保 reply_message 是 DatabaseMessages 对象
-        if isinstance(reply_message, dict):
-            reply_message = DatabaseMessages(**reply_message)
-
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         person_info_manager = get_person_info_manager()
@@ -1152,10 +1146,10 @@ class DefaultReplyer:
             if reply_message is None:
                 logger.warning("reply_message 为 None，无法构建prompt")
                 return ""
-            platform = reply_message.chat_info.platform
+            platform = reply_message.get("chat_info_platform")
             person_id = person_info_manager.get_person_id(
                 platform,  # type: ignore
-                reply_message.user_info.user_id,  # type: ignore
+                reply_message.get("user_id"),  # type: ignore
             )
             person_name = await person_info_manager.get_value(person_id, "person_name")
 
@@ -1164,22 +1158,22 @@ class DefaultReplyer:
                 # 尝试从reply_message获取用户名
                 await person_info_manager.first_knowing_some_one(
                     platform,  # type: ignore
-                    reply_message.user_info.user_id,  # type: ignore
-                    reply_message.user_info.user_nickname or "",
-                    reply_message.user_info.user_cardname or "",
+                    reply_message.get("user_id"),  # type: ignore
+                    reply_message.get("user_nickname") or "",
+                    reply_message.get("user_cardname") or "",
                 )
 
             # 检查是否是bot自己的名字，如果是则替换为"(你)"
             bot_user_id = str(global_config.bot.qq_account)
             current_user_id = await person_info_manager.get_value(person_id, "user_id")
-            current_platform = reply_message.chat_info.platform
+            current_platform = reply_message.get("chat_info_platform")
 
             if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
                 sender = f"{person_name}(你)"
             else:
                 # 如果不是bot自己，直接使用person_name
                 sender = person_name
-            target = reply_message.processed_plain_text
+            target = reply_message.get("processed_plain_text")
 
         # 最终的空值检查，确保sender和target不为None
         if sender is None:
@@ -1501,15 +1495,15 @@ class DefaultReplyer:
         raw_reply: str,
         reason: str,
         reply_to: str,
-        reply_message: DatabaseMessages | None = None,
+        reply_message: dict[str, Any] | None = None,
     ) -> str:  # sourcery skip: merge-else-if-into-elif, remove-redundant-if
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         is_group_chat = bool(chat_stream.group_info)
 
         if reply_message:
-            sender = reply_message.user_info.user_nickname or reply_message.user_info.user_cardname
-            target = reply_message.processed_plain_text
+            sender = reply_message.get("sender")
+            target = reply_message.get("target")
         else:
             sender, target = self._parse_reply_target(reply_to)
 

@@ -279,10 +279,7 @@ class ChatterPlanFilter:
             is_group_chat = plan.chat_type == ChatType.GROUP
             chat_context_description = "你现在正在一个群聊中"
             if not is_group_chat and plan.target_info:
-                if isinstance(plan.target_info, dict):
-                    chat_target_name = plan.target_info.get("person_name") or plan.target_info.get("user_nickname") or "对方"
-                else:
-                    chat_target_name = plan.target_info.person_name or plan.target_info.user_nickname or "对方"
+                chat_target_name = plan.target_info.person_name or plan.target_info.user_nickname or "对方"
                 chat_context_description = f"你正在和 {chat_target_name} 私聊"
 
             action_options_block = await self._build_action_options(plan.available_actions)
@@ -557,21 +554,21 @@ class ChatterPlanFilter:
                 ):
                     reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                     action = "no_action"
-                from src.common.data_models.database_data_model import DatabaseMessages
+                #from src.common.data_models.database_data_model import DatabaseMessages
 
-                action_message_obj = None
-                if target_message_obj:
-                    try:
-                        action_message_obj = DatabaseMessages(**target_message_obj)
-                    except Exception:
-                        logger.warning("无法将目标消息转换为DatabaseMessages对象")
+                #action_message_obj = None
+                #if target_message_obj:
+                    #try:
+                        #action_message_obj = DatabaseMessages(**target_message_obj)
+                    #except Exception:
+                        #logger.warning("无法将目标消息转换为DatabaseMessages对象")
 
                 parsed_actions.append(
                     ActionPlannerInfo(
                         action_type=action,
                         reasoning=reasoning,
                         action_data=action_data,
-                        action_message=action_message_obj,
+                        action_message=target_message_obj,
                         available_actions=plan.available_actions,
                     )
                 )
