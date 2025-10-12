@@ -34,12 +34,14 @@ async def get_context_group(chat_id: str) -> ContextGroup | None:
     current_type = "group" if is_group else "private"
 
     for group in global_config.cross_context.groups:
-        # 检查当前聊天的ID和类型是否在组的chat_ids中
-        if [current_type, str(current_chat_raw_id)] in group.chat_ids:
-            # 排除maizone专用组
-            if group.name == "maizone_context_group":
-                continue
-            return group
+        for chat_info in group.chat_ids:
+            if len(chat_info) >= 2:
+                chat_type, chat_raw_id = chat_info[0], chat_info[1]
+                if chat_type == current_type and str(chat_raw_id) == str(current_chat_raw_id):
+                    # 排除maizone专用组
+                    if group.name == "maizone_context_group":
+                        continue
+                    return group
 
     return None
 
@@ -118,108 +120,88 @@ async def build_cross_context_normal(chat_stream: ChatStream, context_group: Con
 
 async def build_cross_context_s4u(
     chat_stream: ChatStream,
-    context_group: ContextGroup,
     target_user_info: dict[str, Any] | None,
 ) -> str:
     """
-    构建跨群聊/私聊上下文 (S4U模式)
+    构建跨群聊/私聊上下文 (S4U模式)。
+
+    基于全局S4U配置，检索目标用户在其他聊天中的发言。
     """
-    cross_context_messages = []
+    cross_context_config = global_config.cross_context
     if not target_user_info or not (user_id := target_user_info.get("user_id")):
         return ""
 
     chat_manager = get_chat_manager()
-    current_chat_raw_id = chat_stream.group_info.group_id if chat_stream.group_info else chat_stream.user_info.user_id
-    current_type = "group" if chat_stream.group_info else "private"
+    all_user_messages = []
 
-    # 根据模式（黑名单/白名单）决定需要处理哪些聊天
-    chat_infos_to_process = []
-    if context_group.mode == "blacklist":
-        # 黑名单模式：获取除当前聊天和黑名单内聊天之外的所有聊天
-        blacklisted_ids = {tuple(info[:2]) for info in context_group.chat_ids}
-        for stream_id, stream in chat_manager.streams.items():
-            if stream_id == chat_stream.stream_id:
-                continue  # 排除当前聊天
+    # 1. 根据全局S4U配置确定要扫描的聊天范围
+    streams_to_scan = []
+    if cross_context_config.s4u_mode == "whitelist":
+        for chat_str in cross_context_config.s4u_whitelist_chats:
+            try:
+                platform, chat_type, chat_raw_id = chat_str.split(":")
+                is_group = chat_type == "group"
+                stream_id = chat_manager.get_stream_id(platform, chat_raw_id, is_group=is_group)
+                if stream_id and stream_id != chat_stream.stream_id:
+                    streams_to_scan.append(stream_id)
+            except ValueError:
+                logger.warning(f"无效的S4U白名单格式: {chat_str}")
+    else:  # blacklist mode
+        blacklisted_streams = set()
+        for chat_str in cross_context_config.s4u_blacklist_chats:
+            try:
+                platform, chat_type, chat_raw_id = chat_str.split(":")
+                is_group = chat_type == "group"
+                stream_id = chat_manager.get_stream_id(platform, chat_raw_id, is_group=is_group)
+                if stream_id:
+                    blacklisted_streams.add(stream_id)
+            except ValueError:
+                logger.warning(f"无效的S4U黑名单格式: {chat_str}")
 
-            is_group = stream.group_info is not None
-            chat_type = "group" if is_group else "private"
+        for stream_id in chat_manager.streams:
+            if stream_id != chat_stream.stream_id and stream_id not in blacklisted_streams:
+                streams_to_scan.append(stream_id)
 
-            # 安全地获取 raw_id
-            if is_group and stream.group_info:
-                raw_id = stream.group_info.group_id
-            elif not is_group and stream.user_info:
-                raw_id = stream.user_info.user_id
-            else:
-                continue  # 如果缺少关键信息则跳过
-
-            # 如果不在黑名单中，则加入处理列表
-            if (chat_type, str(raw_id)) not in blacklisted_ids:
-                chat_infos_to_process.append([chat_type, str(raw_id), str(context_group.default_limit)])
-    else:  # 白名单模式
-        # 白名单模式：只获取在 chat_ids 中且非当前聊天的聊天
-        chat_infos_to_process = [
-            chat_info
-            for chat_info in context_group.chat_ids
-            if chat_info[:2] != [current_type, str(current_chat_raw_id)]
-        ]
-
-    # 1. 处理筛选出的目标聊天
-    for chat_info in chat_infos_to_process:
-        chat_type, chat_raw_id, limit_str = (
-            chat_info[0],
-            chat_info[1],
-            chat_info[2] if len(chat_info) > 2 else str(context_group.default_limit),
-        )
-        limit = int(limit_str)
-        is_group = chat_type == "group"
-        stream_id = chat_manager.get_stream_id(chat_stream.platform, chat_raw_id, is_group=is_group)
-        if not stream_id:
-            continue
-
+    # 2. 从筛选出的聊天流中获取目标用户的消息
+    limit = cross_context_config.s4u_limit
+    for stream_id in streams_to_scan:
         try:
+            # 获取稍多一些消息以确保能筛选出用户消息
             messages = await get_raw_msg_before_timestamp_with_chat(
-                chat_id=stream_id, timestamp=time.time(), limit=limit * 4
+                chat_id=stream_id, timestamp=time.time(), limit=limit * 5
             )
             user_messages = [msg for msg in messages if msg.get("user_id") == user_id][-limit:]
 
             if user_messages:
-                chat_name = await chat_manager.get_stream_name(stream_id) or chat_raw_id
-                user_name = target_user_info.get("person_name") or target_user_info.get("user_nickname") or user_id
-                formatted_messages, _ = await build_readable_messages_with_id(user_messages, timestamp_mode="relative")
-                cross_context_messages.append(f'[以下是"{user_name}"在"{chat_name}"的近期发言]\n{formatted_messages}')
-        except Exception as e:
-            logger.error(f"获取用户 {user_id} 在聊天 {chat_raw_id} 的消息失败: {e}")
-
-    # 2. 如果开启了 s4u_ignore_whitelist，则获取用户与Bot的私聊记录
-    if context_group.s4u_ignore_whitelist:
-        private_stream_id = chat_manager.get_stream_id(chat_stream.platform, user_id, is_group=False)
-        # 检查该私聊是否已在白名单中处理过
-        is_already_processed = any(info[0] == "private" and info[1] == user_id for info in context_group.chat_ids)
-
-        if private_stream_id and not is_already_processed:
-            try:
-                limit = context_group.default_limit
-                messages = await get_raw_msg_before_timestamp_with_chat(
-                    chat_id=private_stream_id, timestamp=time.time(), limit=limit * 4
+                # 记录消息来源的 stream_id 和最新消息的时间戳
+                latest_timestamp = max(msg.get("time", 0) for msg in user_messages)
+                all_user_messages.append(
+                    {"stream_id": stream_id, "messages": user_messages, "latest_timestamp": latest_timestamp}
                 )
-                user_messages = [msg for msg in messages if msg.get("user_id") == user_id][-limit:]
+        except Exception as e:
+            logger.error(f"S4U模式下获取聊天 {stream_id} 的消息失败: {e}")
 
-                if user_messages:
-                    chat_name = await chat_manager.get_stream_name(private_stream_id) or user_id
-                    user_name = target_user_info.get("person_name") or target_user_info.get("user_nickname") or user_id
-                    formatted_messages, _ = await build_readable_messages_with_id(
-                        user_messages, timestamp_mode="relative"
-                    )
-                    cross_context_messages.append(
-                        f'[以下是"{user_name}"在与你的私聊中的近期发言]\n{formatted_messages}'
-                    )
-            except Exception as e:
-                logger.error(f"获取用户 {user_id} 的私聊消息失败: {e}")
+    # 3. 按最新消息时间排序，并根据 stream_limit 截断
+    all_user_messages.sort(key=lambda x: x["latest_timestamp"], reverse=True)
+    limited_messages = all_user_messages[: cross_context_config.s4u_stream_limit]
 
-    if not cross_context_messages:
+    # 4. 格式化最终的消息文本
+    cross_context_blocks = []
+    for item in limited_messages:
+        stream_id = item["stream_id"]
+        messages = item["messages"]
+        try:
+            chat_name = await chat_manager.get_stream_name(stream_id) or "未知聊天"
+            user_name = target_user_info.get("person_name") or target_user_info.get("user_nickname") or user_id
+            formatted, _ = await build_readable_messages_with_id(messages, timestamp_mode="relative")
+            cross_context_blocks.append(f'[以下是"{user_name}"在"{chat_name}"的近期发言]\n{formatted}')
+        except Exception as e:
+            logger.error(f"S4U模式下格式化消息失败 (stream: {stream_id}): {e}")
+
+    if not cross_context_blocks:
         return ""
 
-    return "### 其他群聊中的聊天记录\n" + "\n\n".join(cross_context_messages) + "\n"
+    return "### 其他群聊中的聊天记录\n" + "\n\n".join(cross_context_blocks) + "\n"
 
 
 async def get_intercom_group_context(group_name: str, limit_per_chat: int = 20, total_limit: int = 100) -> str | None:

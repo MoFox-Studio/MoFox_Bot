@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.11"
+version = "7.3.0"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -521,39 +521,51 @@ insomnia_trigger_delay_minutes = [15, 45]
 [cross_context] # 跨群聊/私聊上下文共享配置
 # 这是总开关，用于一键启用或禁用此功能
 enable = true
+
+# --- Normal模式: 共享组配置 ---
 # 在这里定义您的“共享组”
 # 只有在同一个组内的聊天才会共享上下文
-# 格式：chat_ids = [["type", "id", "limit" (可选)], ["type", "id", "limit" (可选)], ...]
-# type 可选 "group" 或 "private"
-# limit 是一个可选的整数（但需要以字符串形式写入），用于指定从该聊天流中获取的消息数量，如果未指定，默认为5
 [[cross_context.groups]]
 name = "项目A技术讨论组"
-# mode: (可选, 默认为 "whitelist")
-# "whitelist": 白名单模式，只有在 chat_ids 中明确列出的聊天才会共享上下文。
-# "blacklist": 黑名单模式，除了在 chat_ids 中列出的聊天外，所有其他聊天都会共享上下文。
+# mode: "whitelist"(白名单) 或 "blacklist"(黑名单)。默认 "whitelist"。
+# "whitelist": 仅共享chat_ids中列出的聊天。
+# "blacklist": 共享除chat_ids中列出的所有聊天。
 mode = "whitelist"
-# default_limit: (可选, 默认为 5)
-# 在 "blacklist" 模式下，未在 chat_ids 中指定的聊天将默认获取此数量的消息。
-# 同时，当 s4u_ignore_whitelist 设置为 true 时，获取用户私聊消息的数量也将使用此值。
+# default_limit: 在 "blacklist" 模式下，未指定数量的聊天默认获取的消息条数。
 default_limit = 5
-# s4u_ignore_whitelist: (可选, 默认为 false)
-# 如果设置为 true, 并且 prompt_mode 为 "s4u",
-# Bot将获取目标用户在所有与Bot的私聊中的消息, 即使该私聊没有被明确配置在下面的 chat_ids 中。
-# 这有助于构建更完整的用户画像, 但可能会增加token消耗。
-s4u_ignore_whitelist = false
+# chat_ids: 定义组内成员。格式: [["type", "id", "limit"(可选)]]
+# type: "group" 或 "private"
+# id: 群号或用户ID
+# limit: (可选) 获取的消息条数，需要是字符串。
 chat_ids = [
-    ["group", "169850076", "10"],  # 假设这是“开发群”的ID, 从这个群里拿10条消息
-    ["group", "1025509724", "5"],   # 假设这是“产品群”的ID，拿5条
-    ["private", "123456789"] # 假设这是某个用户的私聊，使用默认值5
+    ["group", "169850076", "10"],  # 开发群, 拿10条消息
+    ["group", "1025509724", "5"],   # 产品群, 拿5条
+    ["private", "123456789"]       # 某个用户的私聊, 使用默认值5
 ]
-# 定义QQ空间互通组
-# 同一个组的chat_id会共享上下文，用于生成更相关的说说
-[[cross_context.maizone_context_group]]
+
+# --- QQ空间专用互通组 (示例) ---
+# Maizone插件会根据组名 "Maizone默认互通组" 来获取上下文
+# 您可以修改下面的chat_ids来定义哪些聊天内容可以被Maizone插件参考
+[[cross_context.groups]]
 name = "Maizone默认互通组"
+mode = "whitelist"
+default_limit = 10
 chat_ids = [
-    ["group", "111111"], # 示例群聊1
+    ["group", "111111"],     # 示例群聊1
     ["private", "222222"]  # 示例私聊2
 ]
+
+
+# --- S4U模式: 用户中心上下文检索 ---
+# S4U模式不再依赖于共享组配置，而是使用以下全局配置
+s4u_mode = "whitelist" # "whitelist"(白名单) 或 "blacklist"(黑名单)。
+s4u_limit = 5 # S4U模式下，从每个聊天中获取目标用户的消息条数
+s4u_stream_limit = 3 # S4U模式下，最多检索多少个不同的聊天流 (按时间排序)
+# 白名单列表，格式: ["platform:type:id", ...]
+# 示例: ["qq:group:123456", "qq:private:7891011"]
+s4u_whitelist_chats = []
+# 黑名单列表，格式同上
+s4u_blacklist_chats = []
 
 [affinity_flow]
 # 兴趣评分系统参数

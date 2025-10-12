@@ -643,11 +643,7 @@ class ContextGroup(ValidatedConfigBase):
     )
     default_limit: int = Field(
         default=5,
-        description="在'blacklist'模式下，对于未明确指定数量的聊天，默认获取的消息条数。也用于s4u_ignore_whitelist开启时获取私聊消息的数量。",
-    )
-    s4u_ignore_whitelist: bool = Field(
-        default=False,
-        description="在s4u模式下，是否无视白名单，获取目标用户与Bot的所有私聊消息，以构建更完整的用户画像。",
+        description="在'blacklist'模式下，对于未明确指定数量的聊天，默认获取的消息条数。",
     )
     chat_ids: list[list[str]] = Field(
         ...,
@@ -655,11 +651,42 @@ class ContextGroup(ValidatedConfigBase):
     )
 
 
+class MaizoneContextGroup(ValidatedConfigBase):
+    """QQ空间专用互通组配置"""
+
+    name: str = Field(..., description="QQ空间互通组的名称")
+    chat_ids: list[list[str]] = Field(
+        ...,
+        description='定义组内成员的列表。格式为 [["type", "id"]]。type为"group"或"private"，id为群号或用户ID。',
+    )
+
+
 class CrossContextConfig(ValidatedConfigBase):
     """跨群聊上下文共享配置"""
 
     enable: bool = Field(default=False, description="是否启用跨群聊上下文共享功能")
+
+    # --- Normal模式: 共享组配置 ---
     groups: list[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
+
+    # --- S4U模式: 用户中心上下文检索 ---
+    s4u_mode: Literal["whitelist", "blacklist"] = Field(
+        default="whitelist",
+        description="S4U模式的白名单/黑名单模式",
+    )
+    s4u_limit: int = Field(default=5, description="S4U模式下，每个聊天获取的消息条数")
+    s4u_stream_limit: int = Field(default=3, description="S4U模式下，最多检索多少个不同的聊天流")
+    s4u_whitelist_chats: list[str] = Field(
+        default_factory=list,
+        description='S4U模式的白名单列表。格式: ["platform:type:id", ...]',
+    )
+    s4u_blacklist_chats: list[str] = Field(
+        default_factory=list,
+        description='S4U模式的黑名单列表。格式: ["platform:type:id", ...]',
+    )
+
+    # --- QQ空间专用互通组 ---
+    maizone_context_group: list[MaizoneContextGroup] = Field(default_factory=list, description="QQ空间专用互通组列表")
 
 
 class CommandConfig(ValidatedConfigBase):
