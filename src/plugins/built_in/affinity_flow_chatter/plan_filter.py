@@ -279,7 +279,7 @@ class ChatterPlanFilter:
             is_group_chat = plan.chat_type == ChatType.GROUP
             chat_context_description = "你现在正在一个群聊中"
             if not is_group_chat and plan.target_info:
-                chat_target_name = plan.target_info.person_name or plan.target_info.user_nickname or "对方"
+                chat_target_name = plan.target_info.get("person_name") or plan.target_info.get("user_nickname") or "对方"
                 chat_context_description = f"你正在和 {chat_target_name} 私聊"
 
             action_options_block = await self._build_action_options(plan.available_actions)
@@ -363,6 +363,7 @@ class ChatterPlanFilter:
                 read_history_block = "暂无已读历史消息"
 
             # 构建未读历史消息块（包含兴趣度）
+            message_id_list = []
             if unread_messages:
                 # 扁平化未读消息用于计算兴趣度和格式化
                 flattened_unread = [msg.flatten() for msg in unread_messages]
