@@ -557,21 +557,21 @@ class ChatterPlanFilter:
                 ):
                     reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                     action = "no_action"
-                from src.common.data_models.database_data_model import DatabaseMessages
+                #from src.common.data_models.database_data_model import DatabaseMessages
 
-                action_message_obj = None
-                if target_message_obj:
-                    try:
-                        action_message_obj = DatabaseMessages(**target_message_obj)
-                    except Exception:
-                        logger.warning("无法将目标消息转换为DatabaseMessages对象")
+                #action_message_obj = None
+                #if target_message_obj:
+                    #try:
+                        #action_message_obj = DatabaseMessages(**target_message_obj)
+                    #except Exception:
+                        #logger.warning("无法将目标消息转换为DatabaseMessages对象")
 
                 parsed_actions.append(
                     ActionPlannerInfo(
                         action_type=action,
                         reasoning=reasoning,
                         action_data=action_data,
-                        action_message=action_message_obj,
+                        action_message=target_message_obj,
                         available_actions=plan.available_actions,
                     )
                 )
