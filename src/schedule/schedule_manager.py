@@ -147,7 +147,7 @@ class ScheduleManager:
             schedule_str += f"  - {item.get('time_range', '未知时间')}: {item.get('activity', '未知活动')}\n"
         logger.info(schedule_str)
 
-    def get_current_activity(self) -> str | None:
+    def get_current_activity(self) -> dict[str, Any] | None:
         if not global_config.planning_system.schedule_enable or not self.today_schedule:
             return None
         now = datetime.now().time()
@@ -161,7 +161,7 @@ class ScheduleManager:
                 start_time = datetime.strptime(start_str.strip(), "%H:%M").time()
                 end_time = datetime.strptime(end_str.strip(), "%H:%M").time()
                 if (start_time <= now < end_time) or (end_time < start_time and (now >= start_time or now < end_time)):
-                    return activity
+                    return {"activity": activity, "time_range": time_range}
             except (ValueError, KeyError, AttributeError) as e:
                 logger.warning(f"解析日程事件失败: {event}, 错误: {e}")
         return None

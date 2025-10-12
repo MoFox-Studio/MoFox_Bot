@@ -135,8 +135,9 @@ class ChatterPlanFilter:
             plan.decided_actions = [ActionPlannerInfo(action_type="no_action", reasoning=f"筛选时出错: {e}")]
 
         # 在返回最终计划前，打印将要执行的动作
-        action_types = [action.action_type for action in plan.decided_actions]
-        logger.info(f"选择动作: [{SKY_BLUE}{', '.join(action_types) if action_types else '无'}{RESET_COLOR}]")
+        if plan.decided_actions:
+            action_types = [action.action_type for action in plan.decided_actions]
+            logger.info(f"选择动作: [{SKY_BLUE}{', '.join(action_types) if action_types else '无'}{RESET_COLOR}]")
 
         return plan
 
@@ -174,8 +175,9 @@ class ChatterPlanFilter:
             if angry_prompt_addition:
                 schedule_block = angry_prompt_addition
             elif global_config.planning_system.schedule_enable:
-                if current_activity := schedule_manager.get_current_activity():
-                    schedule_block = f"你当前正在：{current_activity},但注意它与群聊的聊天无关。"
+                if activity_info := schedule_manager.get_current_activity():
+                    activity = activity_info.get("activity", "未知活动")
+                    schedule_block = f"你当前正在：{activity},但注意它与群聊的聊天无关。"
 
             mood_block = ""
             # 如果被吵醒，则心情也是愤怒的，不需要另外的情绪模块
@@ -277,9 +279,7 @@ class ChatterPlanFilter:
             is_group_chat = plan.chat_type == ChatType.GROUP
             chat_context_description = "你现在正在一个群聊中"
             if not is_group_chat and plan.target_info:
-                chat_target_name = (
-                    plan.target_info.get("person_name") or plan.target_info.get("user_nickname") or "对方"
-                )
+                chat_target_name = plan.target_info.person_name or plan.target_info.user_nickname or "对方"
                 chat_context_description = f"你正在和 {chat_target_name} 私聊"
 
             action_options_block = await self._build_action_options(plan.available_actions)
@@ -554,13 +554,21 @@ class ChatterPlanFilter:
                 ):
                     reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                     action = "no_action"
+                from src.common.data_models.database_data_model import DatabaseMessages
+
+                action_message_obj = None
+                if target_message_obj:
+                    try:
+                        action_message_obj = DatabaseMessages(**target_message_obj)
+                    except Exception:
+                        logger.warning("无法将目标消息转换为DatabaseMessages对象")
 
                 parsed_actions.append(
                     ActionPlannerInfo(
                         action_type=action,
                         reasoning=reasoning,
                         action_data=action_data,
-                        action_message=target_message_obj,
+                        action_message=action_message_obj,
                         available_actions=plan.available_actions,
                     )
                 )
@@ -639,11 +647,11 @@ class ChatterPlanFilter:
                         # 特殊处理set_emoji_like的emoji参数
                         from src.plugins.built_in.social_toolkit_plugin.qq_emoji_list import qq_face
 
-                        emoji_options = [
-                            re.search(r"\[表情：(.+?)\]", name).group(1)
-                            for name in qq_face.values()
-                            if re.search(r"\[表情：(.+?)\]", name)
-                        ]
+                        emoji_options = []
+                        for name in qq_face.values():
+                            match = re.search(r"\[表情：(.+?)\]", name)
+                            if match:
+                                emoji_options.append(match.group(1))
                         example_value = f"<从'{', '.join(emoji_options[:10])}...'中选择一个>"
                     else:
                         example_value = f"<{p_desc}>"

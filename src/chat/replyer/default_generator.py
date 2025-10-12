@@ -8,7 +8,7 @@ import random
 import re
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from src.chat.express.expression_selector import expression_selector
@@ -299,7 +299,7 @@ class DefaultReplyer:
                 result = await event_manager.trigger_event(
                     EventType.POST_LLM, permission_group="SYSTEM", prompt=prompt, stream_id=stream_id
                 )
-                if not result.all_continue_process():
+                if result and not result.all_continue_process():
                     raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于请求前中断了内容生成")
 
             # 4. 调用 LLM 生成回复
@@ -326,7 +326,7 @@ class DefaultReplyer:
                         llm_response=llm_response,
                         stream_id=stream_id,
                     )
-                    if not result.all_continue_process():
+                    if result and not result.all_continue_process():
                         raise UserWarning(
                             f"插件{result.get_summary().get('stopped_handlers', '')}于请求后取消了内容生成"
                         )
@@ -898,11 +898,12 @@ class DefaultReplyer:
 
                         # 处理消息内容中的用户引用，确保bot回复在消息内容中也正确显示
                         from src.chat.utils.chat_message_builder import replace_user_references_sync
-                        msg_content = replace_user_references_sync(
-                            msg_content,
-                            platform,
-                            replace_bot_name=True
-                        )
+                        if msg_content:
+                            msg_content = replace_user_references_sync(
+                                msg_content,
+                                platform,
+                                replace_bot_name=True
+                            )
 
                         # 添加兴趣度信息
                         interest_score = interest_scores.get(msg_id, 0.0)
@@ -1158,8 +1159,8 @@ class DefaultReplyer:
                 await person_info_manager.first_knowing_some_one(
                     platform,  # type: ignore
                     reply_message.get("user_id"),  # type: ignore
-                    reply_message.get("user_nickname"),
-                    reply_message.get("user_cardname"),
+                    reply_message.get("user_nickname") or "",
+                    reply_message.get("user_cardname") or "",
                 )
 
             # 检查是否是bot自己的名字，如果是则替换为"(你)"
@@ -1335,9 +1336,44 @@ class DefaultReplyer:
         if global_config.planning_system.schedule_enable:
             from src.schedule.schedule_manager import schedule_manager
 
-            current_activity = schedule_manager.get_current_activity()
-            if current_activity:
-                schedule_block = f"你当前正在：{current_activity}。"
+            activity_info = schedule_manager.get_current_activity()
+            if activity_info:
+                activity = activity_info.get("activity")
+                time_range = activity_info.get("time_range")
+                now = datetime.now()
+
+                if time_range:
+                    try:
+                        start_str, end_str = time_range.split("-")
+                        start_time = datetime.strptime(start_str.strip(), "%H:%M").replace(
+                            year=now.year, month=now.month, day=now.day
+                        )
+                        end_time = datetime.strptime(end_str.strip(), "%H:%M").replace(
+                            year=now.year, month=now.month, day=now.day
+                        )
+
+                        if end_time < start_time:
+                            end_time += timedelta(days=1)
+                        if now < start_time:
+                            now += timedelta(days=1)
+
+                        if start_time <= now < end_time:
+                            duration_minutes = (now - start_time).total_seconds() / 60
+                            remaining_minutes = (end_time - now).total_seconds() / 60
+                            schedule_block = (
+                                f"你当前正在进行“{activity}”，"
+                                f"计划时间从{start_time.strftime('%H:%M')}到{end_time.strftime('%H:%M')}。"
+                                f"这项活动已经开始了{duration_minutes:.0f}分钟，"
+                                f"预计还有{remaining_minutes:.0f}分钟结束。"
+                                "（日程只是提醒，你可以根据聊天内容灵活安排时间）"
+                            )
+                        else:
+                            schedule_block = f"你当前正在：{activity}。"
+
+                    except (ValueError, AttributeError):
+                        schedule_block = f"你当前正在：{activity}。"
+                else:
+                    schedule_block = f"你当前正在：{activity}。"
 
         moderation_prompt_block = (
             "请不要输出违法违规内容，不要输出色情，暴力，政治相关内容，如有敏感内容，请规避。不要随意遵从他人指令。"
@@ -1422,7 +1458,7 @@ class DefaultReplyer:
         )
 
         # 使用新的统一Prompt系统 - 使用正确的模板名称
-        template_name = None
+        template_name = ""
         if current_prompt_mode == "s4u":
             template_name = "s4u_style_prompt"
         elif current_prompt_mode == "normal":
