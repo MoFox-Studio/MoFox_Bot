@@ -1,9 +1,11 @@
 import os
 import socket
+
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware  # 新增导入
 from rich.traceback import install
-from uvicorn import Config, Server as UvicornServer
+from uvicorn import Config
+from uvicorn import Server as UvicornServer
 
 from src.common.logger import get_logger
 

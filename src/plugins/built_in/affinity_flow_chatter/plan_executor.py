@@ -500,7 +500,7 @@ class ChatterPlanExecutor:
             )
 
             # 添加到chat_stream的已读消息中
-            if hasattr(chat_stream, 'stream_context') and chat_stream.stream_context:
+            if hasattr(chat_stream, "stream_context") and chat_stream.stream_context:
                 chat_stream.stream_context.history_messages.append(bot_message)
                 logger.debug(f"机器人回复已添加到已读消息: {reply_content[:50]}...")
             else:

@@ -236,10 +236,10 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
         if is_mentioned:
             if is_at:
-                logger.debug(f"[提及分计算] 直接@机器人，返回1.0")
+                logger.debug("[提及分计算] 直接@机器人，返回1.0")
                 return 1.0  # 直接@机器人，最高分
             else:
-                logger.debug(f"[提及分计算] 提及机器人，返回0.8")
+                logger.debug("[提及分计算] 提及机器人，返回0.8")
                 return 0.8  # 提及机器人名字，高分
         else:
             # 检查是否被提及（文本匹配）
@@ -248,13 +248,13 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
             # 如果被提及或是私聊，都视为提及了bot
             if is_text_mentioned:
-                logger.debug(f"[提及分计算] 文本提及机器人，返回提及分")
+                logger.debug("[提及分计算] 文本提及机器人，返回提及分")
                 return global_config.affinity_flow.mention_bot_interest_score
             elif is_private_chat:
-                logger.debug(f"[提及分计算] 私聊消息，返回提及分")
+                logger.debug("[提及分计算] 私聊消息，返回提及分")
                 return global_config.affinity_flow.mention_bot_interest_score
             else:
-                logger.debug(f"[提及分计算] 未提及机器人，返回0.0")
+                logger.debug("[提及分计算] 未提及机器人，返回0.0")
                 return 0.0  # 未提及机器人
 
     def _apply_no_reply_boost(self, base_score: float) -> float:

@@ -1,14 +1,14 @@
 """
 TTS Voice 插件 - 重构版
 """
-import toml
 from pathlib import Path
-from typing import Any, List, Tuple, Type, Dict
+from typing import Any
+
+import toml
 
 from src.common.logger import get_logger
 from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
 from src.plugin_system.base.component_types import PermissionNodeField
-from src.plugin_system.base.config_types import ConfigField
 
 from .actions.tts_action import TTSVoiceAction
 from .commands.tts_command import TTSVoiceCommand
@@ -57,34 +57,34 @@ class TTSVoicePlugin(BasePlugin):
         """
         # 需要手动加载的顶级配置节
         manual_load_keys = ["tts_styles", "spatial_effects", "tts_advanced", "tts"]
-        top_key = key.split('.')[0]
+        top_key = key.split(".")[0]
 
         if top_key in manual_load_keys:
             try:
                 plugin_file = Path(__file__).resolve()
                 bot_root = plugin_file.parent.parent.parent.parent.parent
                 config_file = bot_root / "config" / "plugins" / self.plugin_name / self.config_file_name
-                
+
                 if not config_file.is_file():
                     logger.error(f"TTS config file not found at robustly constructed path: {config_file}")
                     return default
-                
+
                 full_config = toml.loads(config_file.read_text(encoding="utf-8"))
 
                 # 支持点状路径访问
                 value = full_config
-                for k in key.split('.'):
+                for k in key.split("."):
                     if isinstance(value, dict):
                         value = value.get(k)
                     else:
                         return default
-                
+
                 return value if value is not None else default
-                
+
             except Exception as e:
                 logger.error(f"Failed to manually load '{key}' from config: {e}", exc_info=True)
                 return default
-        
+
         return self.get_config(key, default)
 
     async def on_plugin_loaded(self):
@@ -100,7 +100,7 @@ class TTSVoicePlugin(BasePlugin):
         register_service("tts", self.tts_service)
         logger.info("TTSService 已成功初始化并注册。")
 
-    def get_plugin_components(self) -> List[Tuple[ComponentInfo, Type]]:
+    def get_plugin_components(self) -> list[tuple[ComponentInfo, type]]:
         """
         返回插件包含的组件列表。
         """

@@ -6,14 +6,14 @@ import base64
 import io
 import os
 import re
-import tempfile
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
+import aiohttp
 import soundfile as sf
 from pedalboard import Convolution, Pedalboard, Reverb
 from pedalboard.io import AudioFile
 
-import aiohttp
 from src.common.logger import get_logger
 
 logger = get_logger("tts_voice_plugin.service")
@@ -24,7 +24,7 @@ class TTSService:
 
     def __init__(self, get_config_func: Callable[[str, Any], Any]):
         self.get_config = get_config_func
-        self.tts_styles: Dict[str, Any] = {}
+        self.tts_styles: dict[str, Any] = {}
         self.timeout: int = 60
         self.max_text_length: int = 500
         self._load_config()
@@ -43,12 +43,12 @@ class TTSService:
         except Exception as e:
             logger.error(f"TTS服务配置加载失败: {e}", exc_info=True)
 
-    def _load_tts_styles(self) -> Dict[str, Dict[str, Any]]:
+    def _load_tts_styles(self) -> dict[str, dict[str, Any]]:
         """加载 TTS 风格配置"""
         styles = {}
         global_server = self.get_config("tts.server", "http://127.0.0.1:9880")
         tts_styles_config = self.get_config("tts_styles", [])
-        
+
         if not isinstance(tts_styles_config, list):
             logger.error(f"tts_styles 配置不是一个列表, 而是 {type(tts_styles_config)}")
             return styles
@@ -57,7 +57,7 @@ class TTSService:
         if not default_cfg:
             logger.error("在 tts_styles 配置中未找到 'default' 风格，这是必需的。")
             return styles
-            
+
         default_refer_wav = default_cfg.get("refer_wav_path", "")
         default_prompt_text = default_cfg.get("prompt_text", "")
         default_gpt_weights = default_cfg.get("gpt_weights", "")
@@ -68,7 +68,7 @@ class TTSService:
 
         for style_cfg in tts_styles_config:
             if not isinstance(style_cfg, dict): continue
-            
+
             style_name = style_cfg.get("style_name")
             if not style_name: continue
 
@@ -86,9 +86,9 @@ class TTSService:
 
     # ... [其他方法保持不变] ...
     def _detect_language(self, text: str) -> str:
-        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
-        english_chars = len(re.findall(r'[a-zA-Z]', text))
-        japanese_chars = len(re.findall(r'[\u3040-\u309f\u30a0-\u30ff]', text))
+        chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
+        english_chars = len(re.findall(r"[a-zA-Z]", text))
+        japanese_chars = len(re.findall(r"[\u3040-\u309f\u30a0-\u30ff]", text))
         total_chars = chinese_chars + english_chars + japanese_chars
         if total_chars == 0: return "zh"
         if chinese_chars / total_chars > 0.3: return "zh"
@@ -98,41 +98,41 @@ class TTSService:
 
     def _clean_text_for_tts(self, text: str) -> str:
         # 1. 基本清理
-        text = re.sub(r'[\(（\[【].*?[\)）\]】]', '', text)
-        text = re.sub(r'([，。！？、；：,.!?;:~\-`])\1+', r'\1', text)
-        text = re.sub(r'~{2,}|～{2,}', '，', text)
-        text = re.sub(r'\.{3,}|…{1,}', '。', text)
+        text = re.sub(r"[\(（\[【].*?[\)）\]】]", "", text)
+        text = re.sub(r"([，。！？、；：,.!?;:~\-`])\1+", r"\1", text)
+        text = re.sub(r"~{2,}|～{2,}", "，", text)
+        text = re.sub(r"\.{3,}|…{1,}", "。", text)
 
         # 2. 词语替换
-        replacements = {'www': '哈哈哈', 'hhh': '哈哈', '233': '哈哈', '666': '厉害', '88': '拜拜'}
+        replacements = {"www": "哈哈哈", "hhh": "哈哈", "233": "哈哈", "666": "厉害", "88": "拜拜"}
         for old, new in replacements.items():
             text = text.replace(old, new)
 
         # 3. 移除不必要的字符 (恢复使用更安全的原版正则，避免误删)
-        text = re.sub(r'[^\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ffa-zA-Z0-9\s，。！？、；：,.!?;:~～]', '', text)
-        
+        text = re.sub(r"[^\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ffa-zA-Z0-9\s，。！？、；：,.!?;:~～]", "", text)
+
         # 4. 确保结尾有标点
-        if text and not text.endswith(tuple('，。！？、；：,.!?;:')):
-            text += '。'
+        if text and not text.endswith(tuple("，。！？、；：,.!?;:")):
+            text += "。"
 
         # 5. 智能截断 (保留改进的截断逻辑)
         if len(text) > self.max_text_length:
             cut_text = text[:self.max_text_length]
-            punctuation = '。！？.…'
+            punctuation = "。！？.…"
             last_punc_pos = max(cut_text.rfind(p) for p in punctuation)
 
             if last_punc_pos != -1:
                 text = cut_text[:last_punc_pos + 1]
             else:
-                last_comma_pos = max(cut_text.rfind(p) for p in '，、；,;')
+                last_comma_pos = max(cut_text.rfind(p) for p in "，、；,;")
                 if last_comma_pos != -1:
                     text = cut_text[:last_comma_pos + 1]
                 else:
                     text = cut_text
-        
+
         return text.strip()
 
-    async def _call_tts_api(self, server_config: Dict, text: str, text_language: str, **kwargs) -> Optional[bytes]:
+    async def _call_tts_api(self, server_config: dict, text: str, text_language: str, **kwargs) -> bytes | None:
         """
         最终修复版：先切换模型，然后仅通过路径发送合成请求。
         """
@@ -144,7 +144,7 @@ class TTSService:
             base_url = server_config["url"].rstrip("/")
 
             # --- 步骤一：像稳定版一样，先切换模型 ---
-            async def switch_model_weights(weights_path: Optional[str], weight_type: str):
+            async def switch_model_weights(weights_path: str | None, weight_type: str):
                 if not weights_path: return
                 api_endpoint = f"/set_{weight_type}_weights"
                 switch_url = f"{base_url}{api_endpoint}"
@@ -173,12 +173,12 @@ class TTSService:
                 # "gpt_model_path": kwargs.get("gpt_weights"),
                 # "sovits_model_path": kwargs.get("sovits_weights"),
             }
-            
+
             # 合并高级配置
             advanced_config = self.get_config("tts_advanced", {})
             if isinstance(advanced_config, dict):
                 data.update({k: v for k, v in advanced_config.items() if v is not None})
-            
+
             # 优先使用风格特定的语速
             if server_config.get("speed_factor") is not None:
                 data["speed_factor"] = server_config["speed_factor"]
@@ -202,7 +202,7 @@ class TTSService:
             logger.error(f"TTS API调用异常: {e}", exc_info=True)
             return None
 
-    async def _apply_spatial_audio_effect(self, audio_data: bytes) -> Optional[bytes]:
+    async def _apply_spatial_audio_effect(self, audio_data: bytes) -> bytes | None:
         """根据配置应用空间效果（混响和卷积）"""
         try:
             effects_config = self.get_config("spatial_effects", {})
@@ -249,9 +249,9 @@ class TTSService:
             # 将处理后的音频数据写回内存中的字节流
             with io.BytesIO() as output_stream:
                 # 使用 soundfile 写入，因为它更稳定
-                sf.write(output_stream, effected.T, f.samplerate, format='WAV')
+                sf.write(output_stream, effected.T, f.samplerate, format="WAV")
                 processed_audio_data = output_stream.getvalue()
-            
+
             logger.info("成功应用空间效果。")
             return processed_audio_data
 
@@ -259,9 +259,9 @@ class TTSService:
             logger.error(f"应用空间效果时出错: {e}", exc_info=True)
             return audio_data  # 如果出错，返回原始音频
 
-    async def generate_voice(self, text: str, style_hint: str = "default") -> Optional[str]:
+    async def generate_voice(self, text: str, style_hint: str = "default") -> str | None:
         self._load_config()
-        
+
         if not self.tts_styles:
             logger.error("TTS风格配置为空，无法生成语音。")
             return None
@@ -306,5 +306,5 @@ class TTSService:
                 else:
                     logger.warning("空间音频效果应用失败，将使用原始音频。")
 
-            return base64.b64encode(audio_data).decode('utf-8')
+            return base64.b64encode(audio_data).decode("utf-8")
         return None

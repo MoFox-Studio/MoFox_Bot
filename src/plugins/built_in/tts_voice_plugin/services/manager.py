@@ -4,9 +4,9 @@
 用于注册和获取插件内部使用的服务实例。
 """
 
-from typing import Any, Dict
+from typing import Any
 
-_services: Dict[str, Any] = {}
+_services: dict[str, Any] = {}
 
 
 def register_service(name: str, instance: Any) -> None:

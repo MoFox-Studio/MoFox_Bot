@@ -146,7 +146,7 @@ class StreamContext(BaseDataModel):
         # 同步打断计数到ChatStream
         await self._sync_interruption_count_to_stream()
 
-    
+
     async def _sync_interruption_count_to_stream(self):
         """同步打断计数到ChatStream"""
         try:

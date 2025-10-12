@@ -1,11 +1,9 @@
 """
 TTS 语音合成 Action
 """
-import asyncio
-from typing import Tuple
 
 from src.common.logger import get_logger
-from src.plugin_system.apis import config_api, generator_api
+from src.plugin_system.apis import generator_api
 from src.plugin_system.base.base_action import ActionActivationType, BaseAction, ChatMode
 
 from ..services.manager import get_service
@@ -44,7 +42,7 @@ class TTSVoiceAction(BaseAction):
         # 关键配置项现在由 TTSService 管理
         self.tts_service = get_service("tts")
 
-    async def execute(self) -> Tuple[bool, str]:
+    async def execute(self) -> tuple[bool, str]:
         """
         执行 Action 的核心逻辑
         """
@@ -79,7 +77,7 @@ class TTSVoiceAction(BaseAction):
 
         except Exception as e:
             await self._handle_error_and_reply("generic_error", e)
-            return False, f"语音合成出错: {str(e)}"
+            return False, f"语音合成出错: {e!s}"
 
     async def _generate_final_text(self, initial_text: str) -> str:
         """请求主回复模型生成或优化文本"""
@@ -89,7 +87,7 @@ class TTSVoiceAction(BaseAction):
                 "请基于规划器提供的初步文本，结合对话历史和自己的人设，将它优化成一句自然、富有感情、适合用语音说出的话。"
                 "最终指令：请务-必确保文本听起来像真实的、自然的口语对话，而不是书面语。"
             )
-            
+
             logger.info(f"{self.log_prefix} 请求主回复模型(replyer)全新生成TTS文本...")
             success, response_set, _ = await generator_api.rewrite_reply(
                 chat_stream=self.chat_stream,
@@ -101,11 +99,11 @@ class TTSVoiceAction(BaseAction):
                 text = "".join(str(seg[1]) if isinstance(seg, tuple) else str(seg) for seg in response_set).strip()
                 logger.info(f"{self.log_prefix} 成功生成高质量TTS文本: {text}")
                 return text
-            
+
             if initial_text:
                 logger.warning(f"{self.log_prefix} 主模型生成失败，使用规划器原始文本作为兜底。")
                 return initial_text
-            
+
             raise Exception("主模型未能生成回复，且规划器也未提供兜底文本。")
 
         except Exception as e:
@@ -119,11 +117,11 @@ class TTSVoiceAction(BaseAction):
         error_prompts = {
             "generic_error": {
                 "raw_reply": "糟糕，我的思路好像缠成一团毛线球了，需要一点时间来解开...你能耐心等我一下吗？",
-                "reason": f"客观原因：插件在执行时发生了未知异常。详细信息: {str(exception)}"
+                "reason": f"客观原因：插件在执行时发生了未知异常。详细信息: {exception!s}"
             },
             "tts_api_error": {
                 "raw_reply": "我的麦克风好像有点小情绪，突然不想工作了...我正在哄它呢，请稍等片刻哦！",
-                "reason": f"客观原因：语音合成服务返回了一个错误。详细信息: {str(exception)}"
+                "reason": f"客观原因：语音合成服务返回了一个错误。详细信息: {exception!s}"
             }
         }
         prompt_data = error_prompts.get(error_context, error_prompts["generic_error"])
@@ -144,6 +142,6 @@ class TTSVoiceAction(BaseAction):
             await self.send_text("唔...我的思路好像卡壳了，请稍等一下哦！")
 
         await self.store_action_info(
-            action_prompt_display=f"语音合成失败: {str(exception)}",
+            action_prompt_display=f"语音合成失败: {exception!s}",
             action_done=False
         )

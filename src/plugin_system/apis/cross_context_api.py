@@ -265,7 +265,7 @@ async def get_intercom_group_context(group_name: str, limit_per_chat: int = 20, 
             else:  # private
                 if stream.user_info and stream.user_info.user_id == chat_raw_id and not stream.group_info:
                     found_stream = stream
-                    break        
+                    break
         if not found_stream:
             logger.warning(f"在已加载的聊天流中找不到ID为 {chat_raw_id} 的聊天。")
             continue

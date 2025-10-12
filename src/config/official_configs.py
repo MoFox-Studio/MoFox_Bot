@@ -126,7 +126,7 @@ class ChatConfig(ValidatedConfigBase):
     interruption_min_probability: float = Field(
         default=0.1, ge=0.0, le=1.0, description="最低打断概率（即使达到较高打断次数，也保证有此概率的打断机会）"
     )
-    
+
     # DEPRECATED: interruption_probability_factor (已废弃的配置项)
     # 新的线性概率模型不再需要复杂的概率因子
     # 保留此字段是为了向后兼容，现有配置文件不会报错

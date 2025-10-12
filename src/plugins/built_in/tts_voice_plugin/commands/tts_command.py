@@ -1,7 +1,6 @@
 """
 TTS 语音合成命令
 """
-import re
 from src.common.logger import get_logger
 from src.plugin_system.base.command_args import CommandArgs
 from src.plugin_system.base.plus_command import PlusCommand
