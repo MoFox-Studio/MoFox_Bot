@@ -42,6 +42,7 @@ class AffinityChatter(BaseChatter):
         """
         super().__init__(stream_id, action_manager)
         self.planner = ChatterActionPlanner(stream_id, action_manager)
+        self._lock = asyncio.Lock()
 
         # 处理器统计
         self.stats = {
@@ -63,55 +64,56 @@ class AffinityChatter(BaseChatter):
         Returns:
             处理结果字典
         """
-        try:
-            # 触发表达学习
-            learner = await expression_learner_manager.get_expression_learner(self.stream_id)
-            asyncio.create_task(learner.trigger_learning_for_chat())
+        async with self._lock:
+            try:
+                # 触发表达学习
+                learner = await expression_learner_manager.get_expression_learner(self.stream_id)
+                asyncio.create_task(learner.trigger_learning_for_chat())
 
-            unread_messages = context.get_unread_messages()
+                unread_messages = context.get_unread_messages()
 
-            # 使用增强版规划器处理消息
-            actions, target_message = await self.planner.plan(context=context)
-            self.stats["plans_created"] += 1
+                # 使用增强版规划器处理消息
+                actions, target_message = await self.planner.plan(context=context)
+                self.stats["plans_created"] += 1
 
-            # 执行动作（如果规划器返回了动作）
-            execution_result = {"executed_count": len(actions) if actions else 0}
-            if actions:
-                logger.debug(f"聊天流 {self.stream_id} 生成了 {len(actions)} 个动作")
+                # 执行动作（如果规划器返回了动作）
+                execution_result = {"executed_count": len(actions) if actions else 0}
+                if actions:
+                    logger.debug(f"聊天流 {self.stream_id} 生成了 {len(actions)} 个动作")
 
-            # 更新统计
-            self.stats["messages_processed"] += 1
-            self.stats["actions_executed"] += execution_result.get("executed_count", 0)
-            self.stats["successful_executions"] += 1
-            self.last_activity_time = time.time()
+                # 更新统计
+                self.stats["messages_processed"] += 1
+                self.stats["actions_executed"] += execution_result.get("executed_count", 0)
+                self.stats["successful_executions"] += 1
+                self.last_activity_time = time.time()
 
-            result = {
-                "success": True,
-                "stream_id": self.stream_id,
-                "plan_created": True,
-                "actions_count": len(actions) if actions else 0,
-                "has_target_message": target_message is not None,
-                "unread_messages_processed": len(unread_messages),
-                **execution_result,
-            }
+                result = {
+                    "success": True,
+                    "stream_id": self.stream_id,
+                    "plan_created": True,
+                    "actions_count": len(actions) if actions else 0,
+                    "has_target_message": target_message is not None,
+                    "unread_messages_processed": len(unread_messages),
+                    **execution_result,
+                }
 
-            logger.info(
-                f"聊天流 {self.stream_id} StreamContext处理成功: 动作数={result['actions_count']}, 未读消息={result['unread_messages_processed']}"
-            )
+                logger.info(
+                    f"聊天流 {self.stream_id} StreamContext处理成功: 动作数={result['actions_count']}, 未读消息={result['unread_messages_processed']}"
+                )
 
-            return result
+                return result
 
-        except Exception as e:
-            logger.error(f"亲和力聊天处理器 {self.stream_id} 处理StreamContext时出错: {e}\n{traceback.format_exc()}")
-            self.stats["failed_executions"] += 1
-            self.last_activity_time = time.time()
+            except Exception as e:
+                logger.error(f"亲和力聊天处理器 {self.stream_id} 处理StreamContext时出错: {e}\n{traceback.format_exc()}")
+                self.stats["failed_executions"] += 1
+                self.last_activity_time = time.time()
 
-            return {
-                "success": False,
-                "stream_id": self.stream_id,
-                "error_message": str(e),
-                "executed_count": 0,
-            }
+                return {
+                    "success": False,
+                    "stream_id": self.stream_id,
+                    "error_message": str(e),
+                    "executed_count": 0,
+                }
 
     def get_stats(self) -> dict[str, Any]:
         """

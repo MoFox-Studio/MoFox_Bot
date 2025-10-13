@@ -7,7 +7,7 @@ import asyncio
 import random
 import time
 from collections import defaultdict, deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict
 
 from src.chat.chatter_manager import ChatterManager
 from src.chat.message_receive.chat_stream import ChatStream
@@ -384,7 +384,8 @@ class MessageManager:
                 await chat_stream.context_manager.context.increment_interruption_count()
 
                 # 🚀 新增：打断后立即重新进入聊天流程
-                await self._trigger_immediate_reprocess(chat_stream)
+                # 🚀 新增：打断后延迟重新进入聊天流程，以合并短时间内的多条消息
+                asyncio.create_task(self._trigger_delayed_reprocess(chat_stream, delay=0.5))
 
                 # 检查是否已达到最大次数
                 if chat_stream.context_manager.context.interruption_count >= global_config.chat.interruption_max_limit:
@@ -398,8 +399,13 @@ class MessageManager:
             else:
                 logger.debug(f"聊天流 {chat_stream.stream_id} 未触发打断，打断概率: {interruption_probability:.2f}，检测到 {len(all_processing_tasks)} 个任务")
 
-    async def _trigger_immediate_reprocess(self, chat_stream: ChatStream):
-        """打断后立即重新进入聊天流程"""
+    async def _trigger_delayed_reprocess(self, chat_stream: ChatStream, delay: float):
+        """打断后延迟重新进入聊天流程，以合并短时间内的多条消息"""
+        await asyncio.sleep(delay)
+        await self._trigger_reprocess(chat_stream)
+
+    async def _trigger_reprocess(self, chat_stream: ChatStream):
+        """重新处理聊天流的核心逻辑"""
         try:
             stream_id = chat_stream.stream_id
 
@@ -519,7 +525,8 @@ class MessageManager:
             self.message_caches[stream_id].append(message)
             self.cache_stats["total_cached_messages"] += 1
 
-            logger.debug(f"消息已添加到缓存: stream={stream_id}, content={message.processed_plain_text[:50]}...")
+            if message.processed_plain_text:
+                logger.debug(f"消息已添加到缓存: stream={stream_id}, content={message.processed_plain_text[:50]}...")
             return True
         except Exception as e:
             logger.error(f"添加消息到缓存失败: stream={stream_id}, error={e}")
