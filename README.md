@@ -185,8 +185,8 @@
 [![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge&logo=gnu)](LICENSE)
  
 ```
-Copyright © 2025 MoFox Studio
-Licensed under the GNU General Public License v3.0
+                   Copyright © 2025 MoFox Studio
+          Licensed under the GNU General Public License v3.0
 ```
  
 </div>
