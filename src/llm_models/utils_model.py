@@ -802,6 +802,7 @@ class LLMRequest:
             for model in self.model_for_task.model_list
         }
         """模型使用量记录"""
+        self._lock = asyncio.Lock()
 
         # 初始化辅助类
         self._model_selector = _ModelSelector(self.model_for_task.model_list, self.model_usage)
@@ -930,42 +931,43 @@ class LLMRequest:
         tools: list[dict[str, Any]] | None = None,
         raise_when_empty: bool = True,
     ) -> tuple[str, tuple[str, str, list[ToolCall] | None]]:
-        """
-        执行单次文本生成请求的内部方法。
-        这是 `generate_response_async` 的核心实现，处理单个请求的完整生命周期，
-        包括工具构建、故障转移执行和用量记录。
+        async with self._lock:
+            """
+            执行单次文本生成请求的内部方法。
+            这是 `generate_response_async` 的核心实现，处理单个请求的完整生命周期，
+            包括工具构建、故障转移执行和用量记录。
 
-        Args:
-            prompt (str): 用户的提示。
-            temperature (Optional[float]): 生成温度。
-            max_tokens (Optional[int]): 最大生成令牌数。
-            tools (Optional[List[Dict[str, Any]]]): 可用工具列表。
-            raise_when_empty (bool): 如果响应为空是否引发异常。
+            Args:
+                prompt (str): 用户的提示。
+                temperature (Optional[float]): 生成温度。
+                max_tokens (Optional[int]): 最大生成令牌数。
+                tools (Optional[List[Dict[str, Any]]]): 可用工具列表。
+                raise_when_empty (bool): 如果响应为空是否引发异常。
 
-        Returns:
-            Tuple[str, Tuple[str, str, Optional[List[ToolCall]]]]:
-                (响应内容, (推理过程, 模型名称, 工具调用))
-        """
-        start_time = time.time()
-        tool_options = await self._build_tool_options(tools)
+            Returns:
+                Tuple[str, Tuple[str, str, Optional[List[ToolCall]]]]:
+                    (响应内容, (推理过程, 模型名称, 工具调用))
+            """
+            start_time = time.time()
+            tool_options = await self._build_tool_options(tools)
 
-        response, model_info = await self._strategy.execute_with_failover(
-            RequestType.RESPONSE,
-            raise_when_empty=raise_when_empty,
-            prompt=prompt,  # 传递原始prompt，由strategy处理
-            tool_options=tool_options,
-            temperature=self.model_for_task.temperature if temperature is None else temperature,
-            max_tokens=self.model_for_task.max_tokens if max_tokens is None else max_tokens,
-        )
+            response, model_info = await self._strategy.execute_with_failover(
+                RequestType.RESPONSE,
+                raise_when_empty=raise_when_empty,
+                prompt=prompt,  # 传递原始prompt，由strategy处理
+                tool_options=tool_options,
+                temperature=self.model_for_task.temperature if temperature is None else temperature,
+                max_tokens=self.model_for_task.max_tokens if max_tokens is None else max_tokens,
+            )
 
-        await self._record_usage(model_info, response.usage, time.time() - start_time, "/chat/completions")
+            await self._record_usage(model_info, response.usage, time.time() - start_time, "/chat/completions")
 
-        if not response.content and not response.tool_calls:
-            if raise_when_empty:
-                raise RuntimeError("所选模型生成了空回复。")
-            response.content = "生成的响应为空"
+            if not response.content and not response.tool_calls:
+                if raise_when_empty:
+                    raise RuntimeError("所选模型生成了空回复。")
+                response.content = "生成的响应为空"
 
-        return response.content or "", (response.reasoning_content or "", model_info.name, response.tool_calls)
+            return response.content or "", (response.reasoning_content or "", model_info.name, response.tool_calls)
 
     async def get_embedding(self, embedding_input: str) -> tuple[list[float], str]:
         """

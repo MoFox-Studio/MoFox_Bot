@@ -295,35 +295,91 @@ def random_remove_punctuation(text: str) -> str:
     return result
 
 
+def protect_special_blocks(text: str) -> tuple[str, dict[str, str]]:
+    """识别并保护数学公式和代码块，返回处理后的文本和映射"""
+    placeholder_map = {}
+    
+    # 第一层防护：优先保护标准Markdown格式
+    # 使用 re.S 来让 . 匹配换行符
+    markdown_patterns = {
+        'code': r"```.*?```",
+        'math': r"\$\$.*?\$\$",
+    }
+    
+    placeholder_idx = 0
+    for block_type, pattern in markdown_patterns.items():
+        matches = re.findall(pattern, text, re.S)
+        for match in matches:
+            placeholder = f"__SPECIAL_{block_type.upper()}_{placeholder_idx}__"
+            text = text.replace(match, placeholder, 1)
+            placeholder_map[placeholder] = match
+            placeholder_idx += 1
+
+    # 第二层防护：保护非标准的、可能是公式或代码的片段
+    # 这个正则表达式寻找连续5个以上的、主要由非中文字符组成的片段
+    general_pattern = r"(?:[a-zA-Z0-9\s.,;:(){}\[\]_+\-*/=<>^|&%?!'\"√²³ⁿ∑∫≠≥≤]){5,}"
+    
+    # 为了避免与已保护的占位符冲突，我们在剩余的文本上进行查找
+    # 这是一个简化的处理，更稳妥的方式是分段查找，但目前这样足以应对多数情况
+    try:
+        matches = re.findall(general_pattern, text)
+        for match in matches:
+            # 避免将包含占位符的片段再次保护
+            if "__SPECIAL_" in match:
+                continue
+            
+            placeholder = f"__SPECIAL_GENERAL_{placeholder_idx}__"
+            text = text.replace(match, placeholder, 1)
+            placeholder_map[placeholder] = match
+            placeholder_idx += 1
+    except re.error as e:
+        logger.error(f"特殊区域防护正则表达式错误: {e}")
+
+    return text, placeholder_map
+
+def recover_special_blocks(sentences: list[str], placeholder_map: dict[str, str]) -> list[str]:
+    """恢复被保护的特殊块"""
+    recovered_sentences = []
+    for sentence in sentences:
+        for placeholder, original_block in placeholder_map.items():
+            sentence = sentence.replace(placeholder, original_block)
+        recovered_sentences.append(sentence)
+    return recovered_sentences
+
 def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese_typo: bool = True) -> list[str]:
     if not global_config.response_post_process.enable_response_post_process:
         return [text]
 
-    # 先保护颜文字
-    if global_config.response_splitter.enable_kaomoji_protection:
-        protected_text, kaomoji_mapping = protect_kaomoji(text)
-        logger.debug(f"保护颜文字后的文本: {protected_text}")
-    else:
-        protected_text = text
-        kaomoji_mapping = {}
+    # --- 双层防护系统 ---
+    # 第一层：保护颜文字
+    protected_text, kaomoji_mapping = protect_kaomoji(text) if global_config.response_splitter.enable_kaomoji_protection else (text, {})
+    
+    # 第二层：保护数学公式和代码块
+    protected_text, special_blocks_mapping = protect_special_blocks(protected_text)
+    
     # 提取被 () 或 [] 或 （）包裹且包含中文的内容
     pattern = re.compile(r"[(\[（](?=.*[一-鿿]).*?[)\]）]")
-    _extracted_contents = pattern.findall(protected_text)  # 在保护后的文本上查找
-    # 去除 () 和 [] 及其包裹的内容
+    _extracted_contents = pattern.findall(protected_text)
     cleaned_text = pattern.sub("", protected_text)
 
-    if cleaned_text == "":
+    if cleaned_text.strip() == "":
+        # 如果清理后只剩下特殊块，直接恢复并返回
+        if special_blocks_mapping:
+             recovered = recover_special_blocks([protected_text], special_blocks_mapping)
+             return recover_kaomoji(recovered, kaomoji_mapping)
         return ["呃呃"]
 
     logger.debug(f"{text}去除括号处理后的文本: {cleaned_text}")
 
     # 对清理后的文本进行进一步处理
-    max_length = global_config.response_splitter.max_length * 2
     max_sentence_num = global_config.response_splitter.max_sentence_num
-    # 如果基本上是中文，则进行长度过滤
-    if get_western_ratio(cleaned_text) < 0.1 and len(cleaned_text) > max_length:
-        logger.warning(f"回复过长 ({len(cleaned_text)} 字符)，返回默认回复")
-        return ["懒得说"]
+    
+    # --- 移除总长度检查 ---
+    # 原有的总长度检查会导致长回复被直接丢弃，现已移除，由后续的智能合并逻辑处理。
+    # max_length = global_config.response_splitter.max_length * 2
+    # if get_western_ratio(cleaned_text) < 0.1 and len(cleaned_text) > max_length:
+    #     logger.warning(f"回复过长 ({len(cleaned_text)} 字符)，返回默认回复")
+    #     return ["懒得说"]
 
     typo_generator = ChineseTypoGenerator(
         error_rate=global_config.chinese_typo.error_rate,
@@ -364,15 +420,44 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
         else:
             sentences.append(sentence)
 
+    # 如果分割后的句子数量超过上限，则启动智能合并逻辑
     if len(sentences) > max_sentence_num:
-        logger.warning(f"分割后消息数量过多 ({len(sentences)} 条)，返回默认回复")
-        return [f"{global_config.bot.nickname}不知道哦"]
+        logger.info(f"分割后消息数量 ({len(sentences)}) 超过上限 ({max_sentence_num})，启动智能合并...")
+
+        # 计算需要合并的次数
+        num_to_merge = len(sentences) - max_sentence_num
+
+        for _ in range(num_to_merge):
+            # 如果句子数量已经达标，提前退出
+            if len(sentences) <= max_sentence_num:
+                break
+
+            # 寻找最短的相邻句子对
+            min_len = float('inf')
+            merge_idx = -1
+            for i in range(len(sentences) - 1):
+                combined_len = len(sentences[i]) + len(sentences[i+1])
+                if combined_len < min_len:
+                    min_len = combined_len
+                    merge_idx = i
+
+            # 如果找到了可以合并的对，则执行合并
+            if merge_idx != -1:
+                # 将后一个句子合并到前一个句子
+                # 我们在合并时保留原始标点（如果有的话），或者添加一个逗号来确保可读性
+                merged_sentence = sentences[merge_idx] + "，" + sentences[merge_idx + 1]
+                sentences[merge_idx] = merged_sentence
+                # 删除后一个句子
+                del sentences[merge_idx + 1]
+        
+        logger.info(f"智能合并完成，最终消息数量: {len(sentences)}")
 
     # if extracted_contents:
     #     for content in extracted_contents:
     #         sentences.append(content)
 
-    # 在所有句子处理完毕后，对包含占位符的列表进行恢复
+    # --- 恢复所有被保护的内容 ---
+    sentences = recover_special_blocks(sentences, special_blocks_mapping)
     if global_config.response_splitter.enable_kaomoji_protection:
         sentences = recover_kaomoji(sentences, kaomoji_mapping)
 
