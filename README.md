@@ -1,61 +1,63 @@
 <div align="center">
 
 # 🌟 MoFox_Bot
-**🚀 基于 MaiCore 的增强版 AI 智能体，提供更完善的功能和更好的使用体验**
+**🚀 基于 MaiCore 的增强型 AI 智能体，功能更强大，体验更流畅**
+
 </div>
 
 <p align="center">
-  <a href="https://raw.githubusercontent.com/MoFox-Studio/MoFox_Bot/refs/heads/master/LICENSE">
-    <img src="https://img.shields.io/github/license/MoFox-Studio/MoFox_Bot" alt="license">
+  <a href="https://github.com/MoFox-Studio/MoFox_Bot/blob/master/LICENSE">
+    <img src="https://img.shields.io/github/license/MoFox-Studio/MoFox_Bot" alt="License">
   </a>
-  <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=edb641" alt="python">
-  <a href="https://github.com/Microsoft/pyright">
-    <img src="https://img.shields.io/badge/types-pyright-797952.svg?logo=python&logoColor=edb641" alt="pyright">
+  <a href="https://www.python.org/downloads/release/python-3110/">
+    <img src="https://img.shields.io/badge/python-3.11+-blue?logo=python&logoColor=edb641" alt="Python 3.11+">
+  </a>
+  <a href="https://github.com/microsoft/pyright">
+    <img src="https://img.shields.io/badge/types-pyright-797952.svg?logo=python&logoColor=edb641" alt="Pyright">
   </a>
   <a href="https://github.com/astral-sh/ruff">
-    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json" alt="ruff">
-  <a href="https://deepwiki.com/MoFox-Studio/MoFox_Bot"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+    <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json" alt="Ruff">
+  </a>
+  <a href="https://deepwiki.com/MoFox-Studio/MoFox_Bot">
+    <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki">
   </a>
   <br />
   <a href="https://qm.qq.com/q/YwZTZl7BG8">
-    <img src="https://img.shields.io/badge/墨狐狐的大学-169850076-violet?style=flat-square" alt="QQ Chat Group">
+    <img src="https://img.shields.io/badge/墨狐狐的大学-169850076-violet?style=flat-square" alt="QQ Group">
   </a>
-    <a href="https://qm.qq.com/q/Lmm1LZnewg">
-    <img src="https://img.shields.io/badge/墨狐狐技术部-1064097634-orange?style=flat-square" alt="QQ Chat Group">
+  <a href="https://qm.qq.com/q/Lmm1LZnewg">
+    <img src="https://img.shields.io/badge/墨狐狐技术部-1064097634-orange?style=flat-square" alt="QQ Group">
   </a>
 </p>
- 
+
 ---
- 
+
 <div align="center">
- 
-## 📖 项目介绍
- 
-**MoFox_Bot** 是一个基于 [MaiCore](https://github.com/MaiM-with-u/MaiBot) `0.10.0 snapshot.5` 版本的增强型 `fork` 项目。
-我们在保留原版几乎所有功能的基础上，进行了一系列的改进和功能拓展，致力于提供更强的稳定性、更丰富的功能和更流畅的用户体验
- 
+
+## 📖 项目简介
+
+**MoFox_Bot** 是一个基于 [MaiCore](https://github.com/MaiM-with-u/MaiBot) `0.10.0 snapshot.5` 的增强型 fork 项目。我们保留了原项目几乎所有核心功能，并在此基础上进行了深度优化与功能扩展，致力于打造一个**更稳定、更智能、更具趣味性**的 AI 智能体。
+
 > [!IMPORTANT]
 > **第三方项目声明**
 >
-> 本项目是由 **MoFox Studio** 独立维护的第三方项目，并非 MaiBot 官方版本。
-> 所有后续更新和维护均由我们团队负责，与 MaiBot 官方无直接关系。
- 
+> 本项目由 **MoFox Studio** 独立维护，为 **MaiBot 的第三方分支**，并非官方版本。所有更新与支持均由我们团队负责，与 MaiBot 官方无直接关系。
+
 > [!WARNING]
 > **迁移风险提示**
 >
-> 由于我们对数据库结构进行了重构和优化，从 MaiBot 官方版本直接迁移到 MoFox_Bot **可能会遇到数据不兼容的问题**。
-> 在迁移前，请务必做好数据备份。
- 
+> 由于我们对数据库结构进行了重构与优化，从官方 MaiBot 直接迁移至 MoFox_Bot **可能导致数据不兼容**。请在迁移前**务必备份原始数据**，以避免信息丢失。
+
 </div>
- 
+
 ---
- 
+
 <div align="center">
- 
-## ✨ 功能特性
- 
+
+## ✨ 核心功能
+
 </div>
- 
+
 <table>
 <tr>
 <td width="50%">
@@ -89,93 +91,93 @@
 </td>
 </tr>
 </table>
- 
+
 ---
- 
+
 <div align="center">
- 
+
 ## 🔧 系统要求
- 
+
 ### 💻 基础环境
- 
-| 项目         | 要求                                                 |
-| ------------ | ---------------------------------------------------- |
-| 🖥️ 操作系统 | Windows 10/11, macOS 10.14+, Linux (Ubuntu 18.04+) |
-| 🐍 Python 版本 | Python 3.10 或更高版本                               |
-| 💾 内存       | 建议 4GB 以上可用内存                                |
-| 💿 存储空间   | 至少 2GB 可用空间                                    |
- 
+
+| 项目         | 要求                                     |
+| ------------ | ---------------------------------------- |
+| 🖥️ 操作系统 | Windows 10/11、macOS 10.14+、Linux (Ubuntu 18.04+) |
+| 🐍 Python 版本 | Python 3.10 或更高版本                   |
+| 💾 内存       | 建议 ≥ 4GB 可用内存                      |
+| 💿 存储空间   | 建议 ≥ 2GB 可用空间                      |
+
 ### 🛠️ 依赖服务
- 
+
 | 服务         | 描述                                       |
 | ------------ | ------------------------------------------ |
 | 🤖 QQ 协议端  | [NapCatQQ](https://github.com/NapNeko/NapCatQQ) 或其他兼容协议端 |
-| 🗃️ 数据库     | SQLite (内置) 或 MySQL (可选)              |
-| 🔧 管理工具   | Chat2DB (可选，用于数据库管理)             |
- 
-</div>
- 
+| 🗃️ 数据库     | SQLite（默认）或 MySQL（可选）             |
+| 🔧 管理工具   | Chat2DB（可选，用于数据库可视化管理）      |
+
 ---
- 
+
 <div align="center">
- 
+
 ## 🏁 快速开始
- 
+
 ### 📦 安装与部署
- 
-</div>
- 
+
 > [!NOTE]
-> 详细的安装和配置步骤，请务必参考我们的官方文档：
-> *   **Windows 用户部署指南**: [https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html)
-> *   **`bot_config.toml` 究极详细教程**: [https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html)
- 
-<div align="center">
- 
-### ⚙️ 配置要点
- 
-1.  📝 **核心配置**: 修改 `config/bot_config.toml` 中的基础设置，如 LLM API Key 等。
-2.  🤖 **协议端配置**: 设置 NapCatQQ 或其他兼容的 QQ 协议端，确保通信正常。
-3.  🗃️ **数据库配置**: 根据需求选择 SQLite 或配置你的 MySQL 服务器。
-4.  🔌 **插件配置**: 在 `config/plugins/` 目录下按需配置插件。
- 
+> 详细安装与配置指南请参考官方文档：
+> - **Windows 用户部署指南**：[https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/deployment_guide.html)
+> - **`bot_config.toml` 完整教程**：[https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html](https://mofox-studio.github.io/MoFox-Bot-Docs/docs/guides/bot_config_guide.html)
+
 </div>
- 
----
- 
+
 <div align="center">
- 
+
+### ⚙️ 配置要点
+
+1.  📝 **核心配置**：编辑 `config/bot_config.toml`，设置 LLM API Key、Bot 名称等基础参数。
+2.  🤖 **协议端配置**：确保使用 [NapCatQQ](https://github.com/NapNeko/NapCatQQ) 或兼容协议端，建立稳定通信。
+3.  🗃️ **数据库配置**：选择 SQLite（默认）或配置 MySQL 数据库连接。
+4.  🔌 **插件配置**：在 `config/plugins/` 目录中启用或配置所需插件。
+
+</div>
+
+---
+
+<div align="center">
+
 ## 🙏 致谢
- 
-我们衷心感谢以下优秀的开源项目，没有它们，就没有 MoFox_Bot。
- 
+
+我们衷心感谢以下开源项目为本项目提供的坚实基础：
+
 | 项目                                       | 描述                 | 贡献             |
 | ------------------------------------------ | -------------------- | ---------------- |
-| 🎯 [MaiM-with-u/MaiBot](https://github.com/MaiM-with-u/MaiBot) | 原版 MaiBot 项目     | 提供优秀的基础框架 |
-| 🐱 [NapNeko/NapCatQQ](https://github.com/NapNeko/NapCatQQ) | 基于 NTQQ 的 Bot 协议端 | 现代化的 QQ 协议实现 |
-| 🌌 [internetsb/Maizone](https://github.com/internetsb/Maizone) | 魔改空间插件         | 插件部分功能借鉴 |
- 
+| 🎯 [MaiM-with-u/MaiBot](https://github.com/MaiM-with-u/MaiBot) | 原版 MaiBot 框架     | 提供核心架构与设计 |
+| 🐱 [NapNeko/NapCatQQ](https://github.com/NapNeko/NapCatQQ) | 高性能 QQ 协议端     | 实现稳定通信       |
+| 🌌 [internetsb/Maizone](https://github.com/internetsb/Maizone) | 魔改空间插件         | 功能借鉴与启发     |
+
 </div>
- 
+
 ---
- 
+
 <div align="center">
- 
-## ⚠️ 注意事项
- 
+
+## ⚠️ 重要提示
+
 > [!CAUTION]
-> **重要提醒**
+> **请务必阅读以下内容：**
 >
-> - 使用本项目前，你必须阅读并同意 [**📋 用户协议 (EULA.md)**](EULA.md)。
-> - 本应用生成的内容来自人工智能大模型，请仔细甄别其准确性，并请勿用于任何违反法律法规的用途。
-> - AI 生成的所有内容不代表本项目团队的任何观点和立场。
- 
+> - 本项目使用前，请仔细阅读并同意 [**用户协议 (EULA.md)**](EULA.md)。
+> - 本应用生成的内容由 AI 大模型提供，请谨慎甄别其准确性。
+> - 请勿将 AI 生成内容用于任何违法、违规或不当用途。
+> - 所有 AI 输出不代表 MoFox Studio 的立场或观点。
+
 </div>
- 
+
 ---
- 
+
 <div align="center">
- 
+
+
 ## 📄 开源协议
  
 本项目基于 **[GPL-3.0](LICENSE)** 协议开源。
@@ -183,8 +185,8 @@
 [![GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg?style=for-the-badge&logo=gnu)](LICENSE)
  
 ```
-                        Copyright © 2025 MoFox Studio
-                Licensed under the GNU General Public License v3.0
+                                   Copyright © 2025 MoFox Studio
+                            Licensed under the GNU General Public License v3.0
 ```
  
 </div>

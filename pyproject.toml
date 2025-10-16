@@ -21,7 +21,7 @@ dependencies = [
     "google>=3.0.0",
     "google-genai>=1.29.0",
     "httpx>=0.28.1",
-    "rjieba>=0.1.13",
+    "jieba>=0.1.13",
     "json-repair>=0.47.6",
     "json5>=0.12.1",
     "jsonlines>=4.0.0",
@@ -75,7 +75,7 @@ dependencies = [
     "aiomysql>=0.2.0",
     "aiosqlite>=0.21.0",
     "inkfox>=0.1.1",
-    "rrjieba>=0.1.13",
+    "rjieba>=0.1.13",
     "mcp>=0.9.0",
     "sse-starlette>=2.2.1",
 ]

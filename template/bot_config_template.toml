@@ -612,7 +612,7 @@ interval = 1500 # 默认25分钟
 interval_sigma = 120
 # 每日活跃度调整，格式：[["", "HH:MM,factor", ...], ["stream_id", ...]]
 # factor > 1.0 会缩短思考间隔，更活跃；factor < 1.0 会延长间隔。
-talk_frequency_adjust = [['', '8:00,1', '12:00,1.2', '18:00,1.5', '01:00,0.6']]
+talk_frequency_adjust = [["", "8:00,1", "12:00,1.2", "18:00,1.5", "01:00,0.6"]]
 
 # --- 作用范围 ---
 enable_in_private = true # 是否允许在私聊中主动发起对话
