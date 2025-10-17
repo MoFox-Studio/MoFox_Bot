@@ -19,8 +19,6 @@ from src.config.config import global_config
 from src.plugin_system.apis.chat_api import get_chat_manager
 
 from .distribution_manager import stream_loop_manager
-from .sleep_manager.sleep_manager import SleepManager
-from .sleep_manager.wakeup_manager import WakeUpManager
 
 if TYPE_CHECKING:
     pass
@@ -42,10 +40,6 @@ class MessageManager:
         # 初始化chatter manager
         self.action_manager = ChatterActionManager()
         self.chatter_manager = ChatterManager(self.action_manager)
-
-        # 初始化睡眠和唤醒管理器
-        self.sleep_manager = SleepManager()
-        self.wakeup_manager = WakeUpManager(self.sleep_manager)
 
         # 消息缓存系统 - 直接集成到消息管理器
         self.message_caches: Dict[str, deque] = defaultdict(deque)  # 每个流的消息缓存
@@ -94,7 +88,6 @@ class MessageManager:
             logger.error(f"启动自适应流管理器失败: {e}")
 
         # 启动睡眠和唤醒管理器
-        await self.wakeup_manager.start()
 
         # 启动流循环管理器并设置chatter_manager
         await stream_loop_manager.start()
@@ -141,8 +134,6 @@ class MessageManager:
         except Exception as e:
             logger.error(f"停止自适应流管理器失败: {e}")
 
-        # 停止睡眠和唤醒管理器
-        await self.wakeup_manager.stop()
 
         # 停止流循环管理器
         await stream_loop_manager.stop()
