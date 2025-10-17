@@ -7,9 +7,10 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Awaitable, Callable, Optional
 
 # 仅用于事件上报的类型提示，避免循环依赖带来的运行期问题
@@ -18,8 +19,8 @@ from .base_event import BaseEvent
 logger = logging.getLogger(__name__)
 
 
-class AdapterStatus:
-    """适配器生命周期状态枚举（字符串表示，便于序列化/日志）"""
+class AdapterStatus(StrEnum):
+    """适配器生命周期状态（StrEnum 便于序列化与类型检查）。"""
 
     INIT = "init"
     STARTING = "starting"
@@ -29,6 +30,7 @@ class AdapterStatus:
     ERROR = "error"
 
 
+@dataclass(slots=True, frozen=True)
 class SendTarget:
     """统一的发送目标抽象。
 
@@ -39,51 +41,30 @@ class SendTarget:
     - chat_id/thread_id: Telegram 等平台（话题/子线程）
     """
 
-    def __init__(
-        self,
-        user_id: Optional[str] = None,
-        group_id: Optional[str] = None,
-        guild_id: Optional[str] = None,
-        channel_id: Optional[str] = None,
-        chat_id: Optional[str | int] = None,
-        thread_id: Optional[int] = None,
-    ) -> None:
-        self.user_id = user_id
-        self.group_id = group_id
-        self.guild_id = guild_id
-        self.channel_id = channel_id
-        self.chat_id = chat_id
-        self.thread_id = thread_id
-
-    def __repr__(self) -> str:  # pragma: no cover - 仅用于调试输出
-        return (
-            "SendTarget("
-            f"user_id={self.user_id}, group_id={self.group_id}, "
-            f"guild_id={self.guild_id}, channel_id={self.channel_id}, "
-            f"chat_id={self.chat_id}, thread_id={self.thread_id})"
-        )
+    user_id: Optional[str] = None
+    group_id: Optional[str] = None
+    guild_id: Optional[str] = None
+    channel_id: Optional[str] = None
+    chat_id: Optional[str | int] = None
+    thread_id: Optional[int] = None
 
 
+@dataclass(slots=True, frozen=True)
 class SendResult:
     """统一的发送结果抽象。"""
 
-    def __init__(
-        self,
-        success: bool,
-        message_id: Optional[str] = None,
-        raw: Any = None,
-        error: Optional[str] = None,
-    ) -> None:
-        self.success = success
-        self.message_id = message_id
-        self.raw = raw
-        self.error = error
+    success: bool
+    message_id: Optional[str | int] = None
+    raw: Any = None
+    error: Optional[str] = None
 
-    def __repr__(self) -> str:  # pragma: no cover - 仅用于调试输出
-        return (
-            f"SendResult(success={self.success}, message_id={self.message_id}, "
-            f"error={self.error})"
-        )
+
+class AdapterError(Exception):
+    """适配器基础异常。"""
+
+
+class SendError(AdapterError):
+    """发送相关错误。"""
 
 
 class BaseAdapter(ABC):
@@ -101,15 +82,8 @@ class BaseAdapter(ABC):
 
     def __init__(self, config: Optional[dict] = None) -> None:
         self.config: dict = config or {}
-        self._status: str = AdapterStatus.INIT
+        self._status: AdapterStatus = AdapterStatus.INIT
         self._event_sink: Optional[Callable[[BaseEvent], Awaitable[None]]] = None
-
-        # 运行时事件循环（在某些环境中需要显式创建）
-        try:
-            self._loop = asyncio.get_event_loop()
-        except RuntimeError:
-            self._loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self._loop)
 
     # ------------------ 生命周期（模板方法） ------------------
     async def start(self) -> None:
@@ -151,16 +125,17 @@ class BaseAdapter(ABC):
     # ------------------ 事件上报 ------------------
     def register_event_sink(self, sink: Callable[[BaseEvent], Awaitable[None]]) -> None:
         """注入事件下游（例如消息路由），适配器收到平台事件后调用 `emit` 上报。"""
-
         self._event_sink = sink
 
     async def emit(self, event: BaseEvent) -> None:
         """向框架上报标准化事件。"""
-
         if not self._event_sink:
             logger.warning("No event sink registered; dropping event: %s", event)
             return
-        await self._event_sink(event)
+        try:
+            await self._event_sink(event)
+        except Exception as e:  # pragma: no cover - 避免下游异常打断适配器
+            logger.exception("Event sink raised an exception: %s", e)
 
     # ------------------ 发送能力（可扩展） ------------------
     async def send_text(
@@ -176,7 +151,6 @@ class BaseAdapter(ABC):
         - Telegram: parse_mode/entities/reply_markup/message_thread_id 等
         - QQ/OneBot: at/extra/auto_escape 等
         """
-
         return await self._send_text_impl(target, content, reply_to=reply_to, options=options or {})
 
     async def send_image(
@@ -189,15 +163,15 @@ class BaseAdapter(ABC):
     ) -> SendResult:
         """发送图片（字节/路径/URL 由子类决定支持范围）。
 
-        默认抛出未实现，子类按需覆盖。
+        默认委托至子类 `_send_image_impl`，未实现则抛出。
         """
-
-        raise NotImplementedError
+        return await self._send_image_impl(
+            target, image, caption=caption, reply_to=reply_to, options=options or {}
+        )
 
     async def recall(self, message_id: str) -> bool:
         """撤回/删除消息。子类按平台能力覆盖。"""
-
-        raise NotImplementedError
+        return await self._recall_impl(message_id)
 
     @abstractmethod
     async def _send_text_impl(
@@ -208,6 +182,20 @@ class BaseAdapter(ABC):
         options: Optional[dict] = None,
     ) -> SendResult:
         """子类实现：文本消息的实际发送。"""
+
+    # 非抽象的可选扩展钩子：子类按需覆盖
+    async def _send_image_impl(
+        self,
+        target: SendTarget,
+        image: bytes | str,
+        caption: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        options: Optional[dict] = None,
+    ) -> SendResult:  # pragma: no cover - 默认不实现
+        raise NotImplementedError
+
+    async def _recall_impl(self, message_id: str) -> bool:  # pragma: no cover - 默认不实现
+        raise NotImplementedError
 
     # ------------------ 健康/能力/配置 ------------------
     def capabilities(self) -> frozenset[str]:
@@ -221,19 +209,33 @@ class BaseAdapter(ABC):
 
     async def health(self) -> dict[str, Any]:
         """返回适配器健康/元信息。"""
-
         return {
-            "status": self._status,
+            "status": str(self._status),
             "adapter": self.adapter_name,
             "platform": self.platform,
         }
 
     def update_config(self, new_config: dict) -> None:
         """在运行时更新配置，鼓励子类按需重载并应用差异。"""
-
         self.config.update(new_config or {})
 
+    # 配置契约：默认返回 None；子类可返回 schema 或执行验证
+    def config_schema(self) -> Any:
+        return None
+
+    def validate_config(self) -> None:
+        """子类可重载以执行配置校验。"""
+        return None
+
     # ------------------ 调试/表示 ------------------
+    async def __aenter__(self) -> "BaseAdapter":
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> bool:
+        await self.stop()
+        # 不吞异常
+        return False
+
     def __repr__(self) -> str:  # pragma: no cover - 仅用于调试输出
         return f"<{self.__class__.__name__} platform={self.platform} status={self._status}>"
-
