@@ -9,6 +9,7 @@ from .base_command import BaseCommand
 from .base_events_handler import BaseEventHandler
 from .base_plugin import BasePlugin
 from .base_tool import BaseTool
+from .base_adapter import BaseAdapter, SendTarget, SendResult, AdapterStatus
 from .command_args import CommandArgs
 from .component_types import (
     ActionActivationType,
@@ -35,9 +36,13 @@ __all__ = [
     "ActionInfo",
     "BaseAction",
     "BaseCommand",
+    "BaseAdapter",
     "BaseEventHandler",
     "BasePlugin",
     "BaseTool",
+    "SendTarget",
+    "SendResult",
+    "AdapterStatus",
     "ChatMode",
     "ChatType",
     "CommandArgs",

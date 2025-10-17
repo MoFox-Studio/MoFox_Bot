@@ -24,11 +24,13 @@ from .apis import (
 from .base import (
     ActionActivationType,
     ActionInfo,
+    BaseAdapter,
     BaseAction,
     BaseCommand,
     BaseEventHandler,
     BasePlugin,
     BaseTool,
+    AdapterStatus,
     ChatMode,
     ChatType,
     CommandArgs,
@@ -40,6 +42,8 @@ from .base import (
     EventType,
     MaiMessages,
     PluginInfo,
+    SendResult,
+    SendTarget,
     # 新增的增强命令系统
     PlusCommand,
     PlusCommandAdapter,
@@ -59,12 +63,14 @@ __version__ = "2.0.0"
 __all__ = [
     "ActionActivationType",
     "ActionInfo",
+    "BaseAdapter",
     "BaseAction",
     "BaseCommand",
     "BaseEventHandler",
     # 基础类
     "BasePlugin",
     "BaseTool",
+    "AdapterStatus",
     "ChatMode",
     "ChatType",
     "CommandArgs",
@@ -80,6 +86,8 @@ __all__ = [
     # 工具函数
     "ManifestValidator",
     "PluginInfo",
+    "SendTarget",
+    "SendResult",
     # 增强命令系统
     "PlusCommand",
     "PlusCommandAdapter",
