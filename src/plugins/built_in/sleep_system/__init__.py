@@ -1,9 +1,8 @@
 import logging
 from pathlib import Path
 from typing import Optional
-from bot.plugin import Plugin
-from bot.plugin.meta import Meta
-from bot.plugin.plugin_config import PluginConfig
+
+from src.plugin_system import BasePlugin, register_plugin
 
 from .config import SleepSystemConfig
 from .state_manager import StateManager
@@ -17,17 +16,19 @@ logger = logging.getLogger(__name__)
 sleep_task: Optional[SleepCycleTask] = None
 sleep_logic_instance: Optional[SleepLogic] = None
 
-class SleepSystemPlugin(Plugin):
+@register_plugin
+class SleepSystemPlugin(BasePlugin):
+    plugin_name: str = "sleep_system"
     
     def on_load(self) -> None:
         global sleep_task, sleep_logic_instance
         logger.info("睡眠系统插件正在加载...")
         
         # 1. 加载配置
-        config = self.get_config(SleepSystemConfig)
+        config = self.get_config(self.plugin_name, SleepSystemConfig)
         
         # 2. 初始化状态管理器
-        state_file = Path("data/sleep_system_state.json")
+        state_file = Path(f"data/{self.plugin_name}_state.json")
         state_manager = StateManager(state_file_path=state_file)
         
         # 3. 初始化核心逻辑
@@ -46,11 +47,3 @@ class SleepSystemPlugin(Plugin):
             sleep_task.stop()
         sleep_logic_instance = None
         logger.info("睡眠系统插件已卸载，定时任务已停止。")
-
-    def get_meta(self) -> Meta:
-        return Meta(
-            name="睡眠系统",
-            description="一个基于状态机的、行为可预测的睡眠系统。",
-            author="Kilo Code",
-            version="1.0.0",
-        )
