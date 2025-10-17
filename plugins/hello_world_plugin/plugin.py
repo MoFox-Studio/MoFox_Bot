@@ -57,15 +57,112 @@ class HelloCommand(PlusCommand):
         return True, "成功发送问候", True
 
 
+# ==================================================================================
+# 新的激活方式示例 Actions
+# ==================================================================================
+
+
+class KeywordActivationExampleAction(BaseAction):
+    """关键词激活示例
+    
+    此示例展示如何使用关键词匹配来激活 Action。
+    """
+
+    action_name = "keyword_example"
+    action_description = "当检测到特定关键词时发送回应"
+    action_require = ["用户提到了问候语"]
+    associated_types = ["text"]
+
+    async def go_activate(self, chat_content: str = "", llm_judge_model=None) -> bool:
+        """关键词激活：检测到"你好"、"hello"或"hi"时激活"""
+        return await self._keyword_match(
+            chat_content,
+            keywords=["你好", "hello", "hi", "嗨"],
+            case_sensitive=False  # 不区分大小写
+        )
+
+    async def execute(self) -> tuple[bool, str]:
+        await self.send_text("检测到问候语，我也向你问好！👋")
+        return True, "发送了问候回应"
+
+
+class LLMJudgeExampleAction(BaseAction):
+    """LLM 判断激活示例
+    
+    此示例展示如何使用 LLM 来智能判断是否激活 Action。
+    """
+
+    action_name = "llm_judge_example"
+    action_description = "当用户表达情绪低落时提供安慰"
+    action_require = ["用户情绪低落", "需要情感支持"]
+    associated_types = ["text"]
+
+    async def go_activate(self, chat_content: str = "", llm_judge_model=None) -> bool:
+        """LLM 判断激活：判断用户是否情绪低落"""
+        return await self._llm_judge_activation(
+            chat_content=chat_content,
+            judge_prompt="""
+判断用户是否表达了以下情绪或需求：
+1. 感到难过、沮丧或失落
+2. 表达了负面情绪
+3. 需要安慰或鼓励
+
+如果用户表达了上述情绪或需求，回答"是"，否则回答"否"。
+            """,
+            llm_judge_model=llm_judge_model
+        )
+
+    async def execute(self) -> tuple[bool, str]:
+        await self.send_text("看起来你心情不太好，希望能让你开心一点！🤗💕")
+        return True, "发送了安慰消息"
+
+
+class CombinedActivationExampleAction(BaseAction):
+    """组合激活条件示例
+    
+    此示例展示如何组合多种激活条件。
+    """
+
+    action_name = "combined_example"
+    action_description = "展示如何组合多种激活条件"
+    action_require = ["展示灵活的激活逻辑"]
+    associated_types = ["text"]
+
+    async def go_activate(self, chat_content: str = "", llm_judge_model=None) -> bool:
+        """组合激活：随机 20% 概率，或者匹配特定关键词"""
+        # 先尝试随机激活
+        if await self._random_activation(0.2):
+            return True
+        
+        # 如果随机未激活，尝试关键词匹配
+        if await self._keyword_match(chat_content, ["表情", "emoji", "😊"], case_sensitive=False):
+            return True
+        
+        # 都不满足则不激活
+        return False
+
+    async def execute(self) -> tuple[bool, str]:
+        await self.send_text("这是一个组合激活条件的示例！✨")
+        return True, "发送了示例消息"
+
+
 class RandomEmojiAction(BaseAction):
-    """一个随机发送表情的动作。"""
+    """一个随机发送表情的动作。
+    
+    此示例展示了如何使用新的 go_activate() 方法来实现随机激活。
+    """
 
     action_name = "random_emoji"
     action_description = "随机发送一个表情符号，增加聊天的趣味性。"
-    activation_type = ActionActivationType.RANDOM
-    random_activation_probability = 0.1
     action_require = ["当对话气氛轻松时", "可以用来回应简单的情感表达"]
     associated_types = ["text"]
+
+    async def go_activate(self, llm_judge_model=None) -> bool:
+        """使用新的激活方式：10% 的概率激活
+        
+        注意：不需要传入 chat_content，会自动从实例属性中获取
+        """
+        return await self._random_activation(0.1)
 
     async def execute(self) -> tuple[bool, str]:
         emojis = ["😊", "😂", "👍", "🎉", "🤔", "🤖"]

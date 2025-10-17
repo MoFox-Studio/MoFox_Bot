@@ -18,8 +18,36 @@ logger = get_logger("emoji")
 
 
 class EmojiAction(BaseAction):
-    """表情动作 - 发送表情包"""
+    """表情动作 - 发送表情包
+    
+    注意：此 Action 使用旧的激活类型配置方式（已废弃但仍然兼容）。
+    BaseAction.go_activate() 的默认实现会自动处理这些旧配置。
+    
+    推荐的新写法（迁移示例）：
+    ----------------------------------------
+    # 移除下面的 activation_type 相关配置，改为重写 go_activate 方法：
+    
+    async def go_activate(self, chat_content: str = "", llm_judge_model=None) -> bool:
+        # 根据配置选择激活方式
+        if global_config.emoji.emoji_activate_type == "llm":
+            return await self._llm_judge_activation(
+                chat_content=chat_content,
+                judge_prompt=\"""
+                判定是否需要使用表情动作的条件：
+                1. 用户明确要求使用表情包
+                2. 这是一个适合表达情绪的场合
+                3. 发表情包能使当前对话更有趣
+                4. 不要发送太多表情包
+                \""",
+                llm_judge_model=llm_judge_model
+            )
+        else:
+            # 使用随机激活
+            return await self._random_activation(global_config.emoji.emoji_chance)
+    ----------------------------------------
+    """
 
+    # ========== 以下使用旧的激活配置（已废弃但兼容） ==========
     # 激活设置
     if global_config.emoji.emoji_activate_type == "llm":
         activation_type = ActionActivationType.LLM_JUDGE
