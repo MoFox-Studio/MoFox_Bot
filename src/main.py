@@ -29,6 +29,7 @@ from src.plugin_system.core.event_manager import event_manager
 from src.plugin_system.core.plugin_manager import plugin_manager
 from src.schedule.monthly_plan_manager import monthly_plan_manager
 from src.schedule.schedule_manager import schedule_manager
+from src.chat.message_manager.sleep_system.tasks import start_sleep_system_tasks
 
 # 插件系统现在使用统一的插件加载器
 install(extra_lines=3)
@@ -518,6 +519,14 @@ MoFox_Bot(第三方修改版)
                 logger.info("日程表管理器初始化成功")
             except Exception as e:
                 logger.error(f"日程表管理器初始化失败: {e}")
+
+        # 初始化睡眠系统
+        if global_config.sleep_system.enable:
+            try:
+                await start_sleep_system_tasks()
+                logger.info("睡眠系统初始化成功")
+            except Exception as e:
+                logger.error(f"睡眠系统初始化失败: {e}")
 
     def _safe_init(self, component_name: str, init_func) -> callable:
         """安全初始化组件，捕获异常"""
