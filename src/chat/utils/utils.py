@@ -123,11 +123,11 @@ async def get_embedding(text, request_type="embedding") -> list[float] | None:
     return embedding
 
 
-def get_recent_group_speaker(chat_stream_id: str, sender, limit: int = 12) -> list:
+async def get_recent_group_speaker(chat_stream_id: str, sender, limit: int = 12) -> list:
     # 获取当前群聊记录内发言的人
     filter_query = {"chat_id": chat_stream_id}
     sort_order = [("time", -1)]
-    recent_messages = find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
+    recent_messages = await find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
 
     if not recent_messages:
         return []
@@ -565,7 +565,7 @@ def cosine_similarity(v1, v2):
 def text_to_vector(text):
     """将文本转换为词频向量"""
     # 分词
-    words = rjieba.lcut(text)
+    words = rjieba.lcut(text) # type: ignore
     return Counter(words)
 
 
@@ -669,7 +669,7 @@ def get_western_ratio(paragraph):
     return western_count / len(alnum_chars)
 
 
-def count_messages_between(start_time: float, end_time: float, stream_id: str) -> tuple[int, int]:
+async def count_messages_between(start_time: float, end_time: float, stream_id: str) -> tuple[int, int]:
     """计算两个时间点之间的消息数量和文本总长度
 
     Args:
@@ -698,10 +698,10 @@ def count_messages_between(start_time: float, end_time: float, stream_id: str) -
 
     try:
         # 先获取消息数量
-        count = count_messages(filter_query)
+        count = await count_messages(filter_query)
 
         # 获取消息内容计算总长度
-        messages = find_messages(message_filter=filter_query)
+        messages = await find_messages(message_filter=filter_query)
         total_length = sum(len(msg.get("processed_plain_text", "")) for msg in messages)
 
         return count, total_length

@@ -159,12 +159,19 @@ class ChatterPlanFilter:
             from src.chat.message_manager.message_manager import message_manager
 
             angry_prompt_addition = ""
-            wakeup_mgr = message_manager.wakeup_manager
+            try:
+                from src.plugins.built_in.sleep_system.api import get_wakeup_manager
+                wakeup_mgr = get_wakeup_manager()
+            except ImportError:
+                logger.debug("无法导入睡眠系统API，将跳过相关检查。")
+                wakeup_mgr = None
+
+            if wakeup_mgr:
 
             # 双重检查确保愤怒状态不会丢失
             # 检查1: 直接从 wakeup_manager 获取
-            if wakeup_mgr.is_in_angry_state():
-                angry_prompt_addition = wakeup_mgr.get_angry_prompt_addition()
+                if wakeup_mgr.is_in_angry_state():
+                    angry_prompt_addition = wakeup_mgr.get_angry_prompt_addition()
 
             # 检查2: 如果上面没获取到，再从 mood_manager 确认
             if not angry_prompt_addition:
