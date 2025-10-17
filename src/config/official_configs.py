@@ -7,7 +7,7 @@ from src.config.config_base import ValidatedConfigBase
 """
 须知：
 1. 本文件中记录了所有的配置项
-2. 重要的配置类继承自ValidatedConfigBase进行Pydantic验证
+2. 所有配置类必须继承自ValidatedConfigBase进行Pydantic验证
 3. 所有新增的class都应在config.py中的Config类中添加字段
 4. 对于新增的字段，若为可选项，则应在其后添加field()并设置default_factory或default
 """
