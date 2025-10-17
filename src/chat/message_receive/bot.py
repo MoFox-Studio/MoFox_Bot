@@ -584,6 +584,8 @@ class ChatBot:
                     if global_config.mood.enable_mood:
                         # 获取兴趣度用于情绪更新
                         interest_rate = getattr(message, "interest_value", 0.0)
+                        if interest_rate is None:
+                            interest_rate = 0.0
                         logger.debug(f"开始更新情绪状态，兴趣度: {interest_rate:.2f}")
 
                         # 获取当前聊天的情绪对象并更新情绪状态

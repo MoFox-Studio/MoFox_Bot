@@ -58,20 +58,21 @@ class SleepLogic:
         # 核心逻辑：两段式检测
         # 如果 state_manager 中还没有起床时间，说明是昨晚入睡，需要等待今天凌晨的新日程。
         sleep_start_time = sleep_state_manager.get_sleep_start_time()
-        if not wake_up_time and sleep_start_time and now.date() > sleep_start_time.date():
-            logger.debug("当前为睡眠状态但无起床时间，尝试从新日程中解析...")
-            _, new_wake_up_time = self._get_wakeup_times_from_schedule(now)
+        if not wake_up_time:
+            if sleep_start_time and now.date() > sleep_start_time.date():
+                logger.debug("当前为睡眠状态但无起床时间，尝试从新日程中解析...")
+                _, new_wake_up_time = self._get_wakeup_times_from_schedule(now)
 
-            if new_wake_up_time:
-                logger.info(f"成功从新日程获取到起床时间: {new_wake_up_time.strftime('%H:%M')}")
-                sleep_state_manager.set_wake_up_time(new_wake_up_time)
-                wake_up_time = new_wake_up_time
+                if new_wake_up_time:
+                    logger.info(f"成功从新日程获取到起床时间: {new_wake_up_time.strftime('%H:%M')}")
+                    sleep_state_manager.set_wake_up_time(new_wake_up_time)
+                    wake_up_time = new_wake_up_time
+                else:
+                    logger.debug("未能获取到新的起床时间，继续睡眠。")
+                    return
             else:
-                logger.debug("未能获取到新的起床时间，继续睡眠。")
-                return
-        else:
-            logger.info("还没有到达第二天,继续睡眠。")
-
+                logger.info("还没有到达第二天,继续睡眠。")
+        logger.info(f"尚未到苏醒时间,苏醒时间在{wake_up_time}")
         if wake_up_time and now >= wake_up_time:
             logger.info(f"当前时间 {now.strftime('%H:%M')} 已到达或超过预定起床时间 {wake_up_time.strftime('%H:%M')}。")
             sleep_state_manager.set_state(SleepState.AWAKE)
