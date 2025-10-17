@@ -610,12 +610,7 @@ class SleepSystemConfig(ValidatedConfigBase):
     insomnia_duration_minutes: list[int] = Field(
         default_factory=lambda: [15, 45], description="单次失眠状态的持续时间范围（分钟）"
     )
-    sleep_pressure_threshold: float = Field(default=30.0, description="触发“压力不足型失眠”的睡眠压力阈值")
-    deep_sleep_threshold: float = Field(default=80.0, description="进入“深度睡眠”的睡眠压力阈值")
-    insomnia_chance_low_pressure: float = Field(default=0.6, ge=0.0, le=1.0, description="压力不足时的失眠基础概率")
-    insomnia_chance_normal_pressure: float = Field(default=0.1, ge=0.0, le=1.0, description="压力正常时的失眠基础概率")
-    sleep_pressure_increment: float = Field(default=1.5, ge=0.0, description="每次AI执行动作后，增加的睡眠压力值")
-    sleep_pressure_decay_rate: float = Field(default=1.5, ge=0.0, description="睡眠时，每分钟衰减的睡眠压力值")
+    insomnia_chance_pressure: float = Field(default=0.1, ge=0.0, le=1.0, description="失眠基础概率")
 
     # --- 弹性睡眠与睡前消息 ---
     enable_flexible_sleep: bool = Field(default=True, description="是否启用弹性睡眠")
