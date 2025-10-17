@@ -22,6 +22,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
     提供网络搜索和URL解析功能，支持多种搜索引擎：
     - Exa (需要API密钥)
     - Tavily (需要API密钥)
+    - Metaso (需要API密钥)
     - DuckDuckGo (免费)
     - Bing (免费)
     """
@@ -43,6 +44,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
             from .engines.exa_engine import ExaSearchEngine
             from .engines.searxng_engine import SearXNGSearchEngine
             from .engines.tavily_engine import TavilySearchEngine
+            from .engines.metaso_engine import MetasoSearchEngine
 
             # 实例化所有搜索引擎，这会触发API密钥管理器的初始化
             exa_engine = ExaSearchEngine()
@@ -50,14 +52,16 @@ class WEBSEARCHPLUGIN(BasePlugin):
             ddg_engine = DDGSearchEngine()
             bing_engine = BingSearchEngine()
             searxng_engine = SearXNGSearchEngine()
-
-            # 报告每个引擎的状态
+            metaso_engine = MetasoSearchEngine()
+ 
+             # 报告每个引擎的状态
             engines_status = {
                 "Exa": exa_engine.is_available(),
                 "Tavily": tavily_engine.is_available(),
                 "DuckDuckGo": ddg_engine.is_available(),
                 "Bing": bing_engine.is_available(),
                 "SearXNG": searxng_engine.is_available(),
+                "Metaso": metaso_engine.is_available(),
             }
 
             available_engines = [name for name, available in engines_status.items() if available]

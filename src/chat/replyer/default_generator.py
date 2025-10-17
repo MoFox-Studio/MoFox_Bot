@@ -1256,7 +1256,7 @@ class DefaultReplyer:
         }
 
         # 设置超时
-        timeout = 15.0  # 秒
+        timeout = 45.0  # 秒
 
         async def get_task_result(task_name, task):
             try:

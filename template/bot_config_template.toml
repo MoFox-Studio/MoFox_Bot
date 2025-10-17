@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.1"
+version = "7.3.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -465,11 +465,12 @@ enable_web_search_tool = true # 是否启用联网搜索tool
 enable_url_tool = true # 是否启用URL解析tool
 tavily_api_keys = ["None"]# Tavily API密钥列表，支持轮询机制
 exa_api_keys = ["None"]# EXA API密钥列表，支持轮询机制
+metaso_api_keys = ["None"]# Metaso API密钥列表，支持轮询机制
 searxng_instances = [] # SearXNG 实例 URL 列表
 searxng_api_keys = []# SearXNG 实例 API 密钥列表
 
 # 搜索引擎配置
-enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing"
+enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing", "metaso"
 search_strategy = "single" # 搜索策略: "single"(使用第一个可用引擎), "parallel"(并行使用所有启用的引擎), "fallback"(按顺序尝试，失败则尝试下一个)
 
 [sleep_system]

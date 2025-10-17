@@ -3,7 +3,7 @@ Base search engine interface
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 
 class BaseSearchEngine(ABC):
@@ -23,6 +23,12 @@ class BaseSearchEngine(ABC):
             搜索结果列表，每个结果包含 title、url、snippet、provider 字段
         """
         pass
+
+    async def read_url(self, url: str) -> Optional[str]:
+        """
+        读取URL内容，如果引擎不支持则返回None
+        """
+        return None
 
     @abstractmethod
     def is_available(self) -> bool:
