@@ -132,21 +132,30 @@ class ComponentInfo:
 
 @dataclass
 class ActionInfo(ComponentInfo):
-    """动作组件信息"""
+    """动作组件信息
+    
+    注意：激活类型相关字段已废弃，推荐使用 Action 类的 go_activate() 方法来自定义激活逻辑。
+    这些字段将继续保留以提供向后兼容性，BaseAction.go_activate() 的默认实现会使用这些字段。
+    """
 
     action_parameters: dict[str, str] = field(
         default_factory=dict
     )  # 动作参数与描述，例如 {"param1": "描述1", "param2": "描述2"}
     action_require: list[str] = field(default_factory=list)  # 动作需求说明
     associated_types: list[str] = field(default_factory=list)  # 关联的消息类型
-    # 激活类型相关
-    focus_activation_type: ActionActivationType = ActionActivationType.ALWAYS
-    normal_activation_type: ActionActivationType = ActionActivationType.ALWAYS
-    activation_type: ActionActivationType = ActionActivationType.ALWAYS
-    random_activation_probability: float = 0.0
-    llm_judge_prompt: str = ""
-    activation_keywords: list[str] = field(default_factory=list)  # 激活关键词列表
-    keyword_case_sensitive: bool = False
+    
+    # ==================================================================================
+    # 激活类型相关字段（已废弃，建议使用 go_activate() 方法）
+    # 保留这些字段是为了向后兼容，BaseAction.go_activate() 的默认实现会使用这些字段
+    # ==================================================================================
+    focus_activation_type: ActionActivationType = ActionActivationType.ALWAYS  # 已废弃
+    normal_activation_type: ActionActivationType = ActionActivationType.ALWAYS  # 已废弃
+    activation_type: ActionActivationType = ActionActivationType.ALWAYS  # 已废弃
+    random_activation_probability: float = 0.0  # 已废弃，建议在 go_activate() 中使用 _random_activation()
+    llm_judge_prompt: str = ""  # 已废弃，建议在 go_activate() 中使用 _llm_judge_activation()
+    activation_keywords: list[str] = field(default_factory=list)  # 已废弃，建议在 go_activate() 中使用 _keyword_match()
+    keyword_case_sensitive: bool = False  # 已废弃
+    
     # 模式和并行设置
     mode_enable: ChatMode = ChatMode.ALL
     parallel_action: bool = False
