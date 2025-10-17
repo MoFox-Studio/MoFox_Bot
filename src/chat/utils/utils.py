@@ -346,15 +346,54 @@ def recover_special_blocks(sentences: list[str], placeholder_map: dict[str, str]
         recovered_sentences.append(sentence)
     return recovered_sentences
 
+
+def protect_quoted_content(text: str) -> tuple[str, dict[str, str]]:
+    """识别并保护句子中被引号包裹的内容，返回处理后的文本和映射"""
+    placeholder_map = {}
+    # 匹配中英文单双引号，使用非贪婪模式
+    quote_pattern = re.compile(r'(".*?")|(\'.*?\')|(“.*?”)|(‘.*?’)')
+    
+    matches = quote_pattern.finditer(text)
+    
+    # 为了避免替换时索引错乱，我们从后往前替换
+    # finditer 找到的是 match 对象，我们需要转换为 list 来反转
+    match_list = list(matches)
+    
+    for idx, match in enumerate(reversed(match_list)):
+        original_quoted_text = match.group(0)
+        placeholder = f"__QUOTE_{len(match_list) - 1 - idx}__"
+        
+        # 直接在原始文本上操作，替换 match 对象的 span
+        start, end = match.span()
+        text = text[:start] + placeholder + text[end:]
+        
+        placeholder_map[placeholder] = original_quoted_text
+        
+    return text, placeholder_map
+
+
+def recover_quoted_content(sentences: list[str], placeholder_map: dict[str, str]) -> list[str]:
+    """恢复被保护的引号内容"""
+    recovered_sentences = []
+    for sentence in sentences:
+        for placeholder, original_block in placeholder_map.items():
+            sentence = sentence.replace(placeholder, original_block)
+        recovered_sentences.append(sentence)
+    return recovered_sentences
+
+
 def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese_typo: bool = True) -> list[str]:
     if not global_config.response_post_process.enable_response_post_process:
         return [text]
 
-    # --- 双层防护系统 ---
+    # --- 三层防护系统 ---
     # 第一层：保护颜文字
     protected_text, kaomoji_mapping = protect_kaomoji(text) if global_config.response_splitter.enable_kaomoji_protection else (text, {})
     
-    # 第二层：保护数学公式和代码块
+    # 第二层：保护引号内容
+    protected_text, quote_mapping = protect_quoted_content(protected_text)
+
+    # 第三层：保护数学公式和代码块
     protected_text, special_blocks_mapping = protect_special_blocks(protected_text)
     
     # 提取被 () 或 [] 或 （）包裹且包含中文的内容
@@ -458,6 +497,7 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
 
     # --- 恢复所有被保护的内容 ---
     sentences = recover_special_blocks(sentences, special_blocks_mapping)
+    sentences = recover_quoted_content(sentences, quote_mapping)
     if global_config.response_splitter.enable_kaomoji_protection:
         sentences = recover_kaomoji(sentences, kaomoji_mapping)
 
@@ -467,8 +507,8 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
 def calculate_typing_time(
     input_string: str,
     thinking_start_time: float,
-    chinese_time: float = 0.3,
-    english_time: float = 0.15,
+    chinese_time: float = 0.1,
+    english_time: float = 0.05,
     is_emoji: bool = False,
 ) -> float:
     """
