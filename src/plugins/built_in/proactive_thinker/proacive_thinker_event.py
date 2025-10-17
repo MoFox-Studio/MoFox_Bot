@@ -13,6 +13,7 @@ from src.manager.async_task_manager import AsyncTask, async_task_manager
 from src.plugin_system import BaseEventHandler, EventType
 from src.plugin_system.apis import chat_api, message_api, person_api
 from src.plugin_system.base.base_event import HandlerResult
+from src.chat.message_manager.sleep_system.state_manager import SleepState, sleep_state_manager
 
 from .proactive_thinker_executor import ProactiveThinkerExecutor
 
@@ -38,6 +39,10 @@ class ColdStartTask(AsyncTask):
         await asyncio.sleep(30)  # 延迟以确保所有服务和聊天流已从数据库加载完毕
 
         try:
+            current_state = sleep_state_manager.get_current_state()
+            if current_state  == SleepState.SLEEPING:
+                logger.info("bot正在睡觉,跳过本次任务")
+                return
             logger.info("【冷启动】开始扫描白名单，唤醒沉睡的聊天流...")
 
             # 【修复】增加对私聊总开关的判断
@@ -147,6 +152,10 @@ class ProactiveThinkingTask(AsyncTask):
             # 计算下一次检查前的休眠时间
             next_interval = self._get_next_interval()
             try:
+                current_state = sleep_state_manager.get_current_state()
+                if current_state  == SleepState.SLEEPING:
+                    logger.info("bot正在睡觉,跳过本次任务")
+                    return
                 logger.debug(f"【日常唤醒】下一次检查将在 {next_interval:.2f} 秒后进行。")
                 await asyncio.sleep(next_interval)
 

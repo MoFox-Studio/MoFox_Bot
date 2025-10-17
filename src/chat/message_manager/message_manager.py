@@ -17,11 +17,10 @@ from src.common.data_models.message_manager_data_model import MessageManagerStat
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.apis.chat_api import get_chat_manager
-from src.plugins.built_in.sleep_system.api import on_message_received
 
 from .distribution_manager import stream_loop_manager
-# from .sleep_manager.sleep_manager import SleepManager
-# from .sleep_manager.wakeup_manager import WakeUpManager
+from .sleep_system.state_manager import SleepState, sleep_state_manager
+
 
 if TYPE_CHECKING:
     pass
@@ -43,10 +42,6 @@ class MessageManager:
         # 初始化chatter manager
         self.action_manager = ChatterActionManager()
         self.chatter_manager = ChatterManager(self.action_manager)
-
-        # 初始化睡眠和唤醒管理器 (已被新插件取代)
-        # self.sleep_manager = SleepManager()
-        # self.wakeup_manager = WakeUpManager(self.sleep_manager)
 
         # 消息缓存系统 - 直接集成到消息管理器
         self.message_caches: Dict[str, deque] = defaultdict(deque)  # 每个流的消息缓存
@@ -94,8 +89,8 @@ class MessageManager:
         except Exception as e:
             logger.error(f"启动自适应流管理器失败: {e}")
 
-        # 启动睡眠和唤醒管理器 (已被新插件取代)
-        # await self.wakeup_manager.start()
+        # 启动睡眠和唤醒管理器
+        # 睡眠系统的定时任务启动移至 main.py
 
         # 启动流循环管理器并设置chatter_manager
         await stream_loop_manager.start()
@@ -142,8 +137,6 @@ class MessageManager:
         except Exception as e:
             logger.error(f"停止自适应流管理器失败: {e}")
 
-        # 停止睡眠和唤醒管理器 (已被新插件取代)
-        # await self.wakeup_manager.stop()
 
         # 停止流循环管理器
         await stream_loop_manager.stop()
@@ -152,10 +145,15 @@ class MessageManager:
 
     async def add_message(self, stream_id: str, message: DatabaseMessages):
         """添加消息到指定聊天流"""
-        try:
-            # 触发睡眠系统外部事件
-            on_message_received()
+        # 在消息处理的最前端检查睡眠状态
+        current_sleep_state = sleep_state_manager.get_current_state()
+        if current_sleep_state == SleepState.SLEEPING:
+            logger.info(f"处于 {current_sleep_state.name} 状态，消息被拦截。")
+            return  # 直接返回，不处理消息
 
+        # TODO: 在这里为 WOKEN_UP_ANGRY 等未来状态添加特殊处理逻辑
+
+        try:
             chat_manager = get_chat_manager()
             chat_stream = await chat_manager.get_stream(stream_id)
             if not chat_stream:
@@ -339,14 +337,9 @@ class MessageManager:
                     inactive_streams.append(stream_id)
             for stream_id in inactive_streams:
                 try:
-                    # 修复: 直接通过 stream_id 获取 chat_stream，避免潜在的未绑定问题
-                    inactive_stream = chat_manager.streams.get(stream_id)
-                    if inactive_stream:
-                        await inactive_stream.context_manager.clear_context()
-                        del chat_manager.streams[stream_id]
-                        logger.info(f"清理不活跃聊天流: {stream_id}")
-                    else:
-                        logger.warning(f"尝试清理一个不存在的流: {stream_id}")
+                    await chat_stream.context_manager.clear_context()
+                    del chat_manager.streams[stream_id]
+                    logger.info(f"清理不活跃聊天流: {stream_id}")
                 except Exception as e:
                     logger.error(f"清理聊天流 {stream_id} 失败: {e}")
             if inactive_streams:

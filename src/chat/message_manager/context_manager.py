@@ -338,9 +338,7 @@ class SingleStreamContextManager:
         # 只有在第一次添加消息时才检测聊天类型，避免后续消息改变类型
         if len(self.context.unread_messages) == 1:  # 只有这条消息
             # 如果消息包含群组信息，则为群聊
-            if hasattr(message, "chat_info_group_id") and message.chat_info_group_id:
-                self.context.chat_type = ChatType.GROUP
-            elif hasattr(message, "chat_info_group_name") and message.chat_info_group_name:
+            if message.chat_info.group_info:
                 self.context.chat_type = ChatType.GROUP
             else:
                 self.context.chat_type = ChatType.PRIVATE
