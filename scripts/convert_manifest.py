@@ -34,9 +34,14 @@ def convert_and_copy_plugin(plugin_dir: Path, output_dir: Path):
 
         plugin_name = manifest.get("name", "Unknown Plugin")
         description = manifest.get("description", "No description provided.")
-        version = manifest.get("version", "0.0.0")
+        version = manifest.get("version", "1.0.0")
         author = manifest.get("author", {}).get("name", "Unknown Author")
-        license_type = manifest.get("license", "N/A")
+        license_type = manifest.get("license")
+        repository_url = manifest.get("repository_url")
+        keywords = manifest.get("keywords", [])
+        categories = manifest.get("categories", [])
+        plugin_type = manifest.get("plugin_info", {}).get("plugin_type")
+
 
         meta_template = f"""from src.plugin_system.base.plugin_metadata import PluginMetadata
 
@@ -44,9 +49,13 @@ __plugin_meta__ = PluginMetadata(
     name="{plugin_name}",
     description="{description}",
     usage="暂无说明",
+    type={repr(plugin_type)},
     version="{version}",
     author="{author}",
-    license="{license_type}",
+    license={repr(license_type)},
+    repository_url={repr(repository_url)},
+    keywords={keywords},
+    categories={categories},
 )
 """
         # 3. 在复制后的目录中创建或覆盖 __init__.py
