@@ -615,15 +615,15 @@ class BaseAction(ABC):
         """
         # 尝试从不同的实例属性中获取聊天内容
         # 优先级：_activation_chat_content > action_data['chat_content'] > ""
-        
+
         # 1. 如果有专门设置的激活用聊天内容（由 ActionModifier 设置）
-        if hasattr(self, '_activation_chat_content'):
-            return getattr(self, '_activation_chat_content', "")
-        
+        if hasattr(self, "_activation_chat_content"):
+            return getattr(self, "_activation_chat_content", "")
+
         # 2. 尝试从 action_data 中获取
-        if hasattr(self, 'action_data') and isinstance(self.action_data, dict):
-            return self.action_data.get('chat_content', "")
-        
+        if hasattr(self, "action_data") and isinstance(self.action_data, dict):
+            return self.action_data.get("chat_content", "")
+
         # 3. 默认返回空字符串
         return ""
 
@@ -729,7 +729,7 @@ class BaseAction(ABC):
 
         # 自动获取聊天内容
         chat_content = self._get_chat_content()
-        
+
         search_text = chat_content
         if not case_sensitive:
             search_text = search_text.lower()
@@ -786,7 +786,7 @@ class BaseAction(ABC):
         try:
             # 自动获取聊天内容
             chat_content = self._get_chat_content()
-            
+
             # 如果没有提供 LLM 模型，创建一个默认的
             if llm_judge_model is None:
                 from src.config.config import model_config

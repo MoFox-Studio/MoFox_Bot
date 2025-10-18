@@ -3,7 +3,6 @@ import random
 from typing import Any
 
 from src.plugin_system import (
-    ActionActivationType,
     BaseAction,
     BaseEventHandler,
     BasePlugin,
@@ -133,11 +132,11 @@ class CombinedActivationExampleAction(BaseAction):
         # 先尝试随机激活
         if await self._random_activation(0.2):
             return True
-        
+
         # 如果随机未激活，尝试关键词匹配
         if await self._keyword_match(chat_content, ["表情", "emoji", "😊"], case_sensitive=False):
             return True
-        
+
         # 都不满足则不激活
         return False
 

@@ -156,7 +156,6 @@ class ChatterPlanFilter:
 
             schedule_block = ""
             # 优先检查是否被吵醒
-            from src.chat.message_manager.message_manager import message_manager
 
             angry_prompt_addition = ""
             try:
