@@ -5,6 +5,7 @@ import shutil
 import sys
 from pathlib import Path
 from threading import Lock
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import orjson
 from json_repair import repair_json
