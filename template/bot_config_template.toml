@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.2"
+version = "7.3.3"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -318,6 +318,7 @@ info_extraction_workers = 3 # 实体提取同时执行线程数，非Pro模型�
 qa_relation_search_top_k = 10 # 关系搜索TopK
 qa_relation_threshold = 0.5 # 关系阈值（相似度高于此阈值的关系会被认为是相关的关系）
 qa_paragraph_search_top_k = 1000 # 段落搜索TopK（不能过小，可能影响搜索结果）
+qa_paragraph_threshold = 0.4 # 段落阈值（相似度高于此阈值的段落才会被认为是相关的）
 qa_paragraph_node_weight = 0.05 # 段落节点权重（在图搜索&PPR计算中的权重，当搜索仅使用DPR时，此参数不起作用）
 qa_ent_filter_top_k = 10 # 实体过滤TopK
 qa_ppr_damping = 0.8 # PPR阻尼系数

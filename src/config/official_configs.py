@@ -481,6 +481,7 @@ class LPMMKnowledgeConfig(ValidatedConfigBase):
     info_extraction_workers: int = Field(default=3, description="信息提取工作线程数")
     qa_relation_search_top_k: int = Field(default=10, description="QA关系搜索Top K")
     qa_relation_threshold: float = Field(default=0.75, description="QA关系阈值")
+    qa_paragraph_threshold: float = Field(default=0.3, description="QA段落阈值")
     qa_paragraph_search_top_k: int = Field(default=1000, description="QA段落搜索Top K")
     qa_paragraph_node_weight: float = Field(default=0.05, description="QA段落节点权重")
     qa_ent_filter_top_k: int = Field(default=10, description="QA实体过滤Top K")
