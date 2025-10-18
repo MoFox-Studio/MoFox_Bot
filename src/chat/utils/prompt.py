@@ -760,20 +760,15 @@ class Prompt:
             return {"knowledge_prompt": ""}
 
         try:
-            from src.chat.knowledge.knowledge_lib import QAManager
+            from src.chat.knowledge.knowledge_lib import qa_manager
 
             # 获取问题文本（当前消息）
             question = self.parameters.target or ""
-            if not question:
+            if not question or not qa_manager:
                 return {"knowledge_prompt": ""}
 
-            # 创建QA管理器
-            qa_manager = QAManager()
-
             # 搜索相关知识
-            knowledge_results = await qa_manager.get_knowledge(
-                question=question, chat_id=self.parameters.chat_id, max_results=5, min_similarity=0.5
-            )
+            knowledge_results = await qa_manager.get_knowledge(question=question)
 
             # 构建知识块
             if knowledge_results and knowledge_results.get("knowledge_items"):
