@@ -778,12 +778,17 @@ class Prompt:
                     content = item.get("content", "")
                     source = item.get("source", "")
                     relevance = item.get("relevance", 0.0)
-
                     if content:
+                        try:
+                            relevance_float = float(relevance)
+                            relevance_str = f"{relevance_float:.2f}"
+                        except (ValueError, TypeError):
+                            relevance_str = str(relevance)
+
                         if source:
-                            knowledge_parts.append(f"- [{relevance:.2f}] {content} (来源: {source})")
+                            knowledge_parts.append(f"- [{relevance_str}] {content} (来源: {source})")
                         else:
-                            knowledge_parts.append(f"- [{relevance:.2f}] {content}")
+                            knowledge_parts.append(f"- [{relevance_str}] {content}")
 
                 if knowledge_results.get("summary"):
                     knowledge_parts.append(f"\n知识总结: {knowledge_results['summary']}")
