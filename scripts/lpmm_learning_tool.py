@@ -192,7 +192,8 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
         return None, pg_hash
 
 
-def extract_info_sync(pg_hash, paragraph, llm_api):
+def extract_info_sync(pg_hash, paragraph, model_set):
+    llm_api = LLMRequest(model_set=model_set)
     return asyncio.run(extract_info_async(pg_hash, paragraph, llm_api))
 
 
@@ -201,12 +202,12 @@ def extract_information(paragraphs_dict, model_set):
     os.makedirs(OPENIE_OUTPUT_DIR, exist_ok=True)
     os.makedirs(TEMP_DIR, exist_ok=True)
 
-    llm_api = LLMRequest(model_set=model_set)
     failed_hashes, open_ie_docs = [], []
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         f_to_hash = {
-            executor.submit(extract_info_sync, p_hash, p, llm_api): p_hash for p_hash, p in paragraphs_dict.items()
+            executor.submit(extract_info_sync, p_hash, p, model_set): p_hash
+            for p_hash, p in paragraphs_dict.items()
         }
         with Progress(
             SpinnerColumn(),
