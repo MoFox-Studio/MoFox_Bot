@@ -1,20 +1,19 @@
 services:
   core:
-    container_name: InkFox-Bot
+    container_name: MoFox-Bot
     #### prod ####
-    image: sengokucola/maibot:latest
-    # image: infinitycat/maibot:latest
+    image: hunuon/mofox:latest
     #### dev ####
-    # image: sengokucola/maibot:dev
+    # image: hunuon/mofox:dev
     environment:
       - TZ=Asia/Shanghai
     volumes:
-      - ./docker-config/mmc/.env:/InkFox/.env # 持久化env配置文件
-      - ./docker-config/mmc:/InkFox/config # 持久化bot配置文件
-      - ./data/InkFox/maibot_statistics.html:/InkFox/maibot_statistics.html #统计数据输出
-      - ./data/InkFox:/InkFox/data # 共享目录
-      - ./data/InkFox/plugins:/InkFox/plugins # 插件目录
-      - ./data/InkFox/logs:/InkFox/logs # 日志目录
+      - ./docker-config/core/.env:/app/.env # 持久化env配置文件
+      - ./docker-config/core:/app/config # 持久化bot配置文件
+      - ./data/core/maibot_statistics.html:/app/maibot_statistics.html #统计数据输出
+      - ./data/app:/app/data # 共享目录
+      - ./data/core/plugins:/app/plugins # 插件目录
+      - ./data/core/logs:/app/logs # 日志目录
     restart: always
     networks:
       - mofox
@@ -28,8 +27,8 @@ services:
     volumes:
       - ./docker-config/napcat:/app/napcat/config # 持久化napcat配置文件
       - ./data/qq:/app/.config/QQ # 持久化QQ本体
-      - ./data/InkFox:/InkFox/data # 共享目录
-    container_name: maim-bot-napcat
+      - ./data/app:/app/data # 共享目录
+    container_name: mofox-napcat
     restart: always
     image: mlikiowa/napcat-docker:latest
     networks:
@@ -44,7 +43,7 @@ services:
   #   ports:
   #     - "10824:10824"
   #   volumes:
-  #     - ./data/InkFox:/data/InkFox
+  #     - ./data/chat2db:/data/app
   #   networks:
   #     - mofox
 volumes:
