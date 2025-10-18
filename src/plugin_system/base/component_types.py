@@ -143,7 +143,7 @@ class ActionInfo(ComponentInfo):
     )  # 动作参数与描述，例如 {"param1": "描述1", "param2": "描述2"}
     action_require: list[str] = field(default_factory=list)  # 动作需求说明
     associated_types: list[str] = field(default_factory=list)  # 关联的消息类型
-    
+
     # ==================================================================================
     # 激活类型相关字段（已废弃，建议使用 go_activate() 方法）
     # 保留这些字段是为了向后兼容，BaseAction.go_activate() 的默认实现会使用这些字段
@@ -155,7 +155,7 @@ class ActionInfo(ComponentInfo):
     llm_judge_prompt: str = ""  # 已废弃，建议在 go_activate() 中使用 _llm_judge_activation()
     activation_keywords: list[str] = field(default_factory=list)  # 已废弃，建议在 go_activate() 中使用 _keyword_match()
     keyword_case_sensitive: bool = False  # 已废弃
-    
+
     # 模式和并行设置
     mode_enable: ChatMode = ChatMode.ALL
     parallel_action: bool = False

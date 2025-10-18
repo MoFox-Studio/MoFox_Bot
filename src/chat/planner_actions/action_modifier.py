@@ -11,7 +11,7 @@ from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
-from src.plugin_system.base.component_types import ActionActivationType, ActionInfo
+from src.plugin_system.base.component_types import ActionInfo
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
 
 if TYPE_CHECKING:
@@ -207,18 +207,18 @@ class ActionModifier:
             List[Tuple[str, str]]: 需要停用的 (action_name, reason) 元组列表
         """
         deactivated_actions = []
-        
+
         # 获取 Action 类注册表
-        from src.plugin_system.core.component_registry import component_registry
         from src.plugin_system.base.component_types import ComponentType
-        
+        from src.plugin_system.core.component_registry import component_registry
+
         actions_to_check = list(actions_with_info.items())
         random.shuffle(actions_to_check)
-        
+
         # 创建并行任务列表
         activation_tasks = []
         task_action_names = []
-        
+
         for action_name, action_info in actions_to_check:
             # 获取 Action 类
             action_class = component_registry.get_component_class(action_name, ComponentType.ACTION)
@@ -226,7 +226,7 @@ class ActionModifier:
                 logger.warning(f"{self.log_prefix}未找到 Action 类: {action_name}，默认不激活")
                 deactivated_actions.append((action_name, "未找到 Action 类"))
                 continue
-            
+
             # 创建一个临时实例来调用 go_activate 方法
             # 注意：这里只是为了调用 go_activate，不需要完整的初始化
             try:
@@ -237,24 +237,24 @@ class ActionModifier:
                 action_instance.log_prefix = self.log_prefix
                 # 设置聊天内容，用于激活判断
                 action_instance._activation_chat_content = chat_content
-                
+
                 # 调用 go_activate 方法（不再需要传入 chat_content）
                 task = action_instance.go_activate(
                     llm_judge_model=self.llm_judge,
                 )
                 activation_tasks.append(task)
                 task_action_names.append(action_name)
-                
+
             except Exception as e:
                 logger.error(f"{self.log_prefix}创建 Action 实例 {action_name} 失败: {e}")
                 deactivated_actions.append((action_name, f"创建实例失败: {e}"))
-        
+
         # 并行执行所有激活判断
         if activation_tasks:
             logger.debug(f"{self.log_prefix}并行执行激活判断，任务数: {len(activation_tasks)}")
             try:
                 task_results = await asyncio.gather(*activation_tasks, return_exceptions=True)
-                
+
                 # 处理结果
                 for action_name, result in zip(task_action_names, task_results, strict=False):
                     if isinstance(result, Exception):
@@ -267,7 +267,7 @@ class ActionModifier:
                     else:
                         # go_activate 返回 True，激活
                         logger.debug(f"{self.log_prefix}激活动作: {action_name}")
-                        
+
             except Exception as e:
                 logger.error(f"{self.log_prefix}并行激活判断失败: {e}")
                 # 如果并行执行失败，为所有任务默认不激活

@@ -1,8 +1,9 @@
-import orjson
 import os
 import shutil
 import sys
 from pathlib import Path
+
+import orjson
 
 # 将脚本所在的目录添加到系统路径中，以便导入项目模块
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -14,7 +15,7 @@ def convert_and_copy_plugin(plugin_dir: Path, output_dir: Path):
     """
     转换插件的 _manifest.json 文件，并将其整个目录复制到输出位置。
     """
-    manifest_path = plugin_dir / '_manifest.json'
+    manifest_path = plugin_dir / "_manifest.json"
     if not manifest_path.is_file():
         logger.warning(f"在目录 '{plugin_dir.name}' 中未找到 '_manifest.json'，已跳过。")
         return
@@ -28,16 +29,16 @@ def convert_and_copy_plugin(plugin_dir: Path, output_dir: Path):
         logger.info(f"已将插件 '{plugin_dir.name}' 完整复制到 '{target_plugin_dir}'")
 
         # 2. 读取 manifest 并生成 __init__.py 内容
-        with open(manifest_path, 'rb') as f:
+        with open(manifest_path, "rb") as f:
             manifest = orjson.loads(f.read())
 
-        plugin_name = manifest.get('name', 'Unknown Plugin')
-        description = manifest.get('description', 'No description provided.')
-        version = manifest.get('version', '0.0.0')
-        author = manifest.get('author', {}).get('name', 'Unknown Author')
-        license_type = manifest.get('license', 'N/A')
+        plugin_name = manifest.get("name", "Unknown Plugin")
+        description = manifest.get("description", "No description provided.")
+        version = manifest.get("version", "0.0.0")
+        author = manifest.get("author", {}).get("name", "Unknown Author")
+        license_type = manifest.get("license", "N/A")
 
-        meta_template = f'''from src.plugin_system.base.plugin_metadata import PluginMetadata
+        meta_template = f"""from src.plugin_system.base.plugin_metadata import PluginMetadata
 
 __plugin_meta__ = PluginMetadata(
     name="{plugin_name}",
@@ -47,14 +48,14 @@ __plugin_meta__ = PluginMetadata(
     author="{author}",
     license="{license_type}",
 )
-'''
+"""
         # 3. 在复制后的目录中创建或覆盖 __init__.py
-        output_init_path = target_plugin_dir / '__init__.py'
-        with open(output_init_path, 'w', encoding='utf-8') as f:
+        output_init_path = target_plugin_dir / "__init__.py"
+        with open(output_init_path, "w", encoding="utf-8") as f:
             f.write(meta_template)
-        
+
         # 4. 删除复制后的 _manifest.json
-        copied_manifest_path = target_plugin_dir / '_manifest.json'
+        copied_manifest_path = target_plugin_dir / "_manifest.json"
         if copied_manifest_path.is_file():
             copied_manifest_path.unlink()
 
@@ -89,7 +90,7 @@ def main():
         if item.is_dir():
             logger.info(f"发现插件目录: '{item.name}'，开始处理...")
             convert_and_copy_plugin(item, output_path)
-    
+
     logger.info("所有插件处理完成。")
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, timedelta
-from typing import Any, Dict, Optional
+from typing import Any
 
 from src.common.logger import get_logger
 from src.manager.local_store_manager import local_storage
@@ -43,7 +43,7 @@ class SleepStateManager:
         """
         初始化状态管理器，定义状态数据结构并从本地加载历史状态。
         """
-        self.state: Dict[str, Any] = {}
+        self.state: dict[str, Any] = {}
         self._default_state()
         self.load_state()
 
@@ -115,9 +115,9 @@ class SleepStateManager:
     def set_state(
         self,
         new_state: SleepState,
-        duration_seconds: Optional[float] = None,
-        sleep_start: Optional[datetime] = None,
-        wake_up: Optional[datetime] = None,
+        duration_seconds: float | None = None,
+        sleep_start: datetime | None = None,
+        wake_up: datetime | None = None,
     ):
         """
         核心函数：切换到新的睡眠状态，并更新相关的状态数据。
@@ -132,7 +132,7 @@ class SleepStateManager:
         if new_state == SleepState.AWAKE:
             self._default_state() # 醒来时重置所有状态
             self.state["state"] = SleepState.AWAKE # 确保状态正确
-        
+
         elif new_state == SleepState.SLEEPING:
             self.state["sleep_start_time"] = (sleep_start or datetime.now()).isoformat()
             self.state["wake_up_time"] = wake_up.isoformat() if wake_up else None
@@ -153,7 +153,7 @@ class SleepStateManager:
         self.state["last_checked"] = datetime.now().isoformat()
         self.save_state()
 
-    def get_wake_up_time(self) -> Optional[datetime]:
+    def get_wake_up_time(self) -> datetime | None:
         """获取预定的起床时间，如果已设置的话。"""
         wake_up_str = self.state.get("wake_up_time")
         if wake_up_str:
@@ -163,7 +163,7 @@ class SleepStateManager:
                 return None
         return None
 
-    def get_sleep_start_time(self) -> Optional[datetime]:
+    def get_sleep_start_time(self) -> datetime | None:
         """获取本次睡眠的开始时间，如果已设置的话。"""
         sleep_start_str = self.state.get("sleep_start_time")
         if sleep_start_str:
