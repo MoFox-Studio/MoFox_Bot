@@ -13,6 +13,7 @@ from rich.traceback import install
 
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
 from src.chat.memory_system.memory_manager import memory_manager
+from src.chat.message_manager.sleep_system.tasks import start_sleep_system_tasks
 from src.chat.message_receive.bot import chat_bot
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
@@ -29,7 +30,6 @@ from src.plugin_system.core.event_manager import event_manager
 from src.plugin_system.core.plugin_manager import plugin_manager
 from src.schedule.monthly_plan_manager import monthly_plan_manager
 from src.schedule.schedule_manager import schedule_manager
-from src.chat.message_manager.sleep_system.tasks import start_sleep_system_tasks
 
 # 插件系统现在使用统一的插件加载器
 install(extra_lines=3)

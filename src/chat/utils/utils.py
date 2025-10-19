@@ -298,14 +298,14 @@ def random_remove_punctuation(text: str) -> str:
 def protect_special_blocks(text: str) -> tuple[str, dict[str, str]]:
     """识别并保护数学公式和代码块，返回处理后的文本和映射"""
     placeholder_map = {}
-    
+
     # 第一层防护：优先保护标准Markdown格式
     # 使用 re.S 来让 . 匹配换行符
     markdown_patterns = {
-        'code': r"```.*?```",
-        'math': r"\$\$.*?\$\$",
+        "code": r"```.*?```",
+        "math": r"\$\$.*?\$\$",
     }
-    
+
     placeholder_idx = 0
     for block_type, pattern in markdown_patterns.items():
         matches = re.findall(pattern, text, re.S)
@@ -318,7 +318,7 @@ def protect_special_blocks(text: str) -> tuple[str, dict[str, str]]:
     # 第二层防护：保护非标准的、可能是公式或代码的片段
     # 这个正则表达式寻找连续5个以上的、主要由非中文字符组成的片段
     general_pattern = r"(?:[a-zA-Z0-9\s.,;:(){}\[\]_+\-*/=<>^|&%?!'\"√²³ⁿ∑∫≠≥≤]){5,}"
-    
+
     # 为了避免与已保护的占位符冲突，我们在剩余的文本上进行查找
     # 这是一个简化的处理，更稳妥的方式是分段查找，但目前这样足以应对多数情况
     try:
@@ -327,7 +327,7 @@ def protect_special_blocks(text: str) -> tuple[str, dict[str, str]]:
             # 避免将包含占位符的片段再次保护
             if "__SPECIAL_" in match:
                 continue
-            
+
             placeholder = f"__SPECIAL_GENERAL_{placeholder_idx}__"
             text = text.replace(match, placeholder, 1)
             placeholder_map[placeholder] = match
@@ -352,23 +352,23 @@ def protect_quoted_content(text: str) -> tuple[str, dict[str, str]]:
     placeholder_map = {}
     # 匹配中英文单双引号，使用非贪婪模式
     quote_pattern = re.compile(r'(".*?")|(\'.*?\')|(“.*?”)|(‘.*?’)')
-    
+
     matches = quote_pattern.finditer(text)
-    
+
     # 为了避免替换时索引错乱，我们从后往前替换
     # finditer 找到的是 match 对象，我们需要转换为 list 来反转
     match_list = list(matches)
-    
+
     for idx, match in enumerate(reversed(match_list)):
         original_quoted_text = match.group(0)
         placeholder = f"__QUOTE_{len(match_list) - 1 - idx}__"
-        
+
         # 直接在原始文本上操作，替换 match 对象的 span
         start, end = match.span()
         text = text[:start] + placeholder + text[end:]
-        
+
         placeholder_map[placeholder] = original_quoted_text
-        
+
     return text, placeholder_map
 
 
@@ -389,13 +389,13 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
     # --- 三层防护系统 ---
     # 第一层：保护颜文字
     protected_text, kaomoji_mapping = protect_kaomoji(text) if global_config.response_splitter.enable_kaomoji_protection else (text, {})
-    
+
     # 第二层：保护引号内容
     protected_text, quote_mapping = protect_quoted_content(protected_text)
 
     # 第三层：保护数学公式和代码块
     protected_text, special_blocks_mapping = protect_special_blocks(protected_text)
-    
+
     # 提取被 () 或 [] 或 （）包裹且包含中文的内容
     pattern = re.compile(r"[(\[（](?=.*[一-鿿]).*?[)\]）]")
     _extracted_contents = pattern.findall(protected_text)
@@ -412,7 +412,7 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
 
     # 对清理后的文本进行进一步处理
     max_sentence_num = global_config.response_splitter.max_sentence_num
-    
+
     # --- 移除总长度检查 ---
     # 原有的总长度检查会导致长回复被直接丢弃，现已移除，由后续的智能合并逻辑处理。
     # max_length = global_config.response_splitter.max_length * 2
@@ -472,7 +472,7 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
                 break
 
             # 寻找最短的相邻句子对
-            min_len = float('inf')
+            min_len = float("inf")
             merge_idx = -1
             for i in range(len(sentences) - 1):
                 combined_len = len(sentences[i]) + len(sentences[i+1])
@@ -488,7 +488,7 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
                 sentences[merge_idx] = merged_sentence
                 # 删除后一个句子
                 del sentences[merge_idx + 1]
-        
+
         logger.info(f"智能合并完成，最终消息数量: {len(sentences)}")
 
     # if extracted_contents:

@@ -26,6 +26,7 @@ from .base import (
     ActionInfo,
     BaseAction,
     BaseCommand,
+    BasePrompt,
     BaseEventHandler,
     BasePlugin,
     BaseTool,
@@ -64,6 +65,7 @@ __all__ = [
     "BaseEventHandler",
     # 基础类
     "BasePlugin",
+    "BasePrompt",
     "BaseTool",
     "ChatMode",
     "ChatType",

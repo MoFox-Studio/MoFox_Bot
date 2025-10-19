@@ -7,7 +7,7 @@ from src.config.config_base import ValidatedConfigBase
 """
 须知：
 1. 本文件中记录了所有的配置项
-2. 重要的配置类继承自ValidatedConfigBase进行Pydantic验证
+2. 所有配置类必须继承自ValidatedConfigBase进行Pydantic验证
 3. 所有新增的class都应在config.py中的Config类中添加字段
 4. 对于新增的字段，若为可选项，则应在其后添加field()并设置default_factory或default
 """
@@ -492,6 +492,7 @@ class LPMMKnowledgeConfig(ValidatedConfigBase):
     info_extraction_workers: int = Field(default=3, description="信息提取工作线程数")
     qa_relation_search_top_k: int = Field(default=10, description="QA关系搜索Top K")
     qa_relation_threshold: float = Field(default=0.75, description="QA关系阈值")
+    qa_paragraph_threshold: float = Field(default=0.3, description="QA段落阈值")
     qa_paragraph_search_top_k: int = Field(default=1000, description="QA段落搜索Top K")
     qa_paragraph_node_weight: float = Field(default=0.05, description="QA段落节点权重")
     qa_ent_filter_top_k: int = Field(default=10, description="QA实体过滤Top K")

@@ -11,6 +11,7 @@ from src.plugin_system.base.base_chatter import BaseChatter
 from src.plugin_system.base.base_command import BaseCommand
 from src.plugin_system.base.base_events_handler import BaseEventHandler
 from src.plugin_system.base.base_interest_calculator import BaseInterestCalculator
+from src.plugin_system.base.base_prompt import BasePrompt
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.base.component_types import (
     ActionInfo,
@@ -22,6 +23,7 @@ from src.plugin_system.base.component_types import (
     InterestCalculatorInfo,
     PluginInfo,
     PlusCommandInfo,
+    PromptInfo,
     ToolInfo,
 )
 from src.plugin_system.base.plus_command import PlusCommand
@@ -37,6 +39,7 @@ ComponentClassType = (
     | type[PlusCommand]
     | type[BaseChatter]
     | type[BaseInterestCalculator]
+    | type[BasePrompt]
 )
 
 
@@ -183,6 +186,10 @@ class ComponentRegistry:
                 assert isinstance(component_info, InterestCalculatorInfo)
                 assert issubclass(component_class, BaseInterestCalculator)
                 ret = self._register_interest_calculator_component(component_info, component_class)
+            case ComponentType.PROMPT:
+                assert isinstance(component_info, PromptInfo)
+                assert issubclass(component_class, BasePrompt)
+                ret = self._register_prompt_component(component_info, component_class)
             case _:
                 logger.warning(f"未知组件类型: {component_type}")
                 ret = False
@@ -344,6 +351,31 @@ class ComponentRegistry:
         self._enabled_interest_calculator_registry[calculator_name] = interest_calculator_class
 
         logger.debug(f"已注册InterestCalculator组件: {calculator_name}")
+        return True
+
+    def _register_prompt_component(
+        self, prompt_info: PromptInfo, prompt_class: "ComponentClassType"
+    ) -> bool:
+        """注册Prompt组件到Prompt特定注册表"""
+        prompt_name = prompt_info.name
+        if not prompt_name:
+            logger.error(f"Prompt组件 {prompt_class.__name__} 必须指定名称")
+            return False
+
+        if not hasattr(self, "_prompt_registry"):
+            self._prompt_registry: dict[str, type[BasePrompt]] = {}
+        if not hasattr(self, "_enabled_prompt_registry"):
+            self._enabled_prompt_registry: dict[str, type[BasePrompt]] = {}
+
+        _assign_plugin_attrs(
+            prompt_class, prompt_info.plugin_name, self.get_plugin_config(prompt_info.plugin_name) or {}
+        )
+        self._prompt_registry[prompt_name] = prompt_class  # type: ignore
+
+        if prompt_info.enabled:
+            self._enabled_prompt_registry[prompt_name] = prompt_class  # type: ignore
+
+        logger.debug(f"已注册Prompt组件: {prompt_name}")
         return True
 
     # === 组件移除相关 ===
@@ -580,7 +612,17 @@ class ComponentRegistry:
         component_name: str,
         component_type: ComponentType | None = None,
     ) -> (
-        type[BaseCommand | BaseAction | BaseEventHandler | BaseTool | PlusCommand | BaseChatter | BaseInterestCalculator] | None
+        type[
+            BaseCommand
+            | BaseAction
+            | BaseEventHandler
+            | BaseTool
+            | PlusCommand
+            | BaseChatter
+            | BaseInterestCalculator
+            | BasePrompt
+        ]
+        | None
     ):
         """获取组件类，支持自动命名空间解析
 
@@ -829,6 +871,7 @@ class ComponentRegistry:
         events_handlers: int = 0
         plus_command_components: int = 0
         chatter_components: int = 0
+        prompt_components: int = 0
         for component in self._components.values():
             if component.component_type == ComponentType.ACTION:
                 action_components += 1
@@ -842,6 +885,8 @@ class ComponentRegistry:
                 plus_command_components += 1
             elif component.component_type == ComponentType.CHATTER:
                 chatter_components += 1
+            elif component.component_type == ComponentType.PROMPT:
+                prompt_components += 1
         return {
             "action_components": action_components,
             "command_components": command_components,
@@ -849,6 +894,7 @@ class ComponentRegistry:
             "event_handlers": events_handlers,
             "plus_command_components": plus_command_components,
             "chatter_components": chatter_components,
+            "prompt_components": prompt_components,
             "total_components": len(self._components),
             "total_plugins": len(self._plugins),
             "components_by_type": {

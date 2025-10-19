@@ -45,8 +45,8 @@ class MessageManager:
         self.chatter_manager = ChatterManager(self.action_manager)
 
         # 消息缓存系统 - 直接集成到消息管理器
-        self.message_caches: Dict[str, deque] = defaultdict(deque)  # 每个流的消息缓存
-        self.stream_processing_status: Dict[str, bool] = defaultdict(bool)  # 流的处理状态
+        self.message_caches: dict[str, deque] = defaultdict(deque)  # 每个流的消息缓存
+        self.stream_processing_status: dict[str, bool] = defaultdict(bool)  # 流的处理状态
         self.cache_stats = {
             "total_cached_messages": 0,
             "total_flushed_messages": 0,

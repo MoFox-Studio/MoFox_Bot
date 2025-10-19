@@ -1,10 +1,10 @@
-from datetime import datetime, time, timedelta
 import random
-from typing import Optional, Tuple
+from datetime import datetime, timedelta
 
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.schedule.schedule_manager import schedule_manager
+
 from .state_manager import SleepState, sleep_state_manager
 
 logger = get_logger("sleep_logic")
@@ -77,7 +77,7 @@ class SleepLogic:
             logger.info(f"当前时间 {now.strftime('%H:%M')} 已到达或超过预定起床时间 {wake_up_time.strftime('%H:%M')}。")
             sleep_state_manager.set_state(SleepState.AWAKE)
 
-    def _should_be_sleeping(self, now: datetime) -> Tuple[bool, Optional[datetime]]:
+    def _should_be_sleeping(self, now: datetime) -> tuple[bool, datetime | None]:
         """
         判断在当前时刻，是否应该处于睡眠时间。
 
@@ -108,10 +108,10 @@ class SleepLogic:
                  return True, wake_up_time
             # 如果当前时间大于入睡时间，说明已经进入睡眠窗口
             return True, wake_up_time
-            
+
         return False, None
 
-    def _get_fixed_sleep_times(self, now: datetime) -> Tuple[Optional[datetime], Optional[datetime]]:
+    def _get_fixed_sleep_times(self, now: datetime) -> tuple[datetime | None, datetime | None]:
         """
         当使用“固定时间”模式时，从此方法计算睡眠和起床时间。
         会加入配置中的随机偏移量，让作息更自然。
@@ -129,7 +129,7 @@ class SleepLogic:
             wake_up_t = datetime.strptime(sleep_config.fixed_wake_up_time, "%H:%M").time()
 
             sleep_time = datetime.combine(now.date(), sleep_t) + timedelta(minutes=sleep_offset)
-            
+
             # 如果起床时间比睡觉时间早，说明是第二天
             wake_up_day = now.date() + timedelta(days=1) if wake_up_t < sleep_t else now.date()
             wake_up_time = datetime.combine(wake_up_day, wake_up_t) + timedelta(minutes=wake_up_offset)
@@ -139,7 +139,7 @@ class SleepLogic:
             logger.error(f"解析固定睡眠时间失败: {e}")
             return None, None
 
-    def _get_sleep_times_from_schedule(self, now: datetime) -> Tuple[Optional[datetime], Optional[datetime]]:
+    def _get_sleep_times_from_schedule(self, now: datetime) -> tuple[datetime | None, datetime | None]:
         """
         当使用“日程表”模式时，从此方法获取睡眠时间。
         实现了核心逻辑：
@@ -164,8 +164,8 @@ class SleepLogic:
         wake_up_time = None
 
         return sleep_time, wake_up_time
-    
-    def _get_wakeup_times_from_schedule(self, now: datetime) -> Tuple[Optional[datetime], Optional[datetime]]:
+
+    def _get_wakeup_times_from_schedule(self, now: datetime) -> tuple[datetime | None, datetime | None]:
             """
             当使用“日程表”模式时，从此方法获取睡眠时间。
             实现了核心逻辑：

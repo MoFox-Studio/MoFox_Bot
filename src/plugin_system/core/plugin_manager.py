@@ -358,13 +358,14 @@ class PluginManager:
         event_handler_count = stats.get("event_handlers", 0)
         plus_command_count = stats.get("plus_command_components", 0)
         chatter_count = stats.get("chatter_components", 0)
+        prompt_count = stats.get("prompt_components", 0)
         total_components = stats.get("total_components", 0)
 
         # 📋 显示插件加载总览
         if total_registered > 0:
             logger.info("🎉 插件系统加载完成!")
             logger.info(
-                f"📊 总览: {total_registered}个插件, {total_components}个组件 (Action: {action_count}, Command: {command_count}, Tool: {tool_count}, PlusCommand: {plus_command_count}, EventHandler: {event_handler_count}, Chatter: {chatter_count})"
+                f"📊 总览: {total_registered}个插件, {total_components}个组件 (Action: {action_count}, Command: {command_count}, Tool: {tool_count}, PlusCommand: {plus_command_count}, EventHandler: {event_handler_count}, Chatter: {chatter_count}, Prompt: {prompt_count})"
             )
 
             # 显示详细的插件列表
@@ -382,6 +383,13 @@ class PluginManager:
 
                     # 组件列表
                     if plugin_info.components:
+                        
+                        def format_component(c):
+                            desc = c.description
+                            if len(desc) > 15:
+                                desc = desc[:15] + "..."
+                            return f"{c.name} ({desc})" if desc else c.name
+
                         action_components = [
                             c for c in plugin_info.components if c.component_type == ComponentType.ACTION
                         ]
@@ -395,29 +403,35 @@ class PluginManager:
                         plus_command_components = [
                             c for c in plugin_info.components if c.component_type == ComponentType.PLUS_COMMAND
                         ]
+                        prompt_components = [
+                            c for c in plugin_info.components if c.component_type == ComponentType.PROMPT
+                        ]
 
                         if action_components:
-                            action_names = [c.name for c in action_components]
-                            logger.info(f"    🎯 Action组件: {', '.join(action_names)}")
+                            action_details = [format_component(c) for c in action_components]
+                            logger.info(f"    🎯 Action组件: {', '.join(action_details)}")
 
                         if command_components:
-                            command_names = [c.name for c in command_components]
-                            logger.info(f"    ⚡ Command组件: {', '.join(command_names)}")
+                            command_details = [format_component(c) for c in command_components]
+                            logger.info(f"    ⚡ Command组件: {', '.join(command_details)}")
                         if tool_components:
-                            tool_names = [c.name for c in tool_components]
-                            logger.info(f"    🛠️ Tool组件: {', '.join(tool_names)}")
+                            tool_details = [format_component(c) for c in tool_components]
+                            logger.info(f"    🛠️ Tool组件: {', '.join(tool_details)}")
                         if plus_command_components:
-                            plus_command_names = [c.name for c in plus_command_components]
-                            logger.info(f"    ⚡ PlusCommand组件: {', '.join(plus_command_names)}")
+                            plus_command_details = [format_component(c) for c in plus_command_components]
+                            logger.info(f"    ⚡ PlusCommand组件: {', '.join(plus_command_details)}")
                         chatter_components = [
                             c for c in plugin_info.components if c.component_type == ComponentType.CHATTER
                         ]
                         if chatter_components:
-                            chatter_names = [c.name for c in chatter_components]
-                            logger.info(f"    🗣️ Chatter组件: {', '.join(chatter_names)}")
+                            chatter_details = [format_component(c) for c in chatter_components]
+                            logger.info(f"    🗣️ Chatter组件: {', '.join(chatter_details)}")
                         if event_handler_components:
-                            event_handler_names = [c.name for c in event_handler_components]
-                            logger.info(f"    📢 EventHandler组件: {', '.join(event_handler_names)}")
+                            event_handler_details = [format_component(c) for c in event_handler_components]
+                            logger.info(f"    📢 EventHandler组件: {', '.join(event_handler_details)}")
+                        if prompt_components:
+                            prompt_details = [format_component(c) for c in prompt_components]
+                            logger.info(f"    📝 Prompt组件: {', '.join(prompt_details)}")
 
                     # 权限节点信息
                     if plugin_instance := self.loaded_plugins.get(plugin_name):

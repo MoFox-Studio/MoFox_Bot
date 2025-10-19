@@ -402,19 +402,31 @@ class ChatBot:
             # 确保所有任务已启动
             await self._ensure_started()
 
-            platform = message_data["message_info"].get("platform")
+            # 控制握手等消息可能缺少 message_info，这里直接跳过避免 KeyError
+            if not isinstance(message_data, dict):
+                logger.warning(f"收到无法解析的消息类型: {type(message_data)}，已跳过")
+                return
+            message_info = message_data.get("message_info")
+            if not isinstance(message_info, dict):
+                logger.debug(
+                    "收到缺少 message_info 的消息，已跳过。可用字段: %s",
+                    ", ".join(message_data.keys()),
+                )
+                return
+
+            platform = message_info.get("platform")
 
             if platform == "amaidesu_default":
                 await self.do_s4u(message_data)
                 return
 
-            if message_data["message_info"].get("group_info") is not None:
-                message_data["message_info"]["group_info"]["group_id"] = str(
-                    message_data["message_info"]["group_info"]["group_id"]
+            if message_info.get("group_info") is not None:
+                message_info["group_info"]["group_id"] = str(
+                    message_info["group_info"]["group_id"]
                 )
-            if message_data["message_info"].get("user_info") is not None:
-                message_data["message_info"]["user_info"]["user_id"] = str(
-                    message_data["message_info"]["user_info"]["user_id"]
+            if message_info.get("user_info") is not None:
+                message_info["user_info"]["user_id"] = str(
+                    message_info["user_info"]["user_id"]
                 )
             # print(message_data)
             # logger.debug(str(message_data))

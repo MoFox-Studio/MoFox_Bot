@@ -6,6 +6,7 @@ from datetime import datetime
 
 from maim_message import UserInfo
 
+from src.chat.message_manager.sleep_system.state_manager import SleepState, sleep_state_manager
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -13,7 +14,6 @@ from src.manager.async_task_manager import AsyncTask, async_task_manager
 from src.plugin_system import BaseEventHandler, EventType
 from src.plugin_system.apis import chat_api, message_api, person_api
 from src.plugin_system.base.base_event import HandlerResult
-from src.chat.message_manager.sleep_system.state_manager import SleepState, sleep_state_manager
 
 from .proactive_thinker_executor import ProactiveThinkerExecutor
 

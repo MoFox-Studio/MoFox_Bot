@@ -79,7 +79,7 @@ class Server:
             logger.warning(f"端口 {self.port} 已被占用，正在尝试下一个端口...")
             self.port += 1
 
-        logger.info(f"将在 http://{self.host}:{self.port} 上启动服务器")
+        logger.info(f"将在 {self.host}:{self.port} 上启动服务器")
         # 禁用 uvicorn 默认日志和访问日志
         config = Config(app=self.app, host=self.host, port=self.port, log_config=None, access_log=False)
         self._server = UvicornServer(config=config)

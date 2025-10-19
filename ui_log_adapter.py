@@ -107,7 +107,7 @@ class UILogHandler(logging.Handler):
             # if not success:
             #     print(f"[UI日志适配器] 日志发送失败: {ui_level} - {formatted_msg[:50]}...")
 
-        except Exception as e:
+        except Exception:
             # 静默失败，不影响主程序
             pass
 

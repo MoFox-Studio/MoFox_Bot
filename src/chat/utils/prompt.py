@@ -8,94 +8,20 @@ import contextvars
 import re
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
 from rich.traceback import install
 
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.chat_message_builder import build_readable_messages
+from src.chat.utils.prompt_component_manager import prompt_component_manager
+from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.person_info.person_info import get_person_info_manager
 
 install(extra_lines=3)
 logger = get_logger("unified_prompt")
-
-
-@dataclass
-class PromptParameters:
-    """统一提示词参数系统"""
-
-    # 基础参数
-    chat_id: str = ""
-    is_group_chat: bool = False
-    sender: str = ""
-    target: str = ""
-    reply_to: str = ""
-    extra_info: str = ""
-    prompt_mode: Literal["s4u", "normal", "minimal"] = "s4u"
-    bot_name: str = ""
-    bot_nickname: str = ""
-
-    # 功能开关
-    enable_tool: bool = True
-    enable_memory: bool = True
-    enable_expression: bool = True
-    enable_relation: bool = True
-    enable_cross_context: bool = True
-    enable_knowledge: bool = True
-
-    # 性能控制
-    max_context_messages: int = 50
-
-    # 调试选项
-    debug_mode: bool = False
-
-    # 聊天历史和上下文
-    chat_target_info: dict[str, Any] | None = None
-    message_list_before_now_long: list[dict[str, Any]] = field(default_factory=list)
-    message_list_before_short: list[dict[str, Any]] = field(default_factory=list)
-    chat_talking_prompt_short: str = ""
-    target_user_info: dict[str, Any] | None = None
-
-    # 已构建的内容块
-    expression_habits_block: str = ""
-    relation_info_block: str = ""
-    memory_block: str = ""
-    tool_info_block: str = ""
-    knowledge_prompt: str = ""
-    cross_context_block: str = ""
-    notice_block: str = ""
-
-    # 其他内容块
-    keywords_reaction_prompt: str = ""
-    extra_info_block: str = ""
-    time_block: str = ""
-    identity_block: str = ""
-    schedule_block: str = ""
-    moderation_prompt_block: str = ""
-    safety_guidelines_block: str = ""
-    reply_target_block: str = ""
-    mood_prompt: str = ""
-    action_descriptions: str = ""
-
-    # 可用动作信息
-    available_actions: dict[str, Any] | None = None
-
-    # 动态生成的聊天场景提示
-    chat_scene: str = ""
-
-    def validate(self) -> list[str]:
-        """参数验证"""
-        errors = []
-        if not self.chat_id:
-            errors.append("chat_id不能为空")
-        if self.prompt_mode not in ["s4u", "normal", "minimal"]:
-            errors.append("prompt_mode必须是's4u'、'normal'或'minimal'")
-        if self.max_context_messages <= 0:
-            errors.append("max_context_messages必须大于0")
-        return errors
 
 
 class PromptContext:
@@ -132,7 +58,7 @@ class PromptContext:
                 context_id = None
 
             previous_context = self._current_context
-            token = self._current_context_var.set(context_id) if context_id else None
+            token = self._current_context_var.set(context_id) if context_id else None # type: ignore
         else:
             previous_context = self._current_context
             token = None
@@ -185,16 +111,42 @@ class PromptManager:
         async with self._context.async_scope(message_id):
             yield self
 
-    async def get_prompt_async(self, name: str) -> "Prompt":
-        """异步获取提示模板"""
+    async def get_prompt_async(self, name: str, parameters: PromptParameters | None = None) -> "Prompt":
+        """
+        异步获取提示模板，并动态注入插件内容
+        """
+        original_prompt = None
         context_prompt = await self._context.get_prompt_async(name)
         if context_prompt is not None:
             logger.debug(f"从上下文中获取提示词: {name} {context_prompt}")
-            return context_prompt
-
-        if name not in self._prompts:
+            original_prompt = context_prompt
+        elif name in self._prompts:
+            original_prompt = self._prompts[name]
+        else:
             raise KeyError(f"Prompt '{name}' not found")
-        return self._prompts[name]
+
+        # 动态注入插件内容
+        if original_prompt.name:
+            # 确保我们有有效的parameters实例
+            params_for_injection = parameters or original_prompt.parameters
+
+            components_prefix = await prompt_component_manager.execute_components_for(
+                injection_point=original_prompt.name, params=params_for_injection
+            )
+            logger.info(components_prefix)
+            if components_prefix:
+                logger.info(f"为'{name}'注入插件内容: \n{components_prefix}")
+                # 创建一个新的临时Prompt实例，不进行注册
+                new_template = f"{components_prefix}\n\n{original_prompt.template}"
+                temp_prompt = Prompt(
+                    template=new_template,
+                    name=original_prompt.name,
+                    parameters=original_prompt.parameters,
+                    should_register=False,  # 确保不重新注册
+                )
+                return temp_prompt
+
+        return original_prompt
 
     def generate_name(self, template: str) -> str:
         """为未命名的prompt生成名称"""
@@ -216,7 +168,9 @@ class PromptManager:
 
     async def format_prompt(self, name: str, **kwargs) -> str:
         """格式化提示模板"""
-        prompt = await self.get_prompt_async(name)
+        # 提取parameters用于注入
+        parameters = kwargs.get("parameters")
+        prompt = await self.get_prompt_async(name, parameters=parameters)
         result = prompt.format(**kwargs)
         return result
 
@@ -304,11 +258,14 @@ class Prompt:
 
         start_time = time.time()
         try:
-            # 构建上下文数据
+            # 1. 构建核心上下文数据
             context_data = await self._build_context_data()
 
-            # 格式化模板
-            result = await self._format_with_context(context_data)
+            # 2. 格式化主模板
+            main_formatted_prompt = await self._format_with_context(context_data)
+
+            # 3. 拼接组件内容和主模板内容 (逻辑已前置到 get_prompt_async)
+            result = main_formatted_prompt
 
             total_time = time.time() - start_time
             logger.debug(f"Prompt构建完成，模式: {self.parameters.prompt_mode}, 耗时: {total_time:.2f}s")
@@ -470,9 +427,13 @@ class Prompt:
         if not self.parameters.message_list_before_now_long:
             return
 
+        target_user_id = ""
+        if self.parameters.target_user_info:
+            target_user_id = self.parameters.target_user_info.get("user_id") or ""
+
         read_history_prompt, unread_history_prompt = await self._build_s4u_chat_history_prompts(
             self.parameters.message_list_before_now_long,
-            self.parameters.target_user_info.get("user_id") if self.parameters.target_user_info else "",
+            target_user_id,
             self.parameters.sender,
             self.parameters.chat_id,
         )
@@ -498,11 +459,14 @@ class Prompt:
 
             # 创建临时生成器实例来使用其方法
             temp_generator = await get_replyer(None, chat_id, request_type="prompt_building")
-            return await temp_generator.build_s4u_chat_history_prompts(
-                message_list_before_now, target_user_id, sender, chat_id
-            )
+            if temp_generator:
+                return await temp_generator.build_s4u_chat_history_prompts(
+                    message_list_before_now, target_user_id, sender, chat_id
+                )
+            return "", ""
         except Exception as e:
             logger.error(f"构建S4U历史消息prompt失败: {e}")
+            return "", ""
 
     async def _build_expression_habits(self) -> dict[str, Any]:
         """构建表达习惯"""
@@ -589,10 +553,10 @@ class Prompt:
                 running_memories, instant_memory = await asyncio.gather(*memory_tasks, return_exceptions=True)
 
                 # 处理可能的异常结果
-                if isinstance(running_memories, Exception):
+                if isinstance(running_memories, BaseException):
                     logger.warning(f"长期记忆查询失败: {running_memories}")
                     running_memories = []
-                if isinstance(instant_memory, Exception):
+                if isinstance(instant_memory, BaseException):
                     logger.warning(f"即时记忆查询失败: {instant_memory}")
                     instant_memory = None
 
@@ -763,20 +727,15 @@ class Prompt:
             return {"knowledge_prompt": ""}
 
         try:
-            from src.chat.knowledge.knowledge_lib import QAManager
+            from src.chat.knowledge.knowledge_lib import qa_manager
 
             # 获取问题文本（当前消息）
             question = self.parameters.target or ""
-            if not question:
+            if not question or not qa_manager:
                 return {"knowledge_prompt": ""}
 
-            # 创建QA管理器
-            qa_manager = QAManager()
-
             # 搜索相关知识
-            knowledge_results = await qa_manager.get_knowledge(
-                question=question, chat_id=self.parameters.chat_id, max_results=5, min_similarity=0.5
-            )
+            knowledge_results = await qa_manager.get_knowledge(question=question)
 
             # 构建知识块
             if knowledge_results and knowledge_results.get("knowledge_items"):
@@ -786,12 +745,17 @@ class Prompt:
                     content = item.get("content", "")
                     source = item.get("source", "")
                     relevance = item.get("relevance", 0.0)
-
                     if content:
+                        try:
+                            relevance_float = float(relevance)
+                            relevance_str = f"{relevance_float:.2f}"
+                        except (ValueError, TypeError):
+                            relevance_str = str(relevance)
+
                         if source:
-                            knowledge_parts.append(f"- [{relevance:.2f}] {content} (来源: {source})")
+                            knowledge_parts.append(f"- [{relevance_str}] {content} (来源: {source})")
                         else:
-                            knowledge_parts.append(f"- [{relevance:.2f}] {content}")
+                            knowledge_parts.append(f"- [{relevance_str}] {content}")
 
                 if knowledge_results.get("summary"):
                     knowledge_parts.append(f"\n知识总结: {knowledge_results['summary']}")
@@ -1108,8 +1072,24 @@ def create_prompt(
 async def create_prompt_async(
     template: str, name: str | None = None, parameters: PromptParameters | None = None, **kwargs
 ) -> Prompt:
-    """异步创建Prompt实例"""
-    prompt = create_prompt(template, name, parameters, **kwargs)
+    """异步创建Prompt实例，并动态注入插件内容"""
+    # 确保有可用的parameters实例
+    final_params = parameters or PromptParameters(**kwargs)
+
+    # 动态注入插件内容
+    if name:
+        components_prefix = await prompt_component_manager.execute_components_for(
+            injection_point=name, params=final_params
+        )
+        if components_prefix:
+            logger.debug(f"为'{name}'注入插件内容: \n{components_prefix}")
+            template = f"{components_prefix}\n\n{template}"
+
+    # 使用可能已修改的模板创建实例
+    prompt = create_prompt(template, name, final_params)
+
+    # 如果在特定上下文中，则异步注册
     if global_prompt_manager._context._current_context:
         await global_prompt_manager._context.register_async(prompt)
+
     return prompt

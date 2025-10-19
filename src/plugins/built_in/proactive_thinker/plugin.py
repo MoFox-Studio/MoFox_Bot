@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 
 @register_plugin
 class ProactiveThinkerPlugin(BasePlugin):
-    """一个主动思考的插件，但现在还只是个空壳子"""
+    """一个主动思考的插件"""
 
     plugin_name: str = "proactive_thinker"
     enable_plugin: bool = True

@@ -70,6 +70,7 @@ class ChatterActionPlanner:
             "replies_generated": 0,
             "other_actions_executed": 0,
         }
+        self._background_tasks: set[asyncio.Task] = set()
 
     async def plan(self, context: "StreamContext | None" = None) -> tuple[list[dict[str, Any]], Any | None]:
         """
@@ -157,7 +158,9 @@ class ChatterActionPlanner:
                         )
 
                 if interest_updates:
-                    asyncio.create_task(self._commit_interest_updates(interest_updates))
+                    task = asyncio.create_task(self._commit_interest_updates(interest_updates))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._handle_task_result)
 
             # 检查兴趣度是否达到非回复动作阈值
             non_reply_action_interest_threshold = global_config.affinity_flow.non_reply_action_interest_threshold
@@ -265,6 +268,17 @@ class ChatterActionPlanner:
             final_target_message_dict = None
 
         return final_actions_dict, final_target_message_dict
+
+    def _handle_task_result(self, task: asyncio.Task) -> None:
+        """处理后台任务的结果，记录异常。"""
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass  # 任务被取消是正常现象
+        except Exception as e:
+            logger.error(f"后台任务执行失败: {e}", exc_info=True)
+        finally:
+            self._background_tasks.discard(task)
 
     def get_planner_stats(self) -> dict[str, Any]:
         """获取规划器统计"""

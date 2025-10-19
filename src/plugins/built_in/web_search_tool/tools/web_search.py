@@ -15,6 +15,7 @@ from ..engines.ddg_engine import DDGSearchEngine
 from ..engines.exa_engine import ExaSearchEngine
 from ..engines.searxng_engine import SearXNGSearchEngine
 from ..engines.tavily_engine import TavilySearchEngine
+from ..engines.metaso_engine import MetasoSearchEngine
 from ..utils.formatters import deduplicate_results, format_search_results
 
 logger = get_logger("web_search_tool")
@@ -51,6 +52,7 @@ class WebSurfingTool(BaseTool):
             "ddg": DDGSearchEngine(),
             "bing": BingSearchEngine(),
             "searxng": SearXNGSearchEngine(),
+            "metaso": MetasoSearchEngine(),
         }
 
     async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:

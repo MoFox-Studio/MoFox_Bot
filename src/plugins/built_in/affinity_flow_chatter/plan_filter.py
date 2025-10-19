@@ -155,86 +155,20 @@ class ChatterPlanFilter:
             identity_block = f"你的名字是{bot_name}{bot_nickname}，你{bot_core_personality}："
 
             schedule_block = ""
-            # 优先检查是否被吵醒
-            from src.chat.message_manager.message_manager import message_manager
-
-            angry_prompt_addition = ""
-            try:
-                from src.plugins.built_in.sleep_system.api import get_wakeup_manager
-                wakeup_mgr = get_wakeup_manager()
-            except ImportError:
-                logger.debug("无法导入睡眠系统API，将跳过相关检查。")
-                wakeup_mgr = None
-
-            if wakeup_mgr:
-
-            # 双重检查确保愤怒状态不会丢失
-            # 检查1: 直接从 wakeup_manager 获取
-                if wakeup_mgr.is_in_angry_state():
-                    angry_prompt_addition = wakeup_mgr.get_angry_prompt_addition()
-
-            # 检查2: 如果上面没获取到，再从 mood_manager 确认
-            if not angry_prompt_addition:
-                chat_mood_for_check = mood_manager.get_mood_by_chat_id(plan.chat_id)
-                if chat_mood_for_check.is_angry_from_wakeup:
-                    angry_prompt_addition = global_config.sleep_system.angry_prompt
-
-            if angry_prompt_addition:
-                schedule_block = angry_prompt_addition
-            elif global_config.planning_system.schedule_enable:
+            if global_config.planning_system.schedule_enable:
                 if activity_info := schedule_manager.get_current_activity():
                     activity = activity_info.get("activity", "未知活动")
                     schedule_block = f"你当前正在：{activity},但注意它与群聊的聊天无关。"
 
             mood_block = ""
-            # 如果被吵醒，则心情也是愤怒的，不需要另外的情绪模块
-            if not angry_prompt_addition and global_config.mood.enable_mood:
+            # 需要情绪模块打开才能获得情绪,否则会引发报错
+            if global_config.mood.enable_mood:
                 chat_mood = mood_manager.get_mood_by_chat_id(plan.chat_id)
                 mood_block = f"你现在的心情是：{chat_mood.mood_state}"
-
-            if plan.mode == ChatMode.PROACTIVE:
-                long_term_memory_block = await self._get_long_term_memory_context()
-
-                chat_content_block, message_id_list = await build_readable_messages_with_id(
-                    messages=[msg.flatten() for msg in plan.chat_history],
-                    timestamp_mode="normal",
-                    truncate=False,
-                    show_actions=False,
-                )
-
-                prompt_template = await global_prompt_manager.get_prompt_async("proactive_planner_prompt")
-                actions_before_now = await get_actions_by_timestamp_with_chat(
-                    chat_id=plan.chat_id,
-                    timestamp_start=time.time() - 3600,
-                    timestamp_end=time.time(),
-                    limit=5,
-                )
-                actions_before_now_block = build_readable_actions(actions=actions_before_now)
-                actions_before_now_block = f"你刚刚选择并执行过的action是：\n{actions_before_now_block}"
-
-                prompt = prompt_template.format(
-                    time_block=time_block,
-                    identity_block=identity_block,
-                    schedule_block=schedule_block,
-                    mood_block=mood_block,
-                    long_term_memory_block=long_term_memory_block,
-                    chat_content_block=chat_content_block or "最近没有聊天内容。",
-                    actions_before_now_block=actions_before_now_block,
-                )
-                return prompt, message_id_list
 
             # 构建已读/未读历史消息
             read_history_block, unread_history_block, message_id_list = await self._build_read_unread_history_blocks(
                 plan
-            )
-
-            # 为了兼容性，保留原有的chat_content_block
-            chat_content_block, _ = await build_readable_messages_with_id(
-                messages=[msg.flatten() for msg in plan.chat_history],
-                timestamp_mode="normal",
-                read_mark=self.last_obs_time_mark,
-                truncate=True,
-                show_actions=True,
             )
 
             actions_before_now = await get_actions_by_timestamp_with_chat(
@@ -286,7 +220,7 @@ class ChatterPlanFilter:
             is_group_chat = plan.chat_type == ChatType.GROUP
             chat_context_description = "你现在正在一个群聊中"
             if not is_group_chat and plan.target_info:
-                chat_target_name = plan.target_info.get("person_name") or plan.target_info.get("user_nickname") or "对方"
+                chat_target_name = plan.target_info.person_name or plan.target_info.user_nickname or "对方"
                 chat_context_description = f"你正在和 {chat_target_name} 私聊"
 
             action_options_block = await self._build_action_options(plan.available_actions)
