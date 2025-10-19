@@ -9,7 +9,7 @@ from src.chat.utils.utils import get_chat_type_and_target_info
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.data_models.info_data_model import Plan, TargetPersonInfo
 from src.config.config import global_config
-from src.plugin_system.base.component_types import ActionInfo, ChatMode, ChatType
+from src.plugin_system.base.component_types import ActionInfo, ChatMode, ChatType, ComponentType
 from src.plugin_system.core.component_registry import component_registry
 
 
@@ -55,6 +55,11 @@ class ChatterPlanGenerator:
         try:
             # 获取聊天类型和目标信息
             chat_type, target_info = await get_chat_type_and_target_info(self.chat_id)
+            if chat_type:
+                chat_type = ChatType.GROUP
+            else:
+                #遇到未知类型也当私聊处理
+                chat_type = ChatType.PRIVATE
 
             # 获取可用动作列表
             available_actions = await self._get_available_actions(chat_type, mode)
@@ -63,11 +68,15 @@ class ChatterPlanGenerator:
             recent_messages = await self._get_recent_messages()
 
             # 构建计划对象
+            # 使用 target_info 字典创建 TargetPersonInfo 实例
+            target_person_info = TargetPersonInfo(**target_info) if target_info else TargetPersonInfo()
+
+            # 构建计划对象
             plan = Plan(
                 chat_id=self.chat_id,
                 chat_type=chat_type,
                 mode=mode,
-                target_info=target_info,
+                target_info=target_person_info,
                 available_actions=available_actions,
                 chat_history=recent_messages,
             )
@@ -77,6 +86,7 @@ class ChatterPlanGenerator:
         except Exception:
             # 如果生成失败，返回一个基本的空计划
             return Plan(
+                chat_type = ChatType.PRIVATE,#空计划默认当成私聊
                 chat_id=self.chat_id,
                 mode=mode,
                 target_info=TargetPersonInfo(),
@@ -124,7 +134,7 @@ class ChatterPlanGenerator:
         try:
             # 获取最近的消息记录
             raw_messages = await get_raw_msg_before_timestamp_with_chat(
-                chat_id=self.chat_id, timestamp=time.time(), limit=global_config.memory.short_memory_length
+                chat_id=self.chat_id, timestamp=time.time(), limit=global_config.chat.max_context_size
             )
 
             # 转换为 DatabaseMessages 对象
