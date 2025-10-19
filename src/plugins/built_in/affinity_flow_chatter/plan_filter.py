@@ -161,7 +161,7 @@ class ChatterPlanFilter:
                     schedule_block = f"你当前正在：{activity},但注意它与群聊的聊天无关。"
 
             mood_block = ""
-            # 如果被吵醒，则心情也是愤怒的，不需要另外的情绪模块
+            # 需要情绪模块打开才能获得情绪,否则会引发报错
             if global_config.mood.enable_mood:
                 chat_mood = mood_manager.get_mood_by_chat_id(plan.chat_id)
                 mood_block = f"你现在的心情是：{chat_mood.mood_state}"
@@ -220,7 +220,7 @@ class ChatterPlanFilter:
             is_group_chat = plan.chat_type == ChatType.GROUP
             chat_context_description = "你现在正在一个群聊中"
             if not is_group_chat and plan.target_info:
-                chat_target_name = plan.target_info.get("person_name") or plan.target_info.get("user_nickname") or "对方"
+                chat_target_name = plan.target_info.person_name or plan.target_info.user_nickname or "对方"
                 chat_context_description = f"你正在和 {chat_target_name} 私聊"
 
             action_options_block = await self._build_action_options(plan.available_actions)
