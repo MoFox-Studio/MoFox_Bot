@@ -20,6 +20,7 @@ class ComponentType(Enum):
     EVENT_HANDLER = "event_handler"  # 事件处理组件
     CHATTER = "chatter"  # 聊天处理器组件
     INTEREST_CALCULATOR = "interest_calculator"  # 兴趣度计算组件
+    PROMPT = "prompt"  # Prompt组件
 
     def __str__(self) -> str:
         return self.value
@@ -264,6 +265,18 @@ class EventInfo(ComponentInfo):
     def __post_init__(self):
         super().__post_init__()
         self.component_type = ComponentType.EVENT_HANDLER
+
+
+@dataclass
+class PromptInfo(ComponentInfo):
+    """Prompt组件信息"""
+
+    injection_point: str | list[str] = ""
+    """要注入的目标Prompt名称或列表"""
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.component_type = ComponentType.PROMPT
 
 
 @dataclass

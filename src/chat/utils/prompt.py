@@ -8,93 +8,20 @@ import contextvars
 import re
 import time
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import Any, Literal, Optional
+from typing import Any, Optional
 
 from rich.traceback import install
 
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.chat_message_builder import build_readable_messages
+from src.chat.utils.prompt_component_manager import prompt_component_manager
+from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.person_info.person_info import get_person_info_manager
 
 install(extra_lines=3)
 logger = get_logger("unified_prompt")
-
-
-@dataclass
-class PromptParameters:
-    """统一提示词参数系统"""
-
-    # 基础参数
-    chat_id: str = ""
-    is_group_chat: bool = False
-    sender: str = ""
-    target: str = ""
-    reply_to: str = ""
-    extra_info: str = ""
-    prompt_mode: Literal["s4u", "normal", "minimal"] = "s4u"
-    bot_name: str = ""
-    bot_nickname: str = ""
-
-    # 功能开关
-    enable_tool: bool = True
-    enable_memory: bool = True
-    enable_expression: bool = True
-    enable_relation: bool = True
-    enable_cross_context: bool = True
-    enable_knowledge: bool = True
-
-    # 性能控制
-    max_context_messages: int = 50
-
-    # 调试选项
-    debug_mode: bool = False
-
-    # 聊天历史和上下文
-    chat_target_info: dict[str, Any] | None = None
-    message_list_before_now_long: list[dict[str, Any]] = field(default_factory=list)
-    message_list_before_short: list[dict[str, Any]] = field(default_factory=list)
-    chat_talking_prompt_short: str = ""
-    target_user_info: dict[str, Any] | None = None
-
-    # 已构建的内容块
-    expression_habits_block: str = ""
-    relation_info_block: str = ""
-    memory_block: str = ""
-    tool_info_block: str = ""
-    knowledge_prompt: str = ""
-    cross_context_block: str = ""
-
-    # 其他内容块
-    keywords_reaction_prompt: str = ""
-    extra_info_block: str = ""
-    time_block: str = ""
-    identity_block: str = ""
-    schedule_block: str = ""
-    moderation_prompt_block: str = ""
-    safety_guidelines_block: str = ""
-    reply_target_block: str = ""
-    mood_prompt: str = ""
-    action_descriptions: str = ""
-
-    # 可用动作信息
-    available_actions: dict[str, Any] | None = None
-
-    # 动态生成的聊天场景提示
-    chat_scene: str = ""
-
-    def validate(self) -> list[str]:
-        """参数验证"""
-        errors = []
-        if not self.chat_id:
-            errors.append("chat_id不能为空")
-        if self.prompt_mode not in ["s4u", "normal", "minimal"]:
-            errors.append("prompt_mode必须是's4u'、'normal'或'minimal'")
-        if self.max_context_messages <= 0:
-            errors.append("max_context_messages必须大于0")
-        return errors
 
 
 class PromptContext:
@@ -303,11 +230,23 @@ class Prompt:
 
         start_time = time.time()
         try:
-            # 构建上下文数据
+            # 1. 从组件管理器获取注入内容
+            components_prefix = ""
+            if self.name:
+                components_prefix = await prompt_component_manager.execute_components_for(
+                    injection_point=self.name, params=self.parameters
+                )
+
+            # 2. 构建核心上下文数据
             context_data = await self._build_context_data()
 
-            # 格式化模板
-            result = await self._format_with_context(context_data)
+            # 3. 格式化主模板
+            main_formatted_prompt = await self._format_with_context(context_data)
+
+            # 4. 拼接组件内容和主模板内容
+            result = main_formatted_prompt
+            if components_prefix:
+                result = f"{components_prefix}\n\n{main_formatted_prompt}"
 
             total_time = time.time() - start_time
             logger.debug(f"Prompt构建完成，模式: {self.parameters.prompt_mode}, 耗时: {total_time:.2f}s")
