@@ -23,7 +23,8 @@ from src.chat.utils.chat_message_builder import (
 from src.chat.utils.memory_mappings import get_memory_type_chinese_label
 
 # 导入新的统一Prompt系统
-from src.chat.utils.prompt import Prompt, PromptParameters, global_prompt_manager
+from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.chat.utils.prompt_params import PromptParameters
 from src.chat.utils.timer_calculator import Timer
 from src.chat.utils.utils import get_chat_type_and_target_info
 from src.common.logger import get_logger

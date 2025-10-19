@@ -8,6 +8,7 @@ from .base_action import BaseAction
 from .base_command import BaseCommand
 from .base_events_handler import BaseEventHandler
 from .base_plugin import BasePlugin
+from .base_prompt import BasePrompt
 from .base_tool import BaseTool
 from .command_args import CommandArgs
 from .component_types import (
@@ -37,6 +38,7 @@ __all__ = [
     "BaseCommand",
     "BaseEventHandler",
     "BasePlugin",
+    "BasePrompt",
     "BaseTool",
     "ChatMode",
     "ChatType",

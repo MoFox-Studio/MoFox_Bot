@@ -6,6 +6,8 @@ from src.plugin_system import (
     BaseAction,
     BaseEventHandler,
     BasePlugin,
+    BasePrompt,
+    ToolParamType,
     BaseTool,
     ChatType,
     CommandArgs,
@@ -36,7 +38,17 @@ class GetSystemInfoTool(BaseTool):
     name = "get_system_info"
     description = "获取当前系统的模拟版本和状态信息。"
     available_for_llm = True
-    parameters = []
+    parameters = [
+        ("query", ToolParamType.STRING, "要搜索的关键词或问题。", True, None),
+        ("num_results", ToolParamType.INTEGER, "期望每个搜索引擎返回的搜索结果数量，默认为5。", False, None),
+        (
+            "time_range",
+            ToolParamType.STRING,
+            "指定搜索的时间范围，可以是 'any', 'week', 'month'。默认为 'any'。",
+            False,
+            ["any", "week", "month"],
+        ),
+    ]  # type: ignore
 
     async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:
         return {"name": self.name, "content": "系统版本: 1.0.1, 状态: 运行正常"}
@@ -99,7 +111,6 @@ class LLMJudgeExampleAction(BaseAction):
     async def go_activate(self, chat_content: str = "", llm_judge_model=None) -> bool:
         """LLM 判断激活：判断用户是否情绪低落"""
         return await self._llm_judge_activation(
-            chat_content=chat_content,
             judge_prompt="""
 判断用户是否表达了以下情绪或需求：
 1. 感到难过、沮丧或失落
@@ -169,6 +180,19 @@ class RandomEmojiAction(BaseAction):
         return True, "成功发送了一个随机表情"
 
 
+class WeatherPrompt(BasePrompt):
+    """一个简单的Prompt组件，用于向Planner注入天气信息。"""
+
+    prompt_name = "weather_info_prompt"
+    prompt_description = "向Planner注入当前天气信息，以丰富对话上下文。"
+    injection_point = "planner_prompt"
+
+    async def execute(self) -> str:
+        # 在实际应用中，这里可以调用天气API
+        # 为了演示，我们返回一个固定的天气信息
+        return "当前天气：晴朗，温度25°C。"
+
+
 @register_plugin
 class HelloWorldPlugin(BasePlugin):
     """一个包含四大核心组件和高级配置功能的入门示例插件。"""
@@ -178,7 +202,6 @@ class HelloWorldPlugin(BasePlugin):
     dependencies = []
     python_dependencies = []
     config_file_name = "config.toml"
-    enable_plugin = False
 
     config_schema = {
         "meta": {
@@ -207,5 +230,8 @@ class HelloWorldPlugin(BasePlugin):
 
         if self.get_config("components.random_emoji_action_enabled", True):
             components.append((RandomEmojiAction.get_action_info(), RandomEmojiAction))
+
+        # 注册新的Prompt组件
+        components.append((WeatherPrompt.get_prompt_info(), WeatherPrompt))
 
         return components

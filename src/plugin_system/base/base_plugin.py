@@ -8,6 +8,7 @@ from src.plugin_system.base.component_types import (
     EventHandlerInfo,
     InterestCalculatorInfo,
     PlusCommandInfo,
+    PromptInfo,
     ToolInfo,
 )
 
@@ -15,6 +16,7 @@ from .base_action import BaseAction
 from .base_command import BaseCommand
 from .base_events_handler import BaseEventHandler
 from .base_interest_calculator import BaseInterestCalculator
+from .base_prompt import BasePrompt
 from .base_tool import BaseTool
 from .plugin_base import PluginBase
 from .plus_command import PlusCommand
@@ -80,6 +82,13 @@ class BasePlugin(PluginBase):
             logger.warning("EventHandler的get_info逻辑尚未实现")
             return None
 
+        elif component_type == ComponentType.PROMPT:
+            if hasattr(component_class, "get_prompt_info"):
+                return component_class.get_prompt_info()
+            else:
+                logger.warning(f"Prompt类 {component_class.__name__} 缺少 get_prompt_info 方法")
+                return None
+
         else:
             logger.error(f"不支持的组件类型: {component_type}")
             return None
@@ -109,6 +118,7 @@ class BasePlugin(PluginBase):
         | tuple[EventHandlerInfo, type[BaseEventHandler]]
         | tuple[ToolInfo, type[BaseTool]]
         | tuple[InterestCalculatorInfo, type[BaseInterestCalculator]]
+        | tuple[PromptInfo, type[BasePrompt]]
     ]:
         """获取插件包含的组件列表
 
