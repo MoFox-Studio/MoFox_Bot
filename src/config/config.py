@@ -33,6 +33,7 @@ from src.config.official_configs import (
     MessageReceiveConfig,
     MoodConfig,
     NormalChatConfig,
+    NoticeConfig,
     PermissionConfig,
     PersonalityConfig,
     PlanningSystemConfig,
@@ -378,6 +379,7 @@ class Config(ValidatedConfigBase):
     personality: PersonalityConfig = Field(..., description="个性配置")
     chat: ChatConfig = Field(..., description="聊天配置")
     message_receive: MessageReceiveConfig = Field(..., description="消息接收配置")
+    notice: NoticeConfig = Field(..., description="Notice消息配置")
     normal_chat: NormalChatConfig = Field(..., description="普通聊天配置")
     emoji: EmojiConfig = Field(..., description="表情配置")
     expression: ExpressionConfig = Field(..., description="表达配置")

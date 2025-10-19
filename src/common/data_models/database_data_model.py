@@ -67,7 +67,9 @@ class DatabaseMessages(BaseDataModel):
         is_emoji: bool = False,  # 是否为表情消息
         is_picid: bool = False,  # 是否为图片消息（包含图片 ID）
         is_command: bool = False,  # 是否为命令消息（如 /help）
-        is_notify: bool = False,  # 是否为通知消息（如系统通知）
+        is_notify: bool = False,  # 是否为notice消息（如禁言、戳一戳等系统事件）
+        is_public_notice: bool = False,  # 是否为公共notice（所有聊天可见）
+        notice_type: str | None = None,  # notice类型（由适配器指定，如 "group_ban", "poke" 等）
         selected_expressions: str | None = None,  # 选择的表情或响应模板
         is_read: bool = False,  # 是否已读
         user_id: str = "",  # 用户 ID
@@ -110,6 +112,8 @@ class DatabaseMessages(BaseDataModel):
         self.is_picid = is_picid
         self.is_command = is_command
         self.is_notify = is_notify
+        self.is_public_notice = is_public_notice
+        self.notice_type = notice_type
         self.selected_expressions = selected_expressions
         self.is_read = is_read
         self.actions = actions
@@ -180,6 +184,8 @@ class DatabaseMessages(BaseDataModel):
             "is_picid": self.is_picid,
             "is_command": self.is_command,
             "is_notify": self.is_notify,
+            "is_public_notice": self.is_public_notice,
+            "notice_type": self.notice_type,
             "selected_expressions": self.selected_expressions,
             "is_read": self.is_read,
             "actions": self.actions,

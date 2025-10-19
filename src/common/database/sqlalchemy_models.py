@@ -248,6 +248,8 @@ class Messages(Base):
     is_picid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_command: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_notify: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_public_notice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    notice_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # 兴趣度系统字段
     actions: Mapped[str | None] = mapped_column(Text, nullable=True)

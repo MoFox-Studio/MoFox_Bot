@@ -121,7 +121,9 @@ class MessageRecv(Message):
         self.is_voice = False
         self.is_video = False
         self.is_mentioned = None
-        self.is_notify = False
+        self.is_notify = False  # 是否为notice消息
+        self.is_public_notice = False  # 是否为公共notice
+        self.notice_type = None  # notice类型
         self.is_at = False
         self.is_command = False
 
@@ -131,6 +133,12 @@ class MessageRecv(Message):
 
         self.key_words = []
         self.key_words_lite = []
+        
+        # 解析additional_config中的notice信息
+        if self.message_info.additional_config and isinstance(self.message_info.additional_config, dict):
+            self.is_notify = self.message_info.additional_config.get("is_notice", False)
+            self.is_public_notice = self.message_info.additional_config.get("is_public_notice", False)
+            self.notice_type = self.message_info.additional_config.get("notice_type")
 
     def update_chat_stream(self, chat_stream: "ChatStream"):
         self.chat_stream = chat_stream

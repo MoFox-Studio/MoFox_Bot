@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.1"
+version = "7.3.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -148,6 +148,14 @@ ban_msgs_regex = [
     #"https?://[^\\s]+", # 匹配https链接
     #"\\d{4}-\\d{2}-\\d{2}", # 匹配日期
 ]
+
+[notice] # Notice消息配置
+enable_notice_trigger_chat = false # 是否允许notice消息触发聊天流程（默认关闭，notice只会被记录但不会触发回复）
+notice_in_prompt = true # 是否在提示词中展示最近的notice消息
+notice_prompt_limit = 5 # 在提示词中展示的最大notice数量
+notice_time_window = 3600 # notice时间窗口（秒），只有这个时间范围内的notice会在提示词中展示，默认1小时
+max_notices_per_chat = 30 # 每个聊天保留的notice数量上限
+notice_retention_time = 86400 # notice保留时间（秒），默认24小时
 
 [anti_prompt_injection] # LLM反注入系统配置
 enabled = false # 是否启用反注入系统

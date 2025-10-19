@@ -180,6 +180,38 @@ class NoticeHandler:
                 group_name=group_name,
             )
 
+        # 准备additional_config，包含notice标志
+        notice_config = {
+            "is_notice": system_notice,  # 禁言/解禁是系统通知
+            "is_public_notice": False,  # 群内notice，非公共
+            "target_id": target_id,  # 在这里塞了一个target_id，方便mmc那边知道被戳的人是谁
+        }
+        
+        # 根据notice_type设置notice_type字段
+        if system_notice:
+            sub_type = raw_message.get("sub_type")
+            if notice_type == NoticeType.group_ban:
+                if sub_type == NoticeType.GroupBan.ban:
+                    user_id_in_ban = raw_message.get("user_id")
+                    if user_id_in_ban == 0:
+                        notice_config["notice_type"] = "group_whole_ban"
+                    else:
+                        notice_config["notice_type"] = "group_ban"
+                elif sub_type == NoticeType.GroupBan.lift_ban:
+                    user_id_in_ban = raw_message.get("user_id")
+                    if user_id_in_ban == 0:
+                        notice_config["notice_type"] = "group_whole_lift_ban"
+                    else:
+                        notice_config["notice_type"] = "group_lift_ban"
+        elif notice_type == NoticeType.notify:
+            sub_type = raw_message.get("sub_type")
+            if sub_type == NoticeType.Notify.poke:
+                notice_config["notice_type"] = "poke"
+                notice_config["is_notice"] = True  # 戳一戳也是notice
+        elif notice_type == NoticeType.group_msg_emoji_like:
+            notice_config["notice_type"] = "emoji_like"
+            notice_config["is_notice"] = True  # 表情回复也是notice
+        
         message_info: BaseMessageInfo = BaseMessageInfo(
             platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
             message_id="notice",
@@ -191,7 +223,7 @@ class NoticeHandler:
                 content_format=["text", "notify"],
                 accept_format=ACCEPT_FORMAT,
             ),
-            additional_config={"target_id": target_id},  # 在这里塞了一个target_id，方便mmc那边知道被戳的人是谁
+            additional_config=notice_config,  # 字典而不是JSON字符串
         )
 
         message_base: MessageBase = MessageBase(
@@ -504,6 +536,13 @@ class NoticeHandler:
                     group_name=group_name,
                 )
 
+                # 准备notice标志
+                notice_config = {
+                    "is_notice": True,
+                    "is_public_notice": False,
+                    "notice_type": "group_lift_ban" if user_id != 0 else "group_whole_lift_ban",
+                }
+
                 message_info: BaseMessageInfo = BaseMessageInfo(
                     platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
                     message_id="notice",
@@ -512,6 +551,7 @@ class NoticeHandler:
                     group_info=group_info,
                     template_info=None,
                     format_info=None,
+                    additional_config=notice_config,  # 字典而不是JSON字符串
                 )
 
                 message_base: MessageBase = MessageBase(
