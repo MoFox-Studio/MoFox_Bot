@@ -691,12 +691,23 @@ class CommandConfig(ValidatedConfigBase):
     command_prefixes: list[str] = Field(default_factory=lambda: ["/", "!", ".", "#"], description="支持的命令前缀列表")
 
 
+class MasterPromptConfig(ValidatedConfigBase):
+    """主人身份提示词配置"""
+
+    enable: bool = Field(default=False, description="是否启用主人提示词注入功能")
+    master_hint: str = Field(default="", description="对主人注入的额外提示词内容")
+    non_master_hint: str = Field(default="", description="对非主人注入的额外提示词内容")
+
+
 class PermissionConfig(ValidatedConfigBase):
     """权限系统配置类"""
 
     # Master用户配置（拥有最高权限，无视所有权限节点）
     master_users: list[list[str]] = Field(
         default_factory=list, description="Master用户列表，格式: [[platform, user_id], ...]"
+    )
+    master_prompt: MasterPromptConfig = Field(
+        default_factory=MasterPromptConfig, description="主人身份提示词配置"
     )
 
 

@@ -52,6 +52,7 @@ class PromptParameters:
     # 其他内容块
     keywords_reaction_prompt: str = ""
     extra_info_block: str = ""
+    auth_role_prompt_block: str = ""
     time_block: str = ""
     identity_block: str = ""
     schedule_block: str = ""

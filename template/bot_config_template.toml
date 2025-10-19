@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.3"
+version = "7.3.4"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -48,6 +48,11 @@ batch_action_storage_enabled = true # 是否启用批量保存动作记录（开
 # 格式：[[platform, user_id], ...]
 # 示例：[["qq", "123456"], ["telegram", "user789"]]
 master_users = []# ["qq", "123456789"],  # 示例：QQ平台的Master用户
+
+[permission.master_prompt] # 主人身份提示词配置
+enable = false # 是否启用主人/非主人提示注入
+master_hint = "你正在与自己的主人交流，注意展现亲切与尊重。" # 主人提示词
+non_master_hint = "对方并非你的主人，请保持常规互动风格。" # 非主人提示词
 
 [bot]
 platform = "qq"

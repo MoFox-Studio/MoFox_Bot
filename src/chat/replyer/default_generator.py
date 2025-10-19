@@ -38,6 +38,7 @@ from src.mais4u.mai_think import mai_thinking_manager
 from src.mood.mood_manager import mood_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.apis import llm_api
+from src.plugin_system.apis.permission_api import permission_api
 from src.plugin_system.base.component_types import ActionInfo, EventType
 
 logger = get_logger("replyer")
@@ -58,6 +59,7 @@ def init_prompt():
 {time_block}
 {chat_info}
 {identity}
+{auth_role_prompt_block}
 
 你正在{chat_target_2},{reply_target_block}
 对这句话，你想表达，原句：{raw_reply},原因是：{reason}。你现在要思考怎么组织回复
@@ -111,6 +113,7 @@ def init_prompt():
 {relation_info_block}
 
 {extra_info_block}
+{auth_role_prompt_block}
 
 {action_descriptions}
 
@@ -181,6 +184,7 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 {extra_info_block}
 
 {cross_context_block}
+{auth_role_prompt_block}
 {identity}
 如果有人说你是人机，你可以用一种阴阳怪气的口吻来回应
 {schedule_block}
@@ -247,6 +251,42 @@ class DefaultReplyer:
         from src.plugin_system.core.tool_use import ToolExecutor  # 延迟导入ToolExecutor，不然会循环依赖
 
         self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id)
+
+    async def _build_auth_role_prompt(self, reply_message: dict[str, Any] | None) -> str:
+        """根据主人配置生成额外提示词"""
+        master_prompt_config = getattr(global_config.permission, "master_prompt", None)
+        if not master_prompt_config or not master_prompt_config.enable:
+            return ""
+
+        target_platform: str | None = None
+        target_user_id: str | None = None
+
+        if reply_message:
+            target_platform = reply_message.get("user_platform") or reply_message.get("chat_info_platform")
+            user_id = reply_message.get("user_id")
+            if user_id is not None:
+                target_user_id = str(user_id)
+
+        if target_platform is None or target_user_id is None:
+            target_platform = self.chat_stream.platform
+            if getattr(self.chat_stream, "user_info", None):
+                target_user_id = getattr(self.chat_stream.user_info, "user_id", None)
+                if target_user_id is not None:
+                    target_user_id = str(target_user_id)
+
+        if target_platform is None or target_user_id is None:
+            return ""
+
+        target_platform = str(target_platform)
+
+        try:
+            is_master = await permission_api.is_master(target_platform, target_user_id)
+        except Exception as error:  # 防御性: 避免影响主流程
+            logger.warning(f"检测主人身份失败，已跳过提示词注入: {error}")
+            return ""
+
+        hint = master_prompt_config.master_hint if is_master else master_prompt_config.non_master_hint
+        return hint if hint.strip() else ""
 
     async def generate_reply_with_context(
         self,
@@ -1420,6 +1460,8 @@ class DefaultReplyer:
         else:
             chat_scene_prompt = f"你正在和 {sender} 私下聊天，你需要理解你们的对话并做出自然的回应。"
 
+        auth_role_prompt_block = await self._build_auth_role_prompt(reply_message)
+
         # 使用新的统一Prompt系统 - 创建PromptParameters
         prompt_parameters = PromptParameters(
             chat_scene=chat_scene_prompt,
@@ -1453,6 +1495,7 @@ class DefaultReplyer:
             safety_guidelines_block=safety_guidelines_block,
             reply_target_block=reply_target_block,
             mood_prompt=mood_prompt,
+            auth_role_prompt_block=auth_role_prompt_block,
             action_descriptions=action_descriptions,
             bot_name=global_config.bot.nickname,
             bot_nickname=",".join(global_config.bot.alias_names) if global_config.bot.alias_names else "",
@@ -1594,6 +1637,8 @@ class DefaultReplyer:
             await global_prompt_manager.format_prompt("chat_target_private1", sender_name=chat_target_name)
             await global_prompt_manager.format_prompt("chat_target_private2", sender_name=chat_target_name)
 
+        auth_role_prompt_block = await self._build_auth_role_prompt(reply_message)
+
         # 使用新的统一Prompt系统 - Expressor模式，创建PromptParameters
         prompt_parameters = PromptParameters(
             chat_id=chat_id,
@@ -1610,6 +1655,7 @@ class DefaultReplyer:
             mood_prompt=mood_prompt,
             keywords_reaction_prompt=keywords_reaction_prompt,
             moderation_prompt_block=moderation_prompt_block,
+            auth_role_prompt_block=auth_role_prompt_block,
             # 添加已构建的表达习惯和关系信息
             expression_habits_block=expression_habits_block,
             relation_info_block=relation_info,

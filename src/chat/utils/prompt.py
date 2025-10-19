@@ -24,6 +24,7 @@ install(extra_lines=3)
 logger = get_logger("unified_prompt")
 
 
+
 class PromptContext:
     """提示词上下文管理器"""
 
@@ -815,6 +816,8 @@ class Prompt:
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
             "safety_guidelines_block": self.parameters.safety_guidelines_block
             or context_data.get("safety_guidelines_block", ""),
+            "auth_role_prompt_block": self.parameters.auth_role_prompt_block
+            or context_data.get("auth_role_prompt_block", ""),
             "chat_scene": self.parameters.chat_scene
             or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
         }
@@ -843,6 +846,8 @@ class Prompt:
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
             "safety_guidelines_block": self.parameters.safety_guidelines_block
             or context_data.get("safety_guidelines_block", ""),
+            "auth_role_prompt_block": self.parameters.auth_role_prompt_block
+            or context_data.get("auth_role_prompt_block", ""),
             "chat_scene": self.parameters.chat_scene
             or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
         }
@@ -867,6 +872,8 @@ class Prompt:
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
             "safety_guidelines_block": self.parameters.safety_guidelines_block
             or context_data.get("safety_guidelines_block", ""),
+            "auth_role_prompt_block": self.parameters.auth_role_prompt_block
+            or context_data.get("auth_role_prompt_block", ""),
             "bot_name": self.parameters.bot_name,
             "bot_nickname": self.parameters.bot_nickname,
         }
