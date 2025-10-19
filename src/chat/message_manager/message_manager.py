@@ -678,7 +678,12 @@ class MessageManager:
             logger.error(f"处理notice消息失败: {e}")
 
     def _determine_notice_scope(self, message: DatabaseMessages, stream_id: str) -> NoticeScope:
-        """确定notice的作用域"""
+        """确定notice的作用域
+        
+        作用域完全由 additional_config 中的 is_public_notice 字段决定：
+        - is_public_notice=True: 公共notice，所有聊天流可见
+        - is_public_notice=False 或未设置: 特定聊天流notice
+        """
         try:
             # 检查附加配置中的公共notice标志
             if hasattr(message, 'additional_config') and message.additional_config:
@@ -692,19 +697,8 @@ class MessageManager:
                     is_public = False
 
                 if is_public:
+                    logger.debug(f"Notice被标记为公共: message_id={message.message_id}")
                     return NoticeScope.PUBLIC
-
-            # 检查notice类型来决定作用域
-            notice_type = self._get_notice_type(message)
-
-            # 某些类型的notice默认为公共notice
-            public_notice_types = {
-                "group_whole_ban", "group_whole_lift_ban",
-                "system_announcement", "platform_maintenance"
-            }
-
-            if notice_type in public_notice_types:
-                return NoticeScope.PUBLIC
 
             # 默认为特定聊天流notice
             return NoticeScope.STREAM
