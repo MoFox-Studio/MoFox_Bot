@@ -30,8 +30,8 @@ from .utils.hash import get_sha256
 install(extra_lines=3)
 
 # 多线程embedding配置常量
-DEFAULT_MAX_WORKERS = 10  # 默认最大线程数
-DEFAULT_CHUNK_SIZE = 10  # 默认每个线程处理的数据块大小
+DEFAULT_MAX_WORKERS = 3  # 默认最大线程数
+DEFAULT_CHUNK_SIZE = 5  # 默认每个线程处理的数据块大小
 MIN_CHUNK_SIZE = 1  # 最小分块大小
 MAX_CHUNK_SIZE = 50  # 最大分块大小
 MIN_WORKERS = 1  # 最小线程数

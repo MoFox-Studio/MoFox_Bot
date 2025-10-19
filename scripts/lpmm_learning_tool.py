@@ -204,7 +204,7 @@ def extract_information(paragraphs_dict, model_set):
 
     failed_hashes, open_ie_docs = [], []
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=3) as executor:
         f_to_hash = {
             executor.submit(extract_info_sync, p_hash, p, model_set): p_hash
             for p_hash, p in paragraphs_dict.items()
