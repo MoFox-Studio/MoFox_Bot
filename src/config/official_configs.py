@@ -150,6 +150,17 @@ class MessageReceiveConfig(ValidatedConfigBase):
     ban_msgs_regex: list[str] = Field(default_factory=lambda: [], description="禁用消息正则列表")
 
 
+class NoticeConfig(ValidatedConfigBase):
+    """Notice消息配置类"""
+
+    enable_notice_trigger_chat: bool = Field(default=False, description="是否允许notice消息触发聊天流程")
+    notice_in_prompt: bool = Field(default=True, description="是否在提示词中展示最近的notice消息")
+    notice_prompt_limit: int = Field(default=5, ge=1, le=20, description="在提示词中展示的最大notice数量")
+    notice_time_window: int = Field(default=3600, ge=60, le=86400, description="notice时间窗口(秒)")
+    max_notices_per_chat: int = Field(default=30, ge=10, le=100, description="每个聊天保留的notice数量上限")
+    notice_retention_time: int = Field(default=86400, ge=3600, le=604800, description="notice保留时间(秒)")
+
+
 class NormalChatConfig(ValidatedConfigBase):
     """普通聊天配置类"""
 

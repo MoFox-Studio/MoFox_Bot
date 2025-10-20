@@ -222,6 +222,8 @@ class OptimizedChatStream:
             is_video=getattr(message, "is_video", False),
             is_command=getattr(message, "is_command", False),
             is_notify=getattr(message, "is_notify", False),
+            is_public_notice=getattr(message, "is_public_notice", False),
+            notice_type=getattr(message, "notice_type", None),
             processed_plain_text=getattr(message, "processed_plain_text", ""),
             display_message=getattr(message, "processed_plain_text", ""),
             priority_mode=getattr(message, "priority_mode", None),

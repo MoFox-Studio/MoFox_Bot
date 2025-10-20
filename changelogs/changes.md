@@ -1,3 +1,50 @@
+# Notice 系统重构 (2025-10-19)
+
+## 🔧 核心改进
+1. **移除硬编码的 Notice 类型判定**
+   - 之前某些 `notice_type` 会被硬编码为公共 notice（如 `group_whole_ban`、`system_announcement` 等）
+   - 现在 notice 的作用域完全由 `additional_config` 中的 `is_public_notice` 字段决定
+   - 提供了更灵活和可控的 notice 管理方式
+
+2. **修改的文件**
+   - `src/chat/message_manager/message_manager.py`: 移除 `_determine_notice_scope` 方法中的硬编码逻辑
+   - `src/chat/utils/prompt_params.py`: 添加缺失的 `notice_block` 字段
+   
+3. **新增文档**
+   - `docs/guides/notice_system_guide.md`: 完整的 Notice 系统使用指南
+
+## 💡 使用方式
+
+### 流级 Notice（默认）
+```python
+additional_config = {
+    "is_notice": True,
+    "is_public_notice": False,  # 或者不设置
+    "notice_type": "group_ban"
+}
+```
+
+### 公共 Notice
+```python
+additional_config = {
+    "is_notice": True,
+    "is_public_notice": True,  # 显式设置为公共
+    "notice_type": "system_announcement"
+}
+```
+
+## ⚠️ 迁移注意
+
+如果你的插件依赖以下 notice 类型自动成为公共 notice：
+- `group_whole_ban`
+- `group_whole_lift_ban`
+- `system_announcement`
+- `platform_maintenance`
+
+请在 `additional_config` 中显式添加 `"is_public_notice": True`。
+
+---
+
 # 插件API与规范修改
 
 1. 现在`plugin_system`的`__init__.py`文件中包含了所有插件API的导入，用户可以直接使用`from src.plugin_system import *`来导入所有API。

@@ -305,6 +305,8 @@ class Prompt:
                 pre_built_params["knowledge_prompt"] = self.parameters.knowledge_prompt
             if self.parameters.cross_context_block:
                 pre_built_params["cross_context_block"] = self.parameters.cross_context_block
+            if self.parameters.notice_block:
+                pre_built_params["notice_block"] = self.parameters.notice_block
 
             # 根据参数确定要构建的项
             if self.parameters.enable_expression and not pre_built_params.get("expression_habits_block"):
@@ -801,6 +803,7 @@ class Prompt:
             "relation_info_block": context_data.get("relation_info_block", ""),
             "extra_info_block": self.parameters.extra_info_block or context_data.get("extra_info_block", ""),
             "cross_context_block": context_data.get("cross_context_block", ""),
+            "notice_block": self.parameters.notice_block or context_data.get("notice_block", ""),
             "identity": self.parameters.identity_block or context_data.get("identity", ""),
             "action_descriptions": self.parameters.action_descriptions or context_data.get("action_descriptions", ""),
             "sender_name": self.parameters.sender or "未知用户",
@@ -830,6 +833,7 @@ class Prompt:
             "relation_info_block": context_data.get("relation_info_block", ""),
             "extra_info_block": self.parameters.extra_info_block or context_data.get("extra_info_block", ""),
             "cross_context_block": context_data.get("cross_context_block", ""),
+            "notice_block": self.parameters.notice_block or context_data.get("notice_block", ""),
             "identity": self.parameters.identity_block or context_data.get("identity", ""),
             "action_descriptions": self.parameters.action_descriptions or context_data.get("action_descriptions", ""),
             "schedule_block": self.parameters.schedule_block or context_data.get("schedule_block", ""),

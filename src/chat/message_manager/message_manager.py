@@ -7,7 +7,7 @@ import asyncio
 import random
 import time
 from collections import defaultdict, deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from src.chat.chatter_manager import ChatterManager
 from src.chat.message_receive.chat_stream import ChatStream
@@ -20,6 +20,8 @@ from src.plugin_system.apis.chat_api import get_chat_manager
 
 from .distribution_manager import stream_loop_manager
 from .sleep_system.state_manager import SleepState, sleep_state_manager
+from .global_notice_manager import global_notice_manager, NoticeScope
+
 
 if TYPE_CHECKING:
     pass
@@ -51,6 +53,9 @@ class MessageManager:
         }
 
         # 不再需要全局上下文管理器，直接通过 ChatManager 访问各个 ChatStream 的 context_manager
+
+        # 全局Notice管理器
+        self.notice_manager = global_notice_manager
 
     async def start(self):
         """启动消息管理器"""
@@ -153,6 +158,14 @@ class MessageManager:
         # TODO: 在这里为 WOKEN_UP_ANGRY 等未来状态添加特殊处理逻辑
 
         try:
+            # 检查是否为notice消息
+            if self._is_notice_message(message):
+                # Notice消息处理 - 不进入未读消息
+                logger.info(f"📢 检测到notice消息: message_id={message.message_id}, is_notify={message.is_notify}, notice_type={getattr(message, 'notice_type', None)}")
+                await self._handle_notice_message(stream_id, message)
+                return
+
+            # 普通消息处理
             chat_manager = get_chat_manager()
             chat_stream = await chat_manager.get_stream(stream_id)
             if not chat_stream:
@@ -616,6 +629,141 @@ class MessageManager:
             "cached_streams": len([s for s in self.message_caches.keys() if self.message_caches[s]]),
             "processing_streams": len([s for s in self.stream_processing_status.keys() if self.stream_processing_status[s]]),
         }
+
+    # ===== Notice管理相关方法 =====
+
+    def _is_notice_message(self, message: DatabaseMessages) -> bool:
+        """检查消息是否为notice类型"""
+        try:
+            # 首先检查消息的is_notify字段
+            if hasattr(message, 'is_notify') and message.is_notify:
+                return True
+
+            # 检查消息的附加配置
+            if hasattr(message, 'additional_config') and message.additional_config:
+                if isinstance(message.additional_config, dict):
+                    return message.additional_config.get("is_notice", False)
+                elif isinstance(message.additional_config, str):
+                    # 兼容JSON字符串格式
+                    import json
+                    config = json.loads(message.additional_config)
+                    return config.get("is_notice", False)
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"检查notice类型失败: {e}")
+            return False
+
+    async def _handle_notice_message(self, stream_id: str, message: DatabaseMessages) -> None:
+        """处理notice消息，将其添加到全局notice管理器"""
+        try:
+            # 获取notice作用域
+            scope = self._determine_notice_scope(message, stream_id)
+
+            # 添加到全局notice管理器
+            success = self.notice_manager.add_notice(
+                message=message,
+                scope=scope,
+                target_stream_id=stream_id if scope == NoticeScope.STREAM else None,
+                ttl=self._get_notice_ttl(message)
+            )
+
+            if success:
+                logger.info(f"✅ Notice消息已添加到全局管理器: message_id={message.message_id}, scope={scope.value}, stream={stream_id}, ttl={self._get_notice_ttl(message)}s")
+            else:
+                logger.warning(f"❌ Notice消息添加失败: message_id={message.message_id}")
+
+        except Exception as e:
+            logger.error(f"处理notice消息失败: {e}")
+
+    def _determine_notice_scope(self, message: DatabaseMessages, stream_id: str) -> NoticeScope:
+        """确定notice的作用域
+        
+        作用域完全由 additional_config 中的 is_public_notice 字段决定：
+        - is_public_notice=True: 公共notice，所有聊天流可见
+        - is_public_notice=False 或未设置: 特定聊天流notice
+        """
+        try:
+            # 检查附加配置中的公共notice标志
+            if hasattr(message, 'additional_config') and message.additional_config:
+                if isinstance(message.additional_config, dict):
+                    is_public = message.additional_config.get("is_public_notice", False)
+                elif isinstance(message.additional_config, str):
+                    import json
+                    config = json.loads(message.additional_config)
+                    is_public = config.get("is_public_notice", False)
+                else:
+                    is_public = False
+
+                if is_public:
+                    logger.debug(f"Notice被标记为公共: message_id={message.message_id}")
+                    return NoticeScope.PUBLIC
+
+            # 默认为特定聊天流notice
+            return NoticeScope.STREAM
+
+        except Exception as e:
+            logger.debug(f"确定notice作用域失败: {e}")
+            return NoticeScope.STREAM
+
+    def _get_notice_type(self, message: DatabaseMessages) -> Optional[str]:
+        """获取notice类型"""
+        try:
+            if hasattr(message, 'additional_config') and message.additional_config:
+                if isinstance(message.additional_config, dict):
+                    return message.additional_config.get("notice_type")
+                elif isinstance(message.additional_config, str):
+                    import json
+                    config = json.loads(message.additional_config)
+                    return config.get("notice_type")
+            return None
+        except Exception:
+            return None
+
+    def _get_notice_ttl(self, message: DatabaseMessages) -> int:
+        """获取notice的生存时间"""
+        try:
+            # 根据notice类型设置不同的TTL
+            notice_type = self._get_notice_type(message)
+
+            ttl_mapping = {
+                "poke": 1800,  # 戳一戳30分钟
+                "emoji_like": 3600,  # 表情回复1小时
+                "group_ban": 7200,  # 禁言2小时
+                "group_lift_ban": 7200,  # 解禁2小时
+                "group_whole_ban": 3600,  # 全体禁言1小时
+                "group_whole_lift_ban": 3600,  # 解除全体禁言1小时
+            }
+
+            return ttl_mapping.get(notice_type, 3600)  # 默认1小时
+
+        except Exception:
+            return 3600
+
+    def get_notice_text(self, stream_id: str, limit: int = 10) -> str:
+        """获取指定聊天流的notice文本，用于构建提示词"""
+        try:
+            return self.notice_manager.get_notice_text(stream_id, limit)
+        except Exception as e:
+            logger.error(f"获取notice文本失败: {e}")
+            return ""
+
+    def clear_notices(self, stream_id: Optional[str] = None, notice_type: Optional[str] = None) -> int:
+        """清理notice消息"""
+        try:
+            return self.notice_manager.clear_notices(stream_id, notice_type)
+        except Exception as e:
+            logger.error(f"清理notice失败: {e}")
+            return 0
+
+    def get_notice_stats(self) -> Dict[str, Any]:
+        """获取notice管理器统计信息"""
+        try:
+            return self.notice_manager.get_stats()
+        except Exception as e:
+            logger.error(f"获取notice统计失败: {e}")
+            return {}
 
 
 # 创建全局消息管理器实例

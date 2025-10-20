@@ -301,12 +301,35 @@ class ChatBot:
             return False, None, True  # 出错时继续处理消息
 
     async def handle_notice_message(self, message: MessageRecv):
+        """处理notice消息
+        
+        notice消息是系统事件通知（如禁言、戳一戳等），具有以下特点：
+        1. 默认不触发聊天流程，只记录
+        2. 可通过配置开启触发聊天流程
+        3. 会在提示词中展示
+        """
+        # 检查是否是notice消息
+        if message.is_notify:
+            logger.info(f"收到notice消息: {message.notice_type}")
+
+            # 根据配置决定是否触发聊天流程
+            if not global_config.notice.enable_notice_trigger_chat:
+                logger.debug("notice消息不触发聊天流程（配置已关闭）")
+                return True  # 返回True表示已处理，不继续后续流程
+            else:
+                logger.debug("notice消息触发聊天流程（配置已开启）")
+                return False  # 返回False表示继续处理，触发聊天流程
+        
+        # 兼容旧的notice判断方式
         if message.message_info.message_id == "notice":
             message.is_notify = True
-            logger.info("notice消息")
-            # print(message)
-
-            return True
+            logger.info("旧格式notice消息")
+            
+            # 同样根据配置决定
+            if not global_config.notice.enable_notice_trigger_chat:
+                return True
+            else:
+                return False
 
         # 处理适配器响应消息
         if hasattr(message, "message_segment") and message.message_segment:
@@ -379,19 +402,31 @@ class ChatBot:
             # 确保所有任务已启动
             await self._ensure_started()
 
-            platform = message_data["message_info"].get("platform")
+            # 控制握手等消息可能缺少 message_info，这里直接跳过避免 KeyError
+            if not isinstance(message_data, dict):
+                logger.warning(f"收到无法解析的消息类型: {type(message_data)}，已跳过")
+                return
+            message_info = message_data.get("message_info")
+            if not isinstance(message_info, dict):
+                logger.debug(
+                    "收到缺少 message_info 的消息，已跳过。可用字段: %s",
+                    ", ".join(message_data.keys()),
+                )
+                return
+
+            platform = message_info.get("platform")
 
             if platform == "amaidesu_default":
                 await self.do_s4u(message_data)
                 return
 
-            if message_data["message_info"].get("group_info") is not None:
-                message_data["message_info"]["group_info"]["group_id"] = str(
-                    message_data["message_info"]["group_info"]["group_id"]
+            if message_info.get("group_info") is not None:
+                message_info["group_info"]["group_id"] = str(
+                    message_info["group_info"]["group_id"]
                 )
-            if message_data["message_info"].get("user_info") is not None:
-                message_data["message_info"]["user_info"]["user_id"] = str(
-                    message_data["message_info"]["user_info"]["user_id"]
+            if message_info.get("user_info") is not None:
+                message_info["user_info"]["user_id"] = str(
+                    message_info["user_info"]["user_id"]
                 )
             # print(message_data)
             # logger.debug(str(message_data))
@@ -424,6 +459,107 @@ class ChatBot:
             logger.info(
                 f"[{chat_name}]{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
             )
+
+            # 处理notice消息
+            notice_handled = await self.handle_notice_message(message)
+            if notice_handled:
+                # notice消息已处理，需要先添加到message_manager再存储
+                try:
+                    from src.common.data_models.database_data_model import DatabaseMessages
+                    import time
+                    
+                    message_info = message.message_info
+                    msg_user_info = getattr(message_info, "user_info", None)
+                    stream_user_info = getattr(message.chat_stream, "user_info", None)
+                    group_info = getattr(message.chat_stream, "group_info", None)
+                    
+                    message_id = message_info.message_id or ""
+                    message_time = message_info.time if message_info.time is not None else time.time()
+                    
+                    user_id = ""
+                    user_nickname = ""
+                    user_cardname = None
+                    user_platform = ""
+                    if msg_user_info:
+                        user_id = str(getattr(msg_user_info, "user_id", "") or "")
+                        user_nickname = getattr(msg_user_info, "user_nickname", "") or ""
+                        user_cardname = getattr(msg_user_info, "user_cardname", None)
+                        user_platform = getattr(msg_user_info, "platform", "") or ""
+                    elif stream_user_info:
+                        user_id = str(getattr(stream_user_info, "user_id", "") or "")
+                        user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
+                        user_cardname = getattr(stream_user_info, "user_cardname", None)
+                        user_platform = getattr(stream_user_info, "platform", "") or ""
+                    
+                    chat_user_id = str(getattr(stream_user_info, "user_id", "") or "")
+                    chat_user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
+                    chat_user_cardname = getattr(stream_user_info, "user_cardname", None)
+                    chat_user_platform = getattr(stream_user_info, "platform", "") or ""
+                    
+                    group_id = getattr(group_info, "group_id", None)
+                    group_name = getattr(group_info, "group_name", None)
+                    group_platform = getattr(group_info, "platform", None)
+                    
+                    # 构建additional_config，确保包含is_notice标志
+                    import json
+                    additional_config_dict = {
+                        "is_notice": True,
+                        "notice_type": message.notice_type or "unknown",
+                        "is_public_notice": bool(message.is_public_notice),
+                    }
+                    
+                    # 如果message_info有additional_config，合并进来
+                    if hasattr(message_info, 'additional_config') and message_info.additional_config:
+                        if isinstance(message_info.additional_config, dict):
+                            additional_config_dict.update(message_info.additional_config)
+                        elif isinstance(message_info.additional_config, str):
+                            try:
+                                existing_config = json.loads(message_info.additional_config)
+                                additional_config_dict.update(existing_config)
+                            except Exception:
+                                pass
+                    
+                    additional_config_json = json.dumps(additional_config_dict)
+                    
+                    # 创建数据库消息对象
+                    db_message = DatabaseMessages(
+                        message_id=message_id,
+                        time=float(message_time),
+                        chat_id=message.chat_stream.stream_id,
+                        processed_plain_text=message.processed_plain_text,
+                        display_message=message.processed_plain_text,
+                        is_notify=bool(message.is_notify),
+                        is_public_notice=bool(message.is_public_notice),
+                        notice_type=message.notice_type,
+                        additional_config=additional_config_json,
+                        user_id=user_id,
+                        user_nickname=user_nickname,
+                        user_cardname=user_cardname,
+                        user_platform=user_platform,
+                        chat_info_stream_id=message.chat_stream.stream_id,
+                        chat_info_platform=message.chat_stream.platform,
+                        chat_info_create_time=float(message.chat_stream.create_time),
+                        chat_info_last_active_time=float(message.chat_stream.last_active_time),
+                        chat_info_user_id=chat_user_id,
+                        chat_info_user_nickname=chat_user_nickname,
+                        chat_info_user_cardname=chat_user_cardname,
+                        chat_info_user_platform=chat_user_platform,
+                        chat_info_group_id=group_id,
+                        chat_info_group_name=group_name,
+                        chat_info_group_platform=group_platform,
+                    )
+                    
+                    # 添加到message_manager（这会将notice添加到全局notice管理器）
+                    await message_manager.add_message(message.chat_stream.stream_id, db_message)
+                    logger.info(f"✅ Notice消息已添加到message_manager: type={message.notice_type}, stream={message.chat_stream.stream_id}")
+                    
+                except Exception as e:
+                    logger.error(f"Notice消息添加到message_manager失败: {e}", exc_info=True)
+                
+                # 存储后直接返回
+                await MessageStorage.store_message(message, chat)
+                logger.debug("notice消息已存储，跳过后续处理")
+                return
 
             # 过滤检查
             if _check_ban_words(message.processed_plain_text, chat, user_info) or _check_ban_regex(  # type: ignore
@@ -522,6 +658,8 @@ class ChatBot:
                     is_picid=bool(message.is_picid),
                     is_command=bool(message.is_command),
                     is_notify=bool(message.is_notify),
+                    is_public_notice=bool(message.is_public_notice),
+                    notice_type=message.notice_type,
                     user_id=user_id,
                     user_nickname=user_nickname,
                     user_cardname=user_cardname,

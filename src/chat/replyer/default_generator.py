@@ -95,6 +95,8 @@ def init_prompt():
 ### 📬 未读历史消息（动作执行对象）
 {unread_history_prompt}
 
+{notice_block}
+
 ## 表达方式
 - *你需要参考你的回复风格：*
 {reply_style}
@@ -179,6 +181,8 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 {memory_block}
 {relation_info_block}
 {extra_info_block}
+
+{notice_block}
 
 {cross_context_block}
 {identity}
@@ -780,6 +784,55 @@ class DefaultReplyer:
 
         return keywords_reaction_prompt
 
+    async def build_notice_block(self, chat_id: str) -> str:
+        """构建notice信息块
+
+        使用全局notice管理器获取notice消息并格式化展示
+
+        Args:
+            chat_id: 聊天ID（即stream_id）
+
+        Returns:
+            str: 格式化的notice信息文本，如果没有notice或未启用则返回空字符串
+        """
+        try:
+            logger.debug(f"开始构建notice块，chat_id={chat_id}")
+
+            # 检查是否启用notice in prompt
+            if not hasattr(global_config, 'notice'):
+                logger.debug("notice配置不存在")
+                return ""
+            
+            if not global_config.notice.notice_in_prompt:
+                logger.debug("notice_in_prompt配置未启用")
+                return ""
+
+            # 使用全局notice管理器获取notice文本
+            from src.chat.message_manager.message_manager import message_manager
+
+            limit = getattr(global_config.notice, 'notice_prompt_limit', 5)
+            logger.debug(f"获取notice文本，limit={limit}")
+            notice_text = message_manager.get_notice_text(chat_id, limit)
+
+            if notice_text and notice_text.strip():
+                # 添加标题和格式化
+                notice_lines = []
+                notice_lines.append("## 📢 最近的系统通知")
+                notice_lines.append("")
+                notice_lines.append(notice_text)
+                notice_lines.append("")
+
+                result = "\n".join(notice_lines)
+                logger.info(f"notice块构建成功，chat_id={chat_id}, 长度={len(result)}")
+                return result
+            else:
+                logger.debug(f"没有可用的notice文本，chat_id={chat_id}")
+                return ""
+
+        except Exception as e:
+            logger.error(f"构建notice块失败，chat_id={chat_id}: {e}", exc_info=True)
+            return ""
+
     async def _time_and_run_task(self, coroutine, name: str) -> tuple[str, Any, float]:
         """计时并运行异步任务的辅助函数
 
@@ -1226,7 +1279,7 @@ class DefaultReplyer:
 
         from src.chat.utils.prompt import Prompt
 
-        # 并行执行六个构建任务
+        # 并行执行任务
         tasks = {
             "expression_habits": asyncio.create_task(
                 self._time_and_run_task(
@@ -1254,6 +1307,9 @@ class DefaultReplyer:
                     "cross_context",
                 )
             ),
+            "notice_block": asyncio.create_task(
+                self._time_and_run_task(self.build_notice_block(chat_id), "notice_block")
+            ),
         }
 
         # 设置超时
@@ -1272,6 +1328,7 @@ class DefaultReplyer:
                     "tool_info": "",
                     "prompt_info": "",
                     "cross_context": "",
+                    "notice_block": "",
                 }
                 logger.info(f"为超时任务 {task_name} 提供默认值")
                 return task_name, default_values[task_name], timeout
@@ -1304,6 +1361,7 @@ class DefaultReplyer:
         tool_info = results_dict["tool_info"]
         prompt_info = results_dict["prompt_info"]
         cross_context_block = results_dict["cross_context"]
+        notice_block = results_dict["notice_block"]
 
         # 检查是否为视频分析结果，并注入引导语
         if target and ("[视频内容]" in target or "好的，我将根据您提供的" in target):
@@ -1444,6 +1502,7 @@ class DefaultReplyer:
             tool_info_block=tool_info,
             knowledge_prompt=prompt_info,
             cross_context_block=cross_context_block,
+            notice_block=notice_block,
             keywords_reaction_prompt=keywords_reaction_prompt,
             extra_info_block=extra_info_block,
             time_block=time_block,
@@ -1582,6 +1641,9 @@ class DefaultReplyer:
         else:
             reply_target_block = ""
 
+        # 构建notice_block
+        notice_block = await self.build_notice_block(chat_id)
+
         if is_group_chat:
             await global_prompt_manager.get_prompt_async("chat_target_group1")
             await global_prompt_manager.get_prompt_async("chat_target_group2")
@@ -1613,6 +1675,7 @@ class DefaultReplyer:
             # 添加已构建的表达习惯和关系信息
             expression_habits_block=expression_habits_block,
             relation_info_block=relation_info,
+            notice_block=notice_block,
             bot_name=global_config.bot.nickname,
             bot_nickname=",".join(global_config.bot.alias_names) if global_config.bot.alias_names else "",
         )
