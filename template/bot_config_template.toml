@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.3"
+version = "7.3.4"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -516,6 +516,17 @@ insomnia_trigger_delay_minutes = [15, 45]
 # 这是总开关，用于一键启用或禁用此功能
 enable = true
 
+# --- S4U模式: 用户中心上下文检索 ---
+# S4U模式不再依赖于共享组配置，而是使用以下全局配置
+s4u_mode = "whitelist" # "whitelist"(白名单) 或 "blacklist"(黑名单)。
+s4u_limit = 10 # S4U模式下，从每个聊天中获取目标用户的消息条数
+s4u_stream_limit = 3 # S4U模式下，最多检索多少个不同的聊天流 (按时间排序)
+# 白名单列表，格式: ["platform:type:id", ...]
+# 示例: ["qq:group:123456", "qq:private:7891011"]
+s4u_whitelist_chats = []
+# 黑名单列表，格式同上
+s4u_blacklist_chats = []
+
 # --- Normal模式: 共享组配置 ---
 # 在这里定义您的“共享组”
 # 只有在同一个组内的聊天才会共享上下文
@@ -548,18 +559,6 @@ chat_ids = [
     ["group", "111111"],     # 示例群聊1
     ["private", "222222"]  # 示例私聊2
 ]
-
-
-# --- S4U模式: 用户中心上下文检索 ---
-# S4U模式不再依赖于共享组配置，而是使用以下全局配置
-s4u_mode = "whitelist" # "whitelist"(白名单) 或 "blacklist"(黑名单)。
-s4u_limit = 5 # S4U模式下，从每个聊天中获取目标用户的消息条数
-s4u_stream_limit = 3 # S4U模式下，最多检索多少个不同的聊天流 (按时间排序)
-# 白名单列表，格式: ["platform:type:id", ...]
-# 示例: ["qq:group:123456", "qq:private:7891011"]
-s4u_whitelist_chats = []
-# 黑名单列表，格式同上
-s4u_blacklist_chats = []
 
 [affinity_flow]
 # 兴趣评分系统参数
