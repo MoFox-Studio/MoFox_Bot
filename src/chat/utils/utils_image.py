@@ -153,152 +153,65 @@ class ImageManager:
         return f"[表情包：{tag_str}]"
 
     async def get_emoji_description(self, image_base64: str) -> str:
-        """获取表情包描述，优先使用Emoji表中的缓存数据"""
+        """获取表情包描述，统一使用EmojiManager中的逻辑进行处理和缓存"""
         try:
-            # 计算图片哈希
-            # 确保base64字符串只包含ASCII字符
+            from src.chat.emoji_system.emoji_manager import get_emoji_manager
+
+            emoji_manager = get_emoji_manager()
+
+            # 1. 计算图片哈希
             if isinstance(image_base64, str):
                 image_base64 = image_base64.encode("ascii", errors="ignore").decode("ascii")
             image_bytes = base64.b64decode(image_base64)
             image_hash = hashlib.md5(image_bytes).hexdigest()
-            image_format = Image.open(io.BytesIO(image_bytes)).format.lower()  # type: ignore
 
-            # 优先使用EmojiManager查询已注册表情包的描述
-            try:
-                from src.chat.emoji_system.emoji_manager import get_emoji_manager
+            # 2. 优先查询已注册表情的缓存（Emoji表）
+            if full_description := await emoji_manager.get_emoji_description_by_hash(image_hash):
+                logger.info("[缓存命中] 使用已注册表情包(Emoji表)的完整描述")
+                refined_part = full_description.split(" Keywords:")[0]
+                return f"[表情包：{refined_part}]"
 
-                emoji_manager = get_emoji_manager()
-                tags = await emoji_manager.get_emoji_tag_by_hash(image_hash)
-                if tags:
-                    tag_str = ",".join(tags)
-                    logger.info(f"[缓存命中] 使用已注册表情包描述: {tag_str}...")
-                    return f"[表情包：{tag_str}]"
-            except Exception as e:
-                logger.debug(f"查询EmojiManager时出错: {e}")
-
-            # 查询ImageDescriptions表的缓存描述
+            # 3. 查询通用图片描述缓存（ImageDescriptions表）
             if cached_description := await self._get_description_from_db(image_hash, "emoji"):
-                logger.info(f"[缓存命中] 使用ImageDescriptions表中的描述: {cached_description}...")
-                return f"[表情包：{cached_description}]"
+                logger.info(f"[缓存命中] 使用通用图片缓存(ImageDescriptions表)中的描述")
+                refined_part = cached_description.split(" Keywords:")[0]
+                return f"[表情包：{refined_part}]"
 
-            # === 二步走识别流程 ===
+            # 4. 如果都未命中，则调用新逻辑生成描述
+            logger.info(f"[新表情识别] 表情包未注册且无缓存 (Hash: {image_hash[:8]}...)，调用新逻辑生成描述")
+            full_description, emotions = await emoji_manager.build_emoji_description(image_base64)
 
-            # 第一步：VLM视觉分析 - 生成详细描述
-            if image_format in ["gif", "GIF"]:
-                image_base64_processed = self.transform_gif(image_base64)
-                if image_base64_processed is None:
-                    logger.warning("GIF转换失败，无法获取描述")
-                    return "[表情包(GIF处理失败)]"
-                vlm_prompt = "这是一个动态图表情包，每一张图代表了动态图的某一帧，黑色背景代表透明，描述一下表情包表达的情感和内容，描述细节，从互联网梗,meme的角度去分析"
-                detailed_description, _ = await self.vlm.generate_response_for_image(
-                    vlm_prompt, image_base64_processed, "jpeg", temperature=0.4, max_tokens=300
-                )
-            else:
-                vlm_prompt = (
-                    "这是一个表情包，请详细描述一下表情包所表达的情感和内容，描述细节，从互联网梗,meme的角度去分析"
-                )
-                detailed_description, _ = await self.vlm.generate_response_for_image(
-                    vlm_prompt, image_base64, image_format, temperature=0.4, max_tokens=300
-                )
-
-            if detailed_description is None:
-                logger.warning("VLM未能生成表情包详细描述")
-                return "[表情包(VLM描述生成失败)]"
-
-            # 第二步：LLM情感分析 - 基于详细描述生成简短的情感标签
-            emotion_prompt = f"""
-            请你基于这个表情包的详细描述，提取出最核心的情感含义，用1-2个词概括。
-            详细描述：'{detailed_description}'
-
-            要求：
-            1. 只输出1-2个最核心的情感词汇
-            2. 从互联网梗、meme的角度理解
-            3. 输出简短精准，不要解释
-            4. 如果有多个词用逗号分隔
-            """
-
-            # 使用较低温度确保输出稳定
-            emotion_llm = LLMRequest(model_set=model_config.model_task_config.utils, request_type="emoji")
-            emotion_result, _ = await emotion_llm.generate_response_async(
-                emotion_prompt, temperature=0.3, max_tokens=50
-            )
-
-            if emotion_result is None:
-                logger.warning("LLM未能生成情感标签，使用详细描述的前几个词")
-                # 降级处理：从详细描述中提取关键词
-                import rjieba
-
-                words = list(rjieba.cut(detailed_description))
-                emotion_result = "，".join(words[:2]) if len(words) >= 2 else (words[0] if words else "表情")
-
-            # 处理情感结果，取前1-2个最重要的标签
-            emotions = [e.strip() for e in emotion_result.replace("，", ",").split(",") if e.strip()]
-            final_emotion = emotions[0] if emotions else "表情"
-
-            # 如果有第二个情感且不重复，也包含进来
-            if len(emotions) > 1 and emotions[1] != emotions[0]:
-                final_emotion = f"{emotions[0]}，{emotions[1]}"
-
-            logger.info(f"[emoji识别] 详细描述: {detailed_description}... -> 情感标签: {final_emotion}")
-
-            if cached_description := await self._get_description_from_db(image_hash, "emoji"):
-                logger.warning(f"虽然生成了描述，但是找到缓存表情包描述: {cached_description}")
-                return f"[表情包：{cached_description}]"
-
-            # 只有在开启“偷表情包”功能时，才将接收到的表情包保存到待注册目录
+            if not full_description:
+                logger.warning("未能通过新逻辑生成有效描述")
+                return "[表情包(描述生成失败)]"
+                
+            # 4. (可选) 如果启用了“偷表情包”，则将图片和完整描述存入待注册区
             if global_config.emoji.steal_emoji:
-                logger.debug(f"偷取表情包功能已开启，保存表情包: {image_hash}")
-                current_timestamp = time.time()
-                filename = f"{int(current_timestamp)}_{image_hash[:8]}.{image_format}"
-                emoji_dir = os.path.join(self.IMAGE_DIR, "emoji")
-                os.makedirs(emoji_dir, exist_ok=True)
-                file_path = os.path.join(emoji_dir, filename)
-
+                logger.debug(f"偷取表情包功能已开启，保存待注册表情包: {image_hash}")
                 try:
-                    # 保存文件
+                    image_format = (Image.open(io.BytesIO(image_bytes)).format or "jpeg").lower()
+                    current_timestamp = time.time()
+                    filename = f"{int(current_timestamp)}_{image_hash[:8]}.{image_format}"
+                    emoji_dir = os.path.join(self.IMAGE_DIR, "emoji")
+                    os.makedirs(emoji_dir, exist_ok=True)
+                    file_path = os.path.join(emoji_dir, filename)
+
                     with open(file_path, "wb") as f:
                         f.write(image_bytes)
-
-                    # 保存到数据库 (Images表) - 包含详细描述用于可能的注册流程
-                    try:
-                        from src.common.database.sqlalchemy_models import get_db_session
-
-                        async with get_db_session() as session:
-                            existing_img = (
-                                await session.execute(
-                                    select(Images).where(and_(Images.emoji_hash == image_hash, Images.type == "emoji"))
-                                )
-                            ).scalar()
-
-                            if existing_img:
-                                existing_img.path = file_path
-                                existing_img.description = detailed_description  # 保存详细描述
-                                existing_img.timestamp = current_timestamp
-                            else:
-                                new_img = Images(
-                                    emoji_hash=image_hash,
-                                    path=file_path,
-                                    type="emoji",
-                                    description=detailed_description,  # 保存详细描述
-                                    timestamp=current_timestamp,
-                                )
-                                session.add(new_img)
-                            await session.commit()
-                    except Exception as e:
-                        logger.error(f"保存到Images表失败: {e!s}")
-
+                    logger.info(f"新表情包已保存至待注册目录: {file_path}")
                 except Exception as e:
-                    logger.error(f"保存表情包文件或元数据失败: {e!s}")
-            else:
-                logger.debug("偷取表情包功能已关闭，跳过保存。")
+                    logger.error(f"保存待注册表情包文件失败: {e!s}")
 
-            # 保存最终的情感标签到缓存 (ImageDescriptions表)
-            await self._save_description_to_db(image_hash, final_emotion, "emoji")
+            # 5. 将新生成的完整描述存入通用缓存（ImageDescriptions表）
+            await self._save_description_to_db(image_hash, full_description, "emoji")
+            logger.info(f"新生成的表情包描述已存入通用缓存 (Hash: {image_hash[:8]}...)")
 
-            return f"[表情包：{final_emotion}]"
+            # 6. 返回新生成的描述中用于显示的“精炼描述”部分
+            refined_part = full_description.split(" Keywords:")[0]
+            return f"[表情包：{refined_part}]"
 
         except Exception as e:
-            logger.error(f"获取表情包描述失败: {e!s}")
+            logger.error(f"获取表情包描述失败: {e!s}", exc_info=True)
             return "[表情包(处理失败)]"
 
     async def get_image_description(self, image_base64: str) -> str:

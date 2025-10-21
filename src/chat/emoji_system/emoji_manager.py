@@ -983,7 +983,12 @@ class EmojiManager:
                         prompt, image_base64, image_format, temperature=0.3, max_tokens=600
                     )
 
-            # 4. 内容审核，确保表情包符合规定
+            # 4. 检查VLM描述是否有效
+            if not description or not description.strip():
+                logger.warning("VLM未能生成有效的详细描述，中止处理。")
+                return "", []
+
+            # 5. 内容审核，确保表情包符合规定
             if global_config.emoji.content_filtration:
                 prompt = f"""
                     请根据以下标准审核这个表情包：
@@ -1000,23 +1005,28 @@ class EmojiManager:
                     logger.warning(f"表情包审核未通过，内容: {description[:50]}...")
                     return "", []
 
-            # 5. 基于VLM的详细描述，调用LLM提炼情感关键词
+            # 6. 基于VLM的详细描述，提炼“精炼关键词”
             emotions = []
+            emotions_text = ""
             if global_config.emoji.enable_emotion_analysis:
-                logger.info("[情感分析] 开始提炼表情包的情感关键词")
+                logger.info("[情感分析] 开始提炼表情包的“精炼关键词”")
                 emotion_prompt = f"""
                 你是一个互联网“梗”学家和情感分析师。
                 这里有一份关于某个表情包的详细描述：
                 ---
                 {description}
                 ---
-                请你基于这份描述，提炼出这个表情包最核心的含义和适用场景。
+                请你基于这份描述，提炼出这个表情包最核心的、可用于检索的关键词。
 
                 你的任务是：
-                1.  分析并总结出3到5个最能代表这个表情包的关键词或短语。
-                2.  这些关键词应该非常凝练，比如“表达无语”、“有点小得意”、“求夸奖”、“猫猫疑惑”等。
-                3.  每个关键词不要超过15个字。
-                4.  请直接输出这些关键词，并用逗号分隔，不要添加任何其他解释。
+                1.  **全面分析**：仔细阅读描述，理解表情包的全部细节，包括**图中文字、人物表情、动作、情绪、构图**等。
+                2.  **提炼关键词**：总结出 5 到 8 个最能代表这个表情包的关键词或短语。
+                3.  **关键词要求**：
+                    -   必须包含表情包中的**核心文字**（如果有）。
+                    -   必须描述核心的**表情和动作**（例如：“歪头杀”、“摊手”、“无奈苦笑”）。
+                    -   必须体现核心的**情绪和氛围**（例如：“悲伤”、“喜悦”、“沙雕”、“阴阳怪气”）。
+                    -   可以包含**核心主体或构图特点**（例如：“猫猫头”、“大头贴”、“模糊画质”）。
+                4.  **格式要求**：请直接输出这些关键词，并用**逗号**分隔，不要添加任何其他解释或编号。
                 """
                 emotions_text, _ = await self.llm_emotion_judge.generate_response_async(
                     emotion_prompt, temperature=0.6, max_tokens=150
@@ -1025,9 +1035,41 @@ class EmojiManager:
             else:
                 logger.info("[情感分析] 表情包感情关键词二次识别已禁用，跳过此步骤")
 
-            # 6. 格式化最终的描述，并返回结果
-            final_description = f"表情包，关键词：[{'，'.join(emotions)}]。详细描述：{description}"
-            logger.info(f"[注册分析] VLM描述: {description} -> 提炼出的情感标签: {emotions}")
+            # 7. 基于详细描述和关键词，生成“精炼自然语言描述”
+            refined_description = ""
+            if emotions:  # 只有在成功提取关键词后才进行精炼
+                logger.info("[自然语言精炼] 开始生成“点睛之笔”的自然语言描述")
+                refine_prompt = f"""
+                你的任务是为一张表情包写一句简洁、自然的描述，就像你在向朋友解释这张图是什么意思一样。
+
+                这里是关于这个表情包的分析信息：
+                # 详细描述
+                {description}
+
+                # 核心关键词
+                {emotions_text}
+
+                # 你的任务
+                请结合以上信息，用一句**一针见血**的自然语言，概括出这个表情包的核心内容。
+
+                # 规则 (非常重要！)
+                1.  **必须包含图中的核心文字**。
+                2.  **必须描述出主角的核心表情和动作**。
+                3.  **风格要求**：简单、直接、口语化，就像一个普通人看到这张图后的第一反应。
+                4.  **输出格式**：**请直接返回这句描述，不要添加任何前缀、标题或多余的解释。**
+                """
+                refined_description, _ = await self.llm_emotion_judge.generate_response_async(
+                    refine_prompt, temperature=0.7, max_tokens=100
+                )
+                refined_description = refined_description.strip()
+
+            # 8. 格式化最终的描述，并返回结果
+            final_description = (
+                f"{refined_description} Keywords: [{','.join(emotions)}] Desc: {description}"
+            )
+            logger.info(f"[注册分析] VLM描述: {description}")
+            logger.info(f"[注册分析] 提炼出的情感标签: {emotions}")
+            logger.info(f"[注册分析] 精炼后的自然语言描述: {refined_description}")
 
             return final_description, emotions
 
