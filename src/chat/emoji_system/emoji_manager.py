@@ -970,14 +970,36 @@ class EmojiManager:
                     if not image_base64_frames:
                         raise RuntimeError("GIF表情包转换失败")
                     prompt = "这是一个GIF动图表情包的关键帧。请用不超过250字，详细描述它的核心内容：1. 动态画面展现了什么变化？2. 它传达了什么核心情绪或玩的是什么梗？3. 通常在什么场景下使用？请确保描述既包含关键信息，又能充分展现其内涵。"
-                    description, _ = await self.vlm.generate_response_for_image(
-                        prompt, image_base64_frames, "jpeg", temperature=0.3, max_tokens=600
-                    )
+                    description = None
+                    for i in range(3):
+                        try:
+                            logger.info(f"[VLM调用] 正在为GIF表情包生成描述 (第 {i+1}/3 次)...")
+                            description, _ = await self.vlm.generate_response_for_image(
+                                prompt, image_base64_frames, "jpeg", temperature=0.3, max_tokens=600
+                            )
+                            if description and description.strip():
+                                break
+                        except Exception as e:
+                            logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
+                        if i < 2:
+                            logger.warning("表情包识别失败，将在1秒后重试...")
+                            await asyncio.sleep(1)
                 else:
                     prompt = "这是一个表情包。请用不超过250字，详细描述它的核心内容：1. 画面描绘了什么？2. 它传达了什么核心情绪或玩的是什么梗？3. 通常在什么场景下使用？请确保描述既包含关键信息，又能充分展现其内涵。"
-                    description, _ = await self.vlm.generate_response_for_image(
-                        prompt, image_base64, image_format, temperature=0.3, max_tokens=600
-                    )
+                    description = None
+                    for i in range(3):
+                        try:
+                            logger.info(f"[VLM调用] 正在为静态表情包生成描述 (第 {i+1}/3 次)...")
+                            description, _ = await self.vlm.generate_response_for_image(
+                                prompt, image_base64, image_format, temperature=0.3, max_tokens=600
+                            )
+                            if description and description.strip():
+                                break
+                        except Exception as e:
+                            logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
+                        if i < 2:
+                            logger.warning("表情包识别失败，将在1秒后重试...")
+                            await asyncio.sleep(1)
 
             # 4. 检查VLM描述是否有效
             if not description or not description.strip():
