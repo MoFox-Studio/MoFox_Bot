@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import hashlib
 import io
 import os
@@ -215,94 +216,75 @@ class ImageManager:
             return "[表情包(处理失败)]"
 
     async def get_image_description(self, image_base64: str) -> str:
-        """获取普通图片描述，优先使用Images表中的缓存数据"""
+        """获取普通图片描述，采用同步识别+缓存策略"""
         try:
-            # 计算图片哈希
+            # 1. 计算图片哈希
             if isinstance(image_base64, str):
                 image_base64 = image_base64.encode("ascii", errors="ignore").decode("ascii")
             image_bytes = base64.b64decode(image_base64)
             image_hash = hashlib.md5(image_bytes).hexdigest()
 
+            # 2. 优先查询 Images 表缓存
             async with get_db_session() as session:
-                # 优先检查Images表中是否已有完整的描述
                 result = await session.execute(select(Images).where(Images.emoji_hash == image_hash))
                 existing_image = result.scalar()
-                if existing_image:
-                    # 更新计数
-                    if hasattr(existing_image, "count") and existing_image.count is not None:
-                        existing_image.count += 1
-                    else:
-                        existing_image.count = 1
+                if existing_image and existing_image.description:
+                    logger.debug(f"[缓存命中] 使用Images表中的图片描述: {existing_image.description[:50]}...")
+                    return f"[图片：{existing_image.description}]"
+            
+            # 3. 其次查询 ImageDescriptions 表缓存
+            if cached_description := await self._get_description_from_db(image_hash, "image"):
+                logger.debug(f"[缓存命中] 使用ImageDescriptions表中的描述: {cached_description[:50]}...")
+                return f"[图片：{cached_description}]"
 
-                    # 如果已有描述，直接返回
-                    if existing_image.description:
-                        await session.commit()
-                        logger.debug(f"[缓存命中] 使用Images表中的图片描述: {existing_image.description}...")
-                        return f"[图片：{existing_image.description}]"
-
-                # 如果没有描述，继续在当前会话中操作
-                if cached_description := await self._get_description_from_db(image_hash, "image"):
-                    logger.debug(f"[缓存命中] 使用ImageDescriptions表中的描述: {cached_description}...")
-                    return f"[图片：{cached_description}]"
-
-                # 调用AI获取描述
-                image_format = Image.open(io.BytesIO(image_bytes)).format.lower()  # type: ignore
-                prompt = global_config.custom_prompt.image_prompt
-                logger.info(f"[VLM调用] 为图片生成新描述 (Hash: {image_hash[:8]}...)")
-                description, _ = await self.vlm.generate_response_for_image(
-                    prompt, image_base64, image_format, temperature=0.4, max_tokens=300
-                )
-
-                if description is None:
-                    logger.warning("AI未能生成图片描述")
-                    return "[图片(描述生成失败)]"
-
-                # 保存图片和描述
-                current_timestamp = time.time()
-                filename = f"{int(current_timestamp)}_{image_hash[:8]}.{image_format}"
-                image_dir = os.path.join(self.IMAGE_DIR, "image")
-                os.makedirs(image_dir, exist_ok=True)
-                file_path = os.path.join(image_dir, filename)
-
-                with open(file_path, "wb") as f:
-                    f.write(image_bytes)
-
-                # 保存到数据库，补充缺失字段
-                if existing_image:
-                    existing_image.path = file_path
-                    existing_image.description = description
-                    existing_image.timestamp = current_timestamp
-                    if not hasattr(existing_image, "image_id") or not existing_image.image_id:
-                        existing_image.image_id = str(uuid.uuid4())
-                    if not hasattr(existing_image, "vlm_processed") or existing_image.vlm_processed is None:
-                        existing_image.vlm_processed = True
-                    logger.debug(f"[数据库] 更新已有图片记录: {image_hash[:8]}...")
-                else:
-                    new_img = Images(
-                        image_id=str(uuid.uuid4()),
-                        emoji_hash=image_hash,
-                        path=file_path,
-                        type="image",
-                        description=description,
-                        timestamp=current_timestamp,
-                        vlm_processed=True,
-                        count=1,
+            # 4. 如果都未命中，则同步调用VLM生成新描述
+            logger.info(f"[新图片识别] 无缓存 (Hash: {image_hash[:8]}...)，调用VLM生成描述")
+            description = None
+            prompt = global_config.custom_prompt.image_prompt
+            logger.info(f"[识图VLM调用] Prompt: {prompt}")
+            for i in range(3):  # 重试3次
+                try:
+                    image_format = (Image.open(io.BytesIO(image_bytes)).format or "jpeg").lower()
+                    logger.info(f"[VLM调用] 正在为图片生成描述 (第 {i+1}/3 次)...")
+                    description, response_tuple = await self.vlm.generate_response_for_image(
+                        prompt, image_base64, image_format, temperature=0.4, max_tokens=300
                     )
-                    session.add(new_img)
-                    logger.debug(f"[数据库] 创建新图片记录: {image_hash[:8]}...")
+                    # response_tuple is (reasoning, model_name, tool_calls)
+                    model_name_used = response_tuple[1]
+                    logger.info(f"[VLM调用成功] 使用模型: {model_name_used}")
+                    if description and description.strip():
+                        break  # 成功获取描述则跳出循环
+                except Exception as e:
+                    logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
+                
+                if i < 2: # 如果不是最后一次，则等待1秒
+                    logger.warning(f"识图失败，将在1秒后重试...")
+                    await asyncio.sleep(1)
 
+            if not description or not description.strip():
+                logger.warning("VLM未能生成有效描述")
+                return "[图片(描述生成失败)]"
+
+            logger.info(f"[VLM完成] 图片描述生成: {description[:50]}...")
+
+            # 5. 将新描述存入两个缓存表
+            await self._save_description_to_db(image_hash, description, "image")
+            async with get_db_session() as session:
+                result = await session.execute(select(Images).where(Images.emoji_hash == image_hash))
+                existing_image_for_update = result.scalar()
+                if existing_image_for_update:
+                    existing_image_for_update.description = description
+                    existing_image_for_update.vlm_processed = True
+                    logger.debug(f"[数据库] 为现有图片记录补充描述: {image_hash[:8]}...")
+                # 注意：这里不创建新的Images记录，因为process_image会负责创建
                 await session.commit()
+            
+            logger.info(f"新生成的图片描述已存入缓存 (Hash: {image_hash[:8]}...)")
 
-                # 保存描述到ImageDescriptions表作为备用缓存
-                await self._save_description_to_db(image_hash, description, "image")
-
-                logger.info(f"[VLM完成] 图片描述生成: {description}...")
-                return f"[图片：{description}]"
-
-            logger.info(f"[VLM完成] 图片描述生成: {description}...")
             return f"[图片：{description}]"
+
         except Exception as e:
-            logger.error(f"获取图片描述失败: {e!s}")
+            logger.error(f"获取图片描述时发生严重错误: {e!s}", exc_info=True)
             return "[图片(处理失败)]"
 
     @staticmethod
@@ -427,96 +409,75 @@ class ImageManager:
             return None  # 其他错误也返回None
 
     async def process_image(self, image_base64: str) -> tuple[str, str]:
-        # sourcery skip: hoist-if-from-if
-        """处理图片并返回图片ID和描述
-
-        Args:
-            image_base64: 图片的base64编码
-
-        Returns:
-            Tuple[str, str]: (图片ID, 描述)
-        """
+        """处理图片并返回图片ID和描述，采用同步识别流程"""
         try:
-            # 生成图片ID
-            # 计算图片哈希
-            # 确保base64字符串只包含ASCII字符
             if isinstance(image_base64, str):
                 image_base64 = image_base64.encode("ascii", errors="ignore").decode("ascii")
             image_bytes = base64.b64decode(image_base64)
             image_hash = hashlib.md5(image_bytes).hexdigest()
+
+            image_id = ""
+            description = ""
+
             async with get_db_session() as session:
                 result = await session.execute(select(Images).where(Images.emoji_hash == image_hash))
                 existing_image = result.scalar()
-                if existing_image:
-                    # 检查是否缺少必要字段，如果缺少则创建新记录
-                    if (
-                        not hasattr(existing_image, "image_id")
-                        or not existing_image.image_id
-                        or not hasattr(existing_image, "count")
-                        or existing_image.count is None
-                        or not hasattr(existing_image, "vlm_processed")
-                        or existing_image.vlm_processed is None
-                    ):
-                        logger.debug(f"图片记录缺少必要字段，补全旧记录: {image_hash}")
-                        if not existing_image.image_id:
-                            existing_image.image_id = str(uuid.uuid4())
-                        if existing_image.count is None:
-                            existing_image.count = 0
-                        if existing_image.vlm_processed is None:
-                            existing_image.vlm_processed = False
 
+                if existing_image and existing_image.image_id:
+                    image_id = existing_image.image_id
                     existing_image.count += 1
-                    await session.commit()
+                    logger.debug(f"图片记录已存在 (ID: {image_id})，使用次数 +1")
 
-                    # 如果已有描述，直接返回
                     if existing_image.description and existing_image.description.strip():
-                        return existing_image.image_id, f"[picid:{existing_image.image_id}]"
+                        description = f"[图片：{existing_image.description}]"
+                        logger.debug("缓存命中，直接返回数据库中已有的完整描述")
+                        return image_id, description
                     else:
-                        # 同步处理图片描述
+                        logger.warning(f"图片记录 (ID: {image_id}) 描述为空，将同步生成")
                         description = await self.get_image_description(image_base64)
-                        # 更新数据库中的描述
                         existing_image.description = description.replace("[图片：", "").replace("]", "")
                         existing_image.vlm_processed = True
-                        await session.commit()
-                        return existing_image.image_id, f"[picid:{existing_image.image_id}]"
+                else:
+                    logger.debug(f"新图片 (Hash: {image_hash[:8]}...)，将同步生成描述并创建新记录")
+                    image_id = str(uuid.uuid4())
+                    description = await self.get_image_description(image_base64)
 
-                # print(f"图片不存在: {image_hash}")
-                image_id = str(uuid.uuid4())
+                    # 如果描述生成失败，则不存入数据库，直接返回失败信息
+                    if "(处理失败)" in description or "(描述生成失败)" in description:
+                        logger.warning("图片描述生成失败，不创建数据库记录，直接返回失败信息。")
+                        return "", description
 
-                # 同步获取图片描述
-                description = await self.get_image_description(image_base64)
-                clean_description = description.replace("[图片：", "").replace("]", "")
+                    clean_description = description.replace("[图片：", "").replace("]", "")
+                    image_format = (Image.open(io.BytesIO(image_bytes)).format or "png").lower()
+                    filename = f"{image_id}.{image_format}"
+                    image_dir = os.path.join(self.IMAGE_DIR, "images")
+                    os.makedirs(image_dir, exist_ok=True)
+                    file_path = os.path.join(image_dir, filename)
 
-                # 保存新图片
-                current_timestamp = time.time()
-                image_dir = os.path.join(self.IMAGE_DIR, "images")
-                os.makedirs(image_dir, exist_ok=True)
-                filename = f"{image_id}.png"
-                file_path = os.path.join(image_dir, filename)
+                    with open(file_path, "wb") as f:
+                        f.write(image_bytes)
 
-                # 保存文件
-                with open(file_path, "wb") as f:
-                    f.write(image_bytes)
+                    new_img = Images(
+                        image_id=image_id,
+                        emoji_hash=image_hash,
+                        path=file_path,
+                        type="image",
+                        description=clean_description,
+                        timestamp=time.time(),
+                        vlm_processed=True,
+                        count=1,
+                    )
+                    session.add(new_img)
+                    logger.info(f"新图片记录已创建 (ID: {image_id})")
 
-                # 保存到数据库
-                new_img = Images(
-                    image_id=image_id,
-                    emoji_hash=image_hash,
-                    path=file_path,
-                    type="image",
-                    description=clean_description,
-                    timestamp=current_timestamp,
-                    vlm_processed=True,
-                    count=1,
-                )
-                session.add(new_img)
                 await session.commit()
 
-            return image_id, f"[picid:{image_id}]"
+            # 无论是新图片还是旧图片，只要成功获取描述，就直接返回描述
+            return image_id, description
 
         except Exception as e:
-            logger.error(f"处理图片失败: {e!s}")
-            return "", "[图片]"
+            logger.error(f"处理图片时发生严重错误: {e!s}", exc_info=True)
+            return "", "[图片(处理失败)]"
 
 
 # 创建全局单例

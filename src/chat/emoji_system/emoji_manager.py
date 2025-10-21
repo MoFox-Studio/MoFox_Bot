@@ -86,7 +86,7 @@ class MaiEmoji:
             logger.debug(f"[初始化] 正在使用Pillow获取格式: {self.filename}")
             try:
                 with Image.open(io.BytesIO(image_bytes)) as img:
-                    self.format = img.format.lower()  # type: ignore
+                    self.format = (img.format or "jpeg").lower()
                 logger.debug(f"[初始化] 格式获取成功: {self.format}")
             except Exception as pil_error:
                 logger.error(f"[初始化错误] Pillow无法处理图片 ({self.filename}): {pil_error}")
@@ -327,7 +327,7 @@ async def clear_temp_emoji() -> None:
     ):
         if os.path.exists(need_clear):
             files = os.listdir(need_clear)
-            # 如果文件数超过100就全部删除
+            # 如果文件数超过1000就全部删除
             if len(files) > 1000:
                 for filename in files:
                     file_path = os.path.join(need_clear, filename)
@@ -439,12 +439,12 @@ class EmojiManager:
                 stmt = select(Emoji).where(Emoji.emoji_hash == emoji_hash)
                 result = await session.execute(stmt)
                 emoji_update = result.scalar_one_or_none()
-                if emoji_update is None:
-                    logger.error(f"记录表情使用失败: 未找到 hash 为 {emoji_hash} 的表情包")
-                else:
+                if emoji_update:
                     emoji_update.usage_count += 1
-                emoji_update.last_used_time = time.time()  # Update last used time
-                await session.commit()
+                    emoji_update.last_used_time = time.time()  # Update last used time
+                    await session.commit()
+                else:
+                    logger.error(f"记录表情使用失败: 未找到 hash 为 {emoji_hash} 的表情包")
         except Exception as e:
             logger.error(f"记录表情使用失败: {e!s}")
 
@@ -469,7 +469,7 @@ class EmojiManager:
                 return None
 
             # 2. 根据全局配置决定候选表情包的数量
-            max_candidates = global_config.emoji.max_emoji_for_llm_select
+            max_candidates = global_config.emoji.max_context_emojis
 
             # 如果配置为0或者大于等于总数，则选择所有表情包
             if max_candidates <= 0 or max_candidates >= len(all_emojis):
@@ -943,11 +943,7 @@ class EmojiManager:
                 image_base64 = image_base64.encode("ascii", errors="ignore").decode("ascii")
             image_bytes = base64.b64decode(image_base64)
             image_hash = hashlib.md5(image_bytes).hexdigest()
-            image_format = (
-                Image.open(io.BytesIO(image_bytes)).format.lower()
-                if Image.open(io.BytesIO(image_bytes)).format
-                else "jpeg"
-            )
+            image_format = (Image.open(io.BytesIO(image_bytes)).format or "jpeg").lower()
 
             # 2. 检查数据库中是否已存在该表情包的描述，实现复用
             existing_description = None

@@ -1,4 +1,5 @@
 import re
+import time
 import traceback
 
 import orjson
@@ -43,7 +44,9 @@ class MessageStorage:
 
             if processed_plain_text:
                 processed_plain_text = await MessageStorage.replace_image_descriptions(processed_plain_text)
-                filtered_processed_plain_text = re.sub(pattern, "", processed_plain_text, flags=re.DOTALL)
+                # 增加对None的防御性处理
+                safe_processed_plain_text = processed_plain_text or ""
+                filtered_processed_plain_text = re.sub(pattern, "", safe_processed_plain_text, flags=re.DOTALL)
             else:
                 filtered_processed_plain_text = ""
 
@@ -54,9 +57,7 @@ class MessageStorage:
                 else:
                     # 如果没有设置display_message，使用processed_plain_text作为显示消息
                     filtered_display_message = (
-                        re.sub(pattern, "", message.processed_plain_text, flags=re.DOTALL)
-                        if message.processed_plain_text
-                        else ""
+                        re.sub(pattern, "", (message.processed_plain_text or ""), flags=re.DOTALL)
                     )
                 interest_value = 0
                 is_mentioned = False
@@ -102,7 +103,7 @@ class MessageStorage:
 
             new_message = Messages(
                 message_id=msg_id,
-                time=float(message.message_info.time),
+                time=float(message.message_info.time or time.time()),
                 chat_id=chat_stream.stream_id,
                 reply_to=reply_to,
                 is_mentioned=is_mentioned,
@@ -203,29 +204,48 @@ class MessageStorage:
 
     @staticmethod
     async def replace_image_descriptions(text: str) -> str:
-        """将[图片：描述]替换为[picid:image_id]"""
-        # 先检查文本中是否有图片标记
+        """异步地将文本中的所有[图片：描述]标记替换为[picid:image_id]"""
         pattern = r"\[图片：([^\]]+)\]"
-        matches = re.findall(pattern, text)
-
-        if not matches:
-            logger.debug("文本中没有图片标记，直接返回原文本")
+        
+        # 如果没有匹配项，提前返回以提高效率
+        if not re.search(pattern, text):
             return text
 
-        async def replace_match(match):
+        # re.sub不支持异步替换函数，所以我们需要手动迭代和替换
+        new_text = []
+        last_end = 0
+        for match in re.finditer(pattern, text):
+            # 添加上一个匹配到当前匹配之间的文本
+            new_text.append(text[last_end:match.start()])
+            
             description = match.group(1).strip()
+            replacement = match.group(0) # 默认情况下，替换为原始匹配文本
             try:
-                from src.common.database.sqlalchemy_models import get_db_session
-
                 async with get_db_session() as session:
-                    image_record = (
-                        await session.execute(
-                            select(Images).where(Images.description == description).order_by(desc(Images.timestamp))
-                        )
-                    ).scalar()
-                    return f"[picid:{image_record.image_id}]" if image_record else match.group(0)
-            except Exception:
-                return match.group(0)
+                    # 查询数据库以找到具有该描述的最新图片记录
+                    result = await session.execute(
+                        select(Images.image_id)
+                        .where(Images.description == description)
+                        .order_by(desc(Images.timestamp))
+                        .limit(1)
+                    )
+                    image_id = result.scalar_one_or_none()
+
+                    if image_id:
+                        replacement = f"[picid:{image_id}]"
+                        logger.debug(f"成功将描述 '{description[:20]}...' 替换为 picid '{image_id}'")
+                    else:
+                        logger.warning(f"无法为描述 '{description[:20]}...' 找到对应的picid，将保留原始标记")
+            except Exception as e:
+                logger.error(f"替换图片描述时查询数据库失败: {e}", exc_info=True)
+
+            new_text.append(replacement)
+            last_end = match.end()
+
+        # 添加最后一个匹配到字符串末尾的文本
+        new_text.append(text[last_end:])
+        
+        return "".join(new_text)
 
     @staticmethod
     async def update_message_interest_value(
