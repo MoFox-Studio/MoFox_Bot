@@ -19,18 +19,12 @@ class TTSVoiceAction(BaseAction):
     action_name = "tts_voice_action"
     action_description = "使用GPT-SoVITS将文本转换为语音并发送"
 
-    focus_activation_type = ActionActivationType.KEYWORD
-    normal_activation_type = ActionActivationType.KEYWORD
-    activation_keywords = [
-        "发语音", "语音", "说句话", "用语音说", "听你", "听声音", "想你", "想听声音",
-        "讲个话", "说段话", "念一下", "读一下", "用嘴说", "说", "能发语音吗","亲口"
-    ]
     mode_enable = ChatMode.ALL
     parallel_action = False
 
     action_require = [
         "当用户明确请求使用语音进行回复时，例如‘发个语音听听’、‘用语音说’等。",
-        "当对话内容适合用语音表达，例如讲故事、念诗、撒娇或进行角色扮演时。",
+        "当对话内容适合用语音表达，例如讲故事、念诗、撒嬌或进行角色扮演时。",
         "在表达特殊情感（如安慰、鼓励、庆祝）的场景下，可以主动使用语音来增强感染力。",
         "不要在日常的、简短的问答或闲聊中频繁使用语音，避免打扰用户。",
         "文本内容必须是纯粹的对话，不能包含任何括号或方括号括起来的动作、表情、或场景描述（例如，不要出现 '(笑)' 或 '[歪头]'）",
@@ -41,6 +35,39 @@ class TTSVoiceAction(BaseAction):
         super().__init__(*args, **kwargs)
         # 关键配置项现在由 TTSService 管理
         self.tts_service = get_service("tts")
+
+    async def go_activate(self, llm_judge_model=None) -> bool:
+        """
+        判断此 Action 是否应该被激活。
+        满足以下任一条件即可激活：
+        1. 55% 的随机概率
+        2. 匹配到预设的关键词
+        3. LLM 判断当前场景适合发送语音
+        """
+        # 条件1: 随机激活
+        if await self._random_activation(0.55):
+            logger.info(f"{self.log_prefix} 随机激活成功 (55%)")
+            return True
+
+        # 条件2: 关键词激活
+        keywords = [
+            "发语音", "语音", "说句话", "用语音说", "听你", "听声音", "想你", "想听声音",
+            "讲个话", "说段话", "念一下", "读一下", "用嘴说", "说", "能发语音吗", "亲口"
+        ]
+        if await self._keyword_match(keywords):
+            logger.info(f"{self.log_prefix} 关键词激活成功")
+            return True
+
+        # 条件3: LLM 判断激活
+        # 注意：这里我们复用 action_require 里的描述，让 LLM 的判断更精准
+        if await self._llm_judge_activation(
+            llm_judge_model=llm_judge_model
+        ):
+            logger.info(f"{self.log_prefix} LLM 判断激活成功")
+            return True
+            
+        logger.debug(f"{self.log_prefix} 所有激活条件均未满足，不激活")
+        return False
 
     async def execute(self) -> tuple[bool, str]:
         """
