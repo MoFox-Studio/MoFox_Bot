@@ -288,14 +288,12 @@ class ImageManager:
             return "[图片(处理失败)]"
 
     @staticmethod
-    def transform_gif(gif_base64: str, similarity_threshold: float = 1000.0, max_frames: int = 15) -> str | None:
+    def transform_gif(gif_base64: str) -> str | None:
         # sourcery skip: use-contextlib-suppress
-        """将GIF转换为水平拼接的静态图像, 跳过相似的帧
+        """将GIF转换为水平拼接的静态图像, 均匀抽取4帧。
 
         Args:
             gif_base64: GIF的base64编码字符串
-            similarity_threshold: 判定帧相似的阈值 (MSE)，越小表示要求差异越大才算不同帧，默认1000.0
-            max_frames: 最大抽取的帧数，默认15
 
         Returns:
             Optional[str]: 拼接后的JPG图像的base64编码字符串, 或者在失败时返回None
@@ -323,34 +321,17 @@ class ImageManager:
                 logger.warning("GIF中没有找到任何帧")
                 return None  # 空的GIF直接返回None
 
-            # --- 新的帧选择逻辑 ---
-            selected_frames = []
-            last_selected_frame_np = None
-
-            for i, current_frame in enumerate(all_frames):
-                current_frame_np = np.array(current_frame)
-
-                # 第一帧总是要选的
-                if i == 0:
-                    selected_frames.append(current_frame)
-                    last_selected_frame_np = current_frame_np
-                    continue
-
-                # 计算和上一张选中帧的差异（均方误差 MSE）
-                if last_selected_frame_np is not None:
-                    mse = np.mean((current_frame_np - last_selected_frame_np) ** 2)
-                    # logger.debug(f"帧 {i} 与上一选中帧的 MSE: {mse}") # 可以取消注释来看差异值
-
-                    # 如果差异够大，就选它！
-                    if mse > similarity_threshold:
-                        selected_frames.append(current_frame)
-                        last_selected_frame_np = current_frame_np
-                        # 检查是不是选够了
-                        if len(selected_frames) >= max_frames:
-                            # logger.debug(f"已选够 {max_frames} 帧，停止选择。")
-                            break
-                # 如果差异不大就跳过这一帧啦
-
+            # --- 新的帧选择逻辑：均匀抽取4帧 ---
+            num_frames = len(all_frames)
+            if num_frames <= 4:
+                # 如果总帧数小于等于4，则全部选中
+                selected_frames = all_frames
+            else:
+                # 使用linspace计算4个均匀分布的索引
+                indices = np.linspace(0, num_frames - 1, 4, dtype=int)
+                selected_frames = [all_frames[i] for i in indices]
+            
+            logger.debug(f"GIF Frame Analysis: Total frames={num_frames}, Selected indices={indices if num_frames > 4 else list(range(num_frames))}")
             # --- 帧选择逻辑结束 ---
 
             # 如果选择后连一帧都没有（比如GIF只有一帧且后续处理失败？）或者原始GIF就没帧，也返回None
