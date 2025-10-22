@@ -466,6 +466,12 @@ class ChatBot:
                     f"[{chat_name}]{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
                 )
 
+            # 在此添加硬编码过滤，防止回复图片处理失败的消息
+            failure_keywords = ["[表情包(描述生成失败)]", "[图片(描述生成失败)]"]
+            if any(keyword in message.processed_plain_text for keyword in failure_keywords):
+                logger.info(f"[硬编码过滤] 检测到媒体内容处理失败（{message.processed_plain_text}），消息被静默处理。")
+                return
+
             # 处理notice消息
             notice_handled = await self.handle_notice_message(message)
             if notice_handled:
