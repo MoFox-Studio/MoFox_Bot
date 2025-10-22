@@ -748,6 +748,8 @@ class Prompt:
                     if content:
                         try:
                             relevance_float = float(relevance)
+                            if relevance_float < global_config.lpmm_knowledge.qa_paragraph_threshold:
+                                continue  # 跳过不符合阈值的知识
                             relevance_str = f"{relevance_float:.2f}"
                         except (ValueError, TypeError):
                             relevance_str = str(relevance)
