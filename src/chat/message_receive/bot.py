@@ -12,7 +12,7 @@ from src.chat.message_manager import message_manager
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.chat.utils.prompt import Prompt, global_prompt_manager, create_prompt_async
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -461,9 +461,10 @@ class ChatBot:
 
             # 在这里打印[所见]日志，确保在所有处理和过滤之前记录
             chat_name = chat.group_info.group_name if chat.group_info else "私聊"
-            logger.info(
-                f"[{chat_name}]{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
-            )
+            if message.message_info.user_info:
+                logger.info(
+                    f"[{chat_name}]{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
+                )
 
             # 处理notice消息
             notice_handled = await self.handle_notice_message(message)
@@ -594,7 +595,7 @@ class ChatBot:
                     return
 
             result = await event_manager.trigger_event(EventType.ON_MESSAGE, permission_group="SYSTEM", message=message)
-            if not result.all_continue_process():
+            if result and not result.all_continue_process():
                 raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于消息到达时取消了消息处理")
 
             # TODO:暂不可用
@@ -605,13 +606,14 @@ class ChatBot:
                 async with global_prompt_manager.async_message_scope(template_group_name):
                     if isinstance(template_items, dict):
                         for k in template_items.keys():
-                            await Prompt.create_async(template_items[k], k)
+                            await create_prompt_async(template_items[k], k)
                             logger.debug(f"注册{template_items[k]},{k}")
             else:
                 template_group_name = None
 
             async def preprocess():
                 from src.common.data_models.database_data_model import DatabaseMessages
+                import time
 
                 message_info = message.message_info
                 msg_user_info = getattr(message_info, "user_info", None)
@@ -619,7 +621,7 @@ class ChatBot:
                 group_info = getattr(message.chat_stream, "group_info", None)
 
                 message_id = message_info.message_id or ""
-                message_time = message_info.time if message_info.time is not None else time.time()
+                message_time = message_info.time if hasattr(message_info, "time") and message_info.time is not None else time.time()
                 is_mentioned = None
                 if isinstance(message.is_mentioned, bool):
                     is_mentioned = message.is_mentioned
@@ -696,7 +698,7 @@ class ChatBot:
                 try:
                     # 在将消息添加到管理器之前进行最终的静默检查
                     should_process_in_manager = True
-                    if group_info and group_info.group_id in global_config.message_receive.mute_group_list:
+                    if group_info and str(group_info.group_id) in global_config.message_receive.mute_group_list:
                         if not message.is_mentioned:
                             logger.debug(f"群组 {group_info.group_id} 在静默列表中，且消息不是@或回复，跳过消息管理器处理")
                             should_process_in_manager = False
