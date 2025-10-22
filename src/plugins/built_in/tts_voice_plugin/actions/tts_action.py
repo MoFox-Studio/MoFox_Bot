@@ -45,8 +45,8 @@ class TTSVoiceAction(BaseAction):
         3. LLM 判断当前场景适合发送语音
         """
         # 条件1: 随机激活
-        if await self._random_activation(0.55):
-            logger.info(f"{self.log_prefix} 随机激活成功 (55%)")
+        if await self._random_activation(0.25):
+            logger.info(f"{self.log_prefix} 随机激活成功 (25%)")
             return True
 
         # 条件2: 关键词激活

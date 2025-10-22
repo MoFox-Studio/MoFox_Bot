@@ -148,6 +148,9 @@ class MessageReceiveConfig(ValidatedConfigBase):
 
     ban_words: list[str] = Field(default_factory=lambda: [], description="禁用词列表")
     ban_msgs_regex: list[str] = Field(default_factory=lambda: [], description="禁用消息正则列表")
+    mute_group_list: list[str] = Field(
+        default_factory=list, description="静默群组列表，在这些群组中，只有在被@或回复时才会响应"
+    )
 
 
 class NoticeConfig(ValidatedConfigBase):

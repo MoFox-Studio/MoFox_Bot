@@ -349,8 +349,12 @@ class ChatBot:
             from src.plugin_system.apis.send_api import put_adapter_response
 
             seg_data = message.message_segment.data
-            request_id = seg_data.get("request_id")
-            response_data = seg_data.get("response")
+            if isinstance(seg_data, dict):
+                request_id = seg_data.get("request_id")
+                response_data = seg_data.get("response")
+            else:
+                request_id = None
+                response_data = None
 
             if request_id and response_data:
                 logger.debug(f"收到适配器响应: request_id={request_id}")
@@ -432,7 +436,6 @@ class ChatBot:
             # logger.debug(str(message_data))
             message = MessageRecv(message_data)
 
-            message.is_mentioned, _ = is_mentioned_bot_in_message(message)
             group_info = message.message_info.group_info
             user_info = message.message_info.user_info
             if message.message_info.additional_config:
@@ -453,6 +456,8 @@ class ChatBot:
 
             # 处理消息内容，生成纯文本
             await message.process()
+
+            message.is_mentioned, _ = is_mentioned_bot_in_message(message)
 
             # 在这里打印[所见]日志，确保在所有处理和过滤之前记录
             chat_name = chat.group_info.group_name if chat.group_info else "私聊"
@@ -689,8 +694,17 @@ class ChatBot:
 
                 # 先交给消息管理器处理，计算兴趣度等衍生数据
                 try:
-                    await message_manager.add_message(message.chat_stream.stream_id, db_message)
-                    logger.debug(f"消息已添加到消息管理器: {message.chat_stream.stream_id}")
+                    # 在将消息添加到管理器之前进行最终的静默检查
+                    should_process_in_manager = True
+                    if group_info and group_info.group_id in global_config.message_receive.mute_group_list:
+                        if not message.is_mentioned:
+                            logger.debug(f"群组 {group_info.group_id} 在静默列表中，且消息不是@或回复，跳过消息管理器处理")
+                            should_process_in_manager = False
+
+                    if should_process_in_manager:
+                        await message_manager.add_message(message.chat_stream.stream_id, db_message)
+                        logger.debug(f"消息已添加到消息管理器: {message.chat_stream.stream_id}")
+
                 except Exception as e:
                     logger.error(f"消息添加到消息管理器失败: {e}")
 

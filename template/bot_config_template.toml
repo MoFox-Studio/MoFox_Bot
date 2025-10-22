@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.4"
+version = "7.3.5"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -148,6 +148,9 @@ ban_msgs_regex = [
     #"https?://[^\\s]+", # 匹配https链接
     #"\\d{4}-\\d{2}-\\d{2}", # 匹配日期
 ]
+# 静默群组列表，在这些群组中，只有在被@或回复时才会响应
+# 格式: ["group_id1", "group_id2"]
+mute_group_list = []
 
 [notice] # Notice消息配置
 enable_notice_trigger_chat = false # 是否允许notice消息触发聊天流程（默认关闭，notice只会被记录但不会触发回复）
