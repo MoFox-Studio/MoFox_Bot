@@ -699,8 +699,13 @@ class ChatBot:
                     # 在将消息添加到管理器之前进行最终的静默检查
                     should_process_in_manager = True
                     if group_info and str(group_info.group_id) in global_config.message_receive.mute_group_list:
-                        if not message.is_mentioned:
-                            logger.debug(f"群组 {group_info.group_id} 在静默列表中，且消息不是@或回复，跳过消息管理器处理")
+                        # 检查消息是否为图片或表情包
+                        is_image_or_emoji = message.is_picid or message.is_emoji
+                        if not message.is_mentioned and not is_image_or_emoji:
+                            logger.debug(f"群组 {group_info.group_id} 在静默列表中，且消息不是@、回复或图片/表情包，跳过消息管理器处理")
+                            should_process_in_manager = False
+                        elif is_image_or_emoji:
+                            logger.debug(f"群组 {group_info.group_id} 在静默列表中，但消息是图片/表情包，静默处理")
                             should_process_in_manager = False
 
                     if should_process_in_manager:
