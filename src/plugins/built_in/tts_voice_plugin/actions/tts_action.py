@@ -75,7 +75,8 @@ class TTSVoiceAction(BaseAction):
         """
         try:
             if not self.tts_service:
-                raise RuntimeError("TTSService 未注册或初始化失败")
+                logger.error(f"{self.log_prefix} TTSService 未注册或初始化失败，静默处理。")
+                return False, "TTSService 未注册或初始化失败"
 
             initial_text = self.action_data.get("text", "").strip()
             voice_style = self.action_data.get("voice_style", "default")
@@ -84,7 +85,7 @@ class TTSVoiceAction(BaseAction):
             # 1. 请求主回复模型生成高质量文本
             text = await self._generate_final_text(initial_text)
             if not text:
-                await self.send_text("❌ 语音合成出错：最终生成的文本为空。")
+                logger.warning(f"{self.log_prefix} 最终生成的文本为空，静默处理。")
                 return False, "最终生成的文本为空"
 
             # 2. 调用 TTSService 生成语音
@@ -99,11 +100,19 @@ class TTSVoiceAction(BaseAction):
                 )
                 return True, f"成功生成并发送语音，文本长度: {len(text)}字符"
             else:
-                await self._handle_error_and_reply("tts_api_error", Exception("TTS服务未能返回音频数据"))
+                logger.error(f"{self.log_prefix} TTS服务未能返回音频数据，静默处理。")
+                await self.store_action_info(
+                    action_prompt_display="语音合成失败: TTS服务未能返回音频数据",
+                    action_done=False
+                )
                 return False, "语音合成失败"
 
         except Exception as e:
-            await self._handle_error_and_reply("generic_error", e)
+            logger.error(f"{self.log_prefix} 语音合成过程中发生未知错误: {e!s}", exc_info=True)
+            await self.store_action_info(
+                action_prompt_display=f"语音合成失败: {e!s}",
+                action_done=False
+            )
             return False, f"语音合成出错: {e!s}"
 
     async def _generate_final_text(self, initial_text: str) -> str:
@@ -136,39 +145,3 @@ class TTSVoiceAction(BaseAction):
         except Exception as e:
             logger.error(f"{self.log_prefix} 生成高质量回复内容时失败: {e}", exc_info=True)
             return ""
-
-    async def _handle_error_and_reply(self, error_context: str, exception: Exception):
-        """处理错误并生成一个动态的、拟人化的回复"""
-        logger.error(f"{self.log_prefix} 在 {error_context} 阶段出错: {exception}", exc_info=True)
-
-        error_prompts = {
-            "generic_error": {
-                "raw_reply": "糟糕，我的思路好像缠成一团毛线球了，需要一点时间来解开...你能耐心等我一下吗？",
-                "reason": f"客观原因：插件在执行时发生了未知异常。详细信息: {exception!s}"
-            },
-            "tts_api_error": {
-                "raw_reply": "我的麦克风好像有点小情绪，突然不想工作了...我正在哄它呢，请稍等片刻哦！",
-                "reason": f"客观原因：语音合成服务返回了一个错误。详细信息: {exception!s}"
-            }
-        }
-        prompt_data = error_prompts.get(error_context, error_prompts["generic_error"])
-
-        try:
-            success, result_message, _ = await generator_api.rewrite_reply(
-                chat_stream=self.chat_stream,
-                raw_reply=prompt_data["raw_reply"],
-                reason=prompt_data["reason"]
-            )
-            if success and result_message:
-                message_text = "".join(str(seg[1]) if isinstance(seg, tuple) else str(seg) for seg in result_message).strip()
-                await self.send_text(message_text)
-            else:
-                await self.send_text("哎呀，好像出了一点小问题，我稍后再试试吧~")
-        except Exception as gen_e:
-            logger.error(f"生成动态错误回复时也出错了: {gen_e}", exc_info=True)
-            await self.send_text("唔...我的思路好像卡壳了，请稍等一下哦！")
-
-        await self.store_action_info(
-            action_prompt_display=f"语音合成失败: {exception!s}",
-            action_done=False
-        )
