@@ -302,7 +302,7 @@ async def import_data(openie_obj: OpenIE | None = None):
     else:
         logger.info(f"去重完成，发现 {len(new_raw_paragraphs)} 个新段落。")
         logger.info("开始生成 Embedding...")
-        embed_manager.store_new_data_set(new_raw_paragraphs, new_triple_list_data)
+        await embed_manager.store_new_data_set(new_raw_paragraphs, new_triple_list_data)
         embed_manager.rebuild_faiss_index()
         embed_manager.save_to_file()
         logger.info("Embedding 处理完成！")
