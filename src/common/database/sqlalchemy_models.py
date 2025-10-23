@@ -654,6 +654,7 @@ class MonthlyPlan(Base):
     usage_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_used_date: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False, default=datetime.datetime.now)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
 
     __table_args__ = (
         Index("idx_monthlyplan_target_month_status", "target_month", "status"),
