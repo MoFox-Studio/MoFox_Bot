@@ -351,7 +351,7 @@ class StreamLoopManager:
             return False
 
     async def _process_stream_messages(self, stream_id: str, context: StreamContext) -> bool:
-        """处理流消息
+        """处理流消息 - 支持子任务管理
 
         Args:
             stream_id: 流ID
@@ -367,6 +367,9 @@ class StreamLoopManager:
         # 设置处理状态为正在处理
         self._set_stream_processing_status(stream_id, True)
 
+        # 子任务跟踪
+        child_tasks = set()
+
         try:
             start_time = time.time()
 
@@ -374,6 +377,11 @@ class StreamLoopManager:
             cached_messages = await self._flush_cached_messages_to_unread(stream_id)
             if cached_messages:
                 logger.info(f"处理开始前刷新缓存消息: stream={stream_id}, 数量={len(cached_messages)}")
+
+            # 创建子任务用于刷新能量（不阻塞主流程）
+            energy_task = asyncio.create_task(self._refresh_focus_energy(stream_id))
+            child_tasks.add(energy_task)
+            energy_task.add_done_callback(lambda t: child_tasks.discard(t))
 
             # 直接调用chatter_manager处理流上下文
             task = asyncio.create_task(self.chatter_manager.process_stream_context(stream_id, context))
@@ -387,7 +395,6 @@ class StreamLoopManager:
                 if additional_messages:
                     logger.info(f"处理完成后刷新新消息: stream={stream_id}, 数量={len(additional_messages)}")
 
-                asyncio.create_task(self._refresh_focus_energy(stream_id))
                 process_time = time.time() - start_time
                 logger.debug(f"流处理成功: {stream_id} (耗时: {process_time:.2f}s)")
             else:
@@ -395,8 +402,19 @@ class StreamLoopManager:
 
             return success
 
+        except asyncio.CancelledError:
+            logger.info(f"流处理被取消: {stream_id}")
+            # 取消所有子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
+            raise
         except Exception as e:
             logger.error(f"流处理异常: {stream_id} - {e}", exc_info=True)
+            # 异常时也要清理子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
             return False
         finally:
             # 无论成功或失败，都要设置处理状态为未处理
