@@ -279,6 +279,9 @@ class DefaultReplyer:
         # 初始化聊天信息
         await self._initialize_chat_info()
 
+        # 子任务跟踪 - 用于取消管理
+        child_tasks = set()
+
         prompt = None
         if available_actions is None:
             available_actions = {}
@@ -349,18 +352,36 @@ class DefaultReplyer:
 
             # 回复生成成功后，异步存储聊天记忆（不阻塞返回）
             try:
-                await self._store_chat_memory_async(reply_to, reply_message)
+                # 将记忆存储作为子任务创建，可以被取消
+                memory_task = asyncio.create_task(
+                    self._store_chat_memory_async(reply_to, reply_message),
+                    name=f"store_memory_{self.chat_stream.stream_id}"
+                )
+                # 不等待完成，让它在后台运行
+                # 如果父任务被取消，这个子任务也会被垃圾回收
+                logger.debug(f"创建记忆存储子任务: {memory_task.get_name()}")
             except Exception as memory_e:
                 # 记忆存储失败不应该影响回复生成的成功返回
                 logger.warning(f"记忆存储失败，但不影响回复生成: {memory_e}")
 
             return True, llm_response, prompt
 
+        except asyncio.CancelledError:
+            logger.info(f"回复生成被取消: {self.chat_stream.stream_id}")
+            # 取消所有子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
+            raise
         except UserWarning as uw:
             raise uw
         except Exception as e:
             logger.error(f"回复生成意外失败: {e}")
             traceback.print_exc()
+            # 异常时也要清理子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
             return False, None, prompt
 
     async def rewrite_reply_with_context(
@@ -1338,7 +1359,15 @@ class DefaultReplyer:
                 logger.info(f"为超时任务 {task_name} 提供默认值")
                 return task_name, default_values[task_name], timeout
 
-        task_results = await asyncio.gather(*(get_task_result(name, task) for name, task in tasks.items()))
+        try:
+            task_results = await asyncio.gather(*(get_task_result(name, task) for name, task in tasks.items()))
+        except asyncio.CancelledError:
+            logger.info("Prompt构建任务被取消，正在清理子任务")
+            # 取消所有未完成的子任务
+            for name, task in tasks.items():
+                if not task.done():
+                    task.cancel()
+            raise
 
         # 任务名称中英文映射
         task_name_mapping = {
@@ -1611,10 +1640,14 @@ class DefaultReplyer:
         )
 
         # 并行执行2个构建任务
-        expression_habits_block, relation_info = await asyncio.gather(
-            self.build_expression_habits(chat_talking_prompt_half, target),
-            self.build_relation_info(sender, target),
-        )
+        try:
+            expression_habits_block, relation_info = await asyncio.gather(
+                self.build_expression_habits(chat_talking_prompt_half, target),
+                self.build_relation_info(sender, target),
+            )
+        except asyncio.CancelledError:
+            logger.info("表达式和关系信息构建被取消")
+            raise
 
         keywords_reaction_prompt = await self.build_keywords_reaction_prompt(target)
 
@@ -1980,6 +2013,10 @@ class DefaultReplyer:
 
             logger.debug(f"已启动记忆存储任务，用户: {memory_user_display or memory_user_id}")
 
+        except asyncio.CancelledError:
+            logger.debug("记忆存储任务被取消")
+            # 这是正常情况，不需要清理子任务，因为是叶子节点
+            raise
         except Exception as e:
             logger.error(f"存储聊天记忆失败: {e}")
 
