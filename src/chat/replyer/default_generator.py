@@ -313,6 +313,8 @@ class DefaultReplyer:
             model_name = "unknown_model"
 
             try:
+                # 设置正在回复的状态
+                self.chat_stream.context_manager.context.is_replying = True
                 content, reasoning_content, model_name, tool_call = await self.llm_generate_content(prompt)
                 logger.debug(f"replyer生成内容: {content}")
                 llm_response = {
@@ -321,6 +323,15 @@ class DefaultReplyer:
                     "model": model_name,
                     "tool_calls": tool_call,
                 }
+            except UserWarning as e:
+                raise e
+            except Exception as llm_e:
+                # 精简报错信息
+                logger.error(f"LLM 生成失败: {llm_e}")
+                return False, None, prompt  # LLM 调用失败则无法生成回复
+            finally:
+                # 重置正在回复的状态
+                self.chat_stream.context_manager.context.is_replying = False
 
                 # 触发 AFTER_LLM 事件
                 if not from_plugin:
@@ -335,12 +346,6 @@ class DefaultReplyer:
                         raise UserWarning(
                             f"插件{result.get_summary().get('stopped_handlers', '')}于请求后取消了内容生成"
                         )
-            except UserWarning as e:
-                raise e
-            except Exception as llm_e:
-                # 精简报错信息
-                logger.error(f"LLM 生成失败: {llm_e}")
-                return False, None, prompt  # LLM 调用失败则无法生成回复
 
             # 回复生成成功后，异步存储聊天记忆（不阻塞返回）
             try:

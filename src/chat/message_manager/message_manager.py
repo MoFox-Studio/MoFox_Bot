@@ -366,6 +366,11 @@ class MessageManager:
         if not global_config.chat.interruption_enabled or not chat_stream or not message:
             return
 
+        # 检查是否正在回复
+        if chat_stream.context_manager.context.is_replying:
+            logger.info(f"聊天流 {chat_stream.stream_id} 正在回复中，跳过打断检查")
+            return
+
         # 检查是否为表情包消息
         if message.is_picid or message.is_emoji:
             logger.info(f"消息 {message.message_id} 是表情包或Emoji，跳过打断检查")
