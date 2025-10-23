@@ -60,13 +60,13 @@ class ChatterPlanFilter:
             prompt, used_message_id_list = await self._build_prompt(plan)
             plan.llm_prompt = prompt
             if global_config.debug.show_prompt:
-                logger.info(f"规划器原始提示词:{prompt}")
+                logger.debug(f"规划器原始提示词:{prompt}")
 
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 
             if llm_content:
                 if global_config.debug.show_prompt:
-                    logger.info(f"LLM规划器原始响应:{llm_content}")
+                    logger.debug(f"LLM规划器原始响应:{llm_content}")
                 try:
                     parsed_json = orjson.loads(repair_json(llm_content))
                 except orjson.JSONDecodeError:
