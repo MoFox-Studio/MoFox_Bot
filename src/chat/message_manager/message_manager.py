@@ -171,7 +171,7 @@ class MessageManager:
             if not chat_stream:
                 logger.warning(f"MessageManager.add_message: 聊天流 {stream_id} 不存在")
                 return
-            await self._check_and_handle_interruption(chat_stream)
+            await self._check_and_handle_interruption(chat_stream, message)
             await chat_stream.context_manager.add_message(message)
 
         except Exception as e:
@@ -361,15 +361,26 @@ class MessageManager:
         except Exception as e:
             logger.error(f"清理不活跃聊天流时发生错误: {e}")
 
-    async def _check_and_handle_interruption(self, chat_stream: ChatStream | None = None):
+    async def _check_and_handle_interruption(self, chat_stream: ChatStream | None = None, message: DatabaseMessages | None = None):
         """检查并处理消息打断 - 支持多重回复任务取消"""
-        if not global_config.chat.interruption_enabled or not chat_stream:
+        if not global_config.chat.interruption_enabled or not chat_stream or not message:
             return
 
-        # 🌟 修复：获取所有处理任务（包括多重回复）
+        # 检查是否为表情包消息
+        if message.is_picid or message.is_emoji:
+            logger.info(f"消息 {message.message_id} 是表情包或Emoji，跳过打断检查")
+            return
+
+        # 修复：获取所有处理任务（包括多重回复）
         all_processing_tasks = self.chatter_manager.get_all_processing_tasks(chat_stream.stream_id)
 
         if all_processing_tasks:
+            # 检查触发用户ID
+            triggering_user_id = chat_stream.context_manager.context.triggering_user_id
+            if triggering_user_id and message.user_info.user_id != triggering_user_id:
+                logger.info(f"消息来自非触发用户 {message.user_info.user_id}，实际触发用户为 {triggering_user_id}，跳过打断检查")
+                return
+
             # 计算打断概率 - 使用新的线性概率模型
             interruption_probability = chat_stream.context_manager.context.calculate_interruption_probability(
                 global_config.chat.interruption_max_limit
@@ -386,7 +397,7 @@ class MessageManager:
             if random.random() < interruption_probability:
                 logger.info(f"聊天流 {chat_stream.stream_id} 触发消息打断，打断概率: {interruption_probability:.2f}，检测到 {len(all_processing_tasks)} 个任务")
 
-                # 🌟 修复：取消所有任务（包括多重回复）
+                # 修复：取消所有任务（包括多重回复）
                 cancelled_count = self.chatter_manager.cancel_all_stream_tasks(chat_stream.stream_id)
 
                 if cancelled_count > 0:
@@ -397,8 +408,8 @@ class MessageManager:
                 # 增加打断计数
                 await chat_stream.context_manager.context.increment_interruption_count()
 
-                # 🚀 新增：打断后立即重新进入聊天流程
-                # 🚀 新增：打断后延迟重新进入聊天流程，以合并短时间内的多条消息
+                # 新增：打断后立即重新进入聊天流程
+                # 新增：打断后延迟重新进入聊天流程，以合并短时间内的多条消息
                 asyncio.create_task(self._trigger_delayed_reprocess(chat_stream, delay=0.5))
 
                 # 检查是否已达到最大次数

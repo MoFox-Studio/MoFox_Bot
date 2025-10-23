@@ -110,6 +110,11 @@ class ChatterManager:
 
         self.stats["streams_processed"] += 1
         try:
+            # 设置触发用户ID
+            last_message = context.get_last_message()
+            if last_message:
+                context.triggering_user_id = last_message.user_info.user_id
+
             result = await self.instances[stream_id].execute(context)
 
             # 检查执行结果是否真正成功
@@ -156,6 +161,7 @@ class ChatterManager:
         finally:
             # 无论成功还是失败，都要清理处理任务记录
             self.remove_processing_task(stream_id)
+            context.triggering_user_id = None  # 清除触发用户ID
 
     def get_stats(self) -> dict[str, Any]:
         """获取管理器统计信息"""
