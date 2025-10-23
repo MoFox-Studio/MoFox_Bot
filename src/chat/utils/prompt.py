@@ -133,7 +133,6 @@ class PromptManager:
             components_prefix = await prompt_component_manager.execute_components_for(
                 injection_point=original_prompt.name, params=params_for_injection
             )
-            logger.info(components_prefix)
             if components_prefix:
                 logger.info(f"为'{name}'注入插件内容: \n{components_prefix}")
                 # 创建一个新的临时Prompt实例，不进行注册
