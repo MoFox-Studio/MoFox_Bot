@@ -4,6 +4,7 @@ from typing import Any
 
 from src.common.logger import get_logger
 from src.manager.local_store_manager import local_storage
+from . import utils
 
 logger = get_logger("sleep_state_manager")
 
@@ -46,6 +47,7 @@ class SleepStateManager:
         self.state: dict[str, Any] = {}
         self._default_state()
         self.load_state()
+        self._refresh_sleep_state()
 
     def _default_state(self):
         """
@@ -185,6 +187,72 @@ class SleepStateManager:
         logger.info(f"更新预定起床时间为: {self.state['wake_up_time']}")
         self.save_state()
 
+    def _refresh_sleep_state(self):
+        """
+        程序启动时，刷新并校准当前的睡眠状态。
+        """
+        now = datetime.now()
+        current_state = self.get_current_state()
+        # 检查并更新作息时间
+        # _should_be_sleeping 会综合判断固定时间和日程表，返回最终结果
+        _, new_wake_up_time_for_check = utils.should_be_sleeping(now)
+
+        # 我们需要的是睡眠开始时间，所以再单独获取一下
+        from src.config.config import global_config
+        if global_config.sleep_system.sleep_by_schedule:
+            new_sleep_time, _ = utils._get_sleep_times_from_schedule(now) # type: ignore
+        else:
+            new_sleep_time, _ = utils._get_fixed_sleep_times(now) # type: ignore
+        logger.info(f"新的睡眠时间:{new_sleep_time}")
+
+        stored_sleep_time = self.get_sleep_start_time()
+
+        if new_sleep_time and stored_sleep_time:
+            time_diff = abs(new_sleep_time - stored_sleep_time)
+            # 如果差异大于2小时，则认为作息已更新
+            if time_diff > timedelta(hours=2):
+                logger.info(f"检测到新的睡眠时间 {new_sleep_time} 与存储的 {stored_sleep_time} 差异过大，将进行更新。")
+                # 更新状态以记录新的作息时间，但保持清醒
+                self.state["sleep_start_time"] = new_sleep_time.timestamp()
+                self.state["wake_up_time"] = new_wake_up_time_for_check.timestamp() if new_wake_up_time_for_check else None
+                self.save_state()
+        if current_state == SleepState.SLEEPING:
+                wake_up_time = self.get_wake_up_time()
+                if wake_up_time:
+                    if now <= wake_up_time:
+                        logger.info(f"启动时检测到已超过起床时间 (起床时间: {wake_up_time})，将状态强制唤醒。")
+                        self.set_state(SleepState.AWAKE)
+                else:
+                    # 如果没有起床时间，则根据睡眠开始时间判断
+                    sleep_start_time = self.get_sleep_start_time()
+                    if sleep_start_time:
+                        logger.info(f"{now}-{sleep_start_time}")
+                        if now > sleep_start_time:
+                            logger.warning(f"当前时间 {now} 早于睡眠开始时间 {sleep_start_time}。将强制唤醒。")
+                            self.set_state(SleepState.AWAKE)
+                        # 如果 now >= sleep_start_time，则说明正在正常睡眠，无需操作
+                    else:
+                        # 如果连睡眠开始时间都没有，说明状态异常
+                        logger.warning("启动时检测到睡眠状态异常：没有起床时间也没有睡眠开始时间。将强制唤醒。")
+                        self.set_state(SleepState.AWAKE)
+        elif current_state == SleepState.AWAKE:
+            should_sleep, new_wake_up_time = utils.should_be_sleeping(now)
+
+            if should_sleep:
+                logger.info("启动时检测到当前时间应处于睡眠状态，但状态为清醒。将强制进入睡眠。")
+                self.set_state(SleepState.SLEEPING, wake_up=new_wake_up_time)
+
 
 # 全局单例
-sleep_state_manager = SleepStateManager()
+_sleep_state_manager_instance: SleepStateManager | None = None
+
+
+def get_sleep_state_manager() -> SleepStateManager:
+    """
+    获取睡眠状态管理器的单例实例。
+    在首次调用时会创建实例。
+    """
+    global _sleep_state_manager_instance
+    if _sleep_state_manager_instance is None:
+        _sleep_state_manager_instance = SleepStateManager()
+    return _sleep_state_manager_instance

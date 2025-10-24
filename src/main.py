@@ -512,10 +512,8 @@ MoFox_Bot(第三方修改版)
                 logger.error(f"月度计划管理器初始化失败: {e}")
 
         # 初始化日程管理器
-        if global_config.planning_system.schedule_enable:
             try:
-                await schedule_manager.load_or_generate_today_schedule()
-                await schedule_manager.start_daily_schedule_generation()
+                await schedule_manager.initialize()
                 logger.info("日程表管理器初始化成功")
             except Exception as e:
                 logger.error(f"日程表管理器初始化失败: {e}")
