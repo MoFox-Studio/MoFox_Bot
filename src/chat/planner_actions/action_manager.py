@@ -165,6 +165,7 @@ class ChatterActionManager:
             执行结果
         """
 
+        chat_stream = None
         try:
             logger.debug(f"🎯 [ActionManager] execute_action接收到 target_message: {target_message}")
             # 通过chat_id获取chat_stream
@@ -179,6 +180,9 @@ class ChatterActionManager:
                     "reply_text": "",
                     "error": "chat_stream not found",
                 }
+
+            # 设置正在回复的状态
+            chat_stream.context_manager.context.is_replying = True
 
             if action_name == "no_action":
                 return {"action_type": "no_action", "success": True, "reply_text": "", "command": ""}
@@ -205,7 +209,7 @@ class ChatterActionManager:
                             action_build_into_prompt=False,
                             action_prompt_display=reason,
                             action_done=True,
-                            thinking_id=thinking_id,
+                            thinking_id=thinking_id or "",
                             action_data={"reason": reason},
                             action_name="no_reply",
                         )
@@ -298,6 +302,10 @@ class ChatterActionManager:
                 "loop_info": None,
                 "error": str(e),
             }
+        finally:
+            # 确保重置正在回复的状态
+            if chat_stream:
+                chat_stream.context_manager.context.is_replying = False
 
     async def _record_action_to_message(self, chat_stream, action_name, target_message, action_data):
         """
