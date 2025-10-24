@@ -20,7 +20,6 @@ from src.plugin_system.apis.chat_api import get_chat_manager
 
 from .distribution_manager import stream_loop_manager
 from .global_notice_manager import NoticeScope, global_notice_manager
-from .sleep_system.state_manager import SleepState, sleep_state_manager
 
 if TYPE_CHECKING:
     pass
@@ -148,13 +147,6 @@ class MessageManager:
 
     async def add_message(self, stream_id: str, message: DatabaseMessages):
         """添加消息到指定聊天流"""
-        # 在消息处理的最前端检查睡眠状态
-        current_sleep_state = sleep_state_manager.get_current_state()
-        if current_sleep_state == SleepState.SLEEPING:
-            logger.info(f"处于 {current_sleep_state.name} 状态，消息被拦截。")
-            return  # 直接返回，不处理消息
-
-        # TODO: 在这里为 WOKEN_UP_ANGRY 等未来状态添加特殊处理逻辑
 
         try:
             # 检查是否为notice消息

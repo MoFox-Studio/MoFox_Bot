@@ -162,16 +162,6 @@ class MessageHandler:
         )
         logger.debug(f"原始消息内容: {raw_message.get('message', [])}")
 
-        # 检查是否包含@或video消息段
-        message_segments = raw_message.get("message", [])
-        if message_segments:
-            for i, seg in enumerate(message_segments):
-                seg_type = seg.get("type")
-                if seg_type in ["at", "video"]:
-                    logger.info(f"检测到 {seg_type.upper()} 消息段 [{i}]: {seg}")
-                elif seg_type not in ["text", "face", "image"]:
-                    logger.warning(f"检测到特殊消息段 [{i}]: type={seg_type}, data={seg.get('data', {})}")
-
         message_type: str = raw_message.get("message_type")
         message_id: int = raw_message.get("message_id")
         # message_time: int = raw_message.get("time")
