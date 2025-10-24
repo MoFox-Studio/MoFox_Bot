@@ -160,10 +160,17 @@ class MessageManager:
         try:
             # 检查是否为notice消息
             if self._is_notice_message(message):
-                # Notice消息处理 - 不进入未读消息
+                # Notice消息处理 - 添加到全局管理器
                 logger.info(f"📢 检测到notice消息: message_id={message.message_id}, is_notify={message.is_notify}, notice_type={getattr(message, 'notice_type', None)}")
                 await self._handle_notice_message(stream_id, message)
-                return
+                
+                # 根据配置决定是否继续处理（触发聊天流程）
+                if not global_config.notice.enable_notice_trigger_chat:
+                    logger.info(f"根据配置，流 {stream_id} 的Notice消息将被忽略，不触发聊天流程。")
+                    return  # 停止处理，不进入未读消息队列
+                else:
+                    logger.info(f"根据配置，流 {stream_id} 的Notice消息将触发聊天流程。")
+                    # 继续执行，将消息添加到未读队列
 
             # 普通消息处理
             chat_manager = get_chat_manager()
@@ -749,6 +756,8 @@ class MessageManager:
         try:
             # 根据notice类型设置不同的TTL
             notice_type = self._get_notice_type(message)
+            if notice_type is None:
+                return 3600
 
             ttl_mapping = {
                 "poke": 1800,  # 戳一戳30分钟

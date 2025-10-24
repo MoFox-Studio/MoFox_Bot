@@ -156,7 +156,7 @@ class MessageReceiveConfig(ValidatedConfigBase):
 class NoticeConfig(ValidatedConfigBase):
     """Notice消息配置类"""
 
-    enable_notice_trigger_chat: bool = Field(default=False, description="是否允许notice消息触发聊天流程")
+    enable_notice_trigger_chat: bool = Field(default=True, description="是否允许notice消息触发聊天流程")
     notice_in_prompt: bool = Field(default=True, description="是否在提示词中展示最近的notice消息")
     notice_prompt_limit: int = Field(default=5, ge=1, le=20, description="在提示词中展示的最大notice数量")
     notice_time_window: int = Field(default=3600, ge=60, le=86400, description="notice时间窗口(秒)")
