@@ -1,5 +1,6 @@
 from src.plugin_system.base.plugin_metadata import PluginMetadata
 
+# 定义插件元数据
 __plugin_meta__ = PluginMetadata(
     name="MoFox-Bot工具箱",
     description="一个集合多种实用功能的插件，旨在提升聊天体验和效率。",
@@ -11,4 +12,6 @@ __plugin_meta__ = PluginMetadata(
     keywords=["emoji", "reaction", "like", "表情", "回应", "点赞"],
     categories=["Chat", "Integration"],
     extra={"is_built_in": "true", "plugin_type": "functional"},
+    dependencies=[],
+    python_dependencies=["httpx", "Pillow"],
 )
