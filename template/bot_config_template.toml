@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.5"
+version = "7.4.5"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -484,44 +484,6 @@ searxng_api_keys = []# SearXNG 实例 API 密钥列表
 # 搜索引擎配置
 enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing", "metaso"
 search_strategy = "single" # 搜索策略: "single"(使用第一个可用引擎), "parallel"(并行使用所有启用的引擎), "fallback"(按顺序尝试，失败则尝试下一个)
-
-[sleep_system]
-enable = false #"是否启用睡眠系统"
-sleep_by_schedule = true #"是否根据日程表进行睡觉"
-fixed_sleep_time = "23:00" #"固定的睡觉时间"
-fixed_wake_up_time = "07:00" #"固定的起床时间"
-sleep_time_offset_minutes = 15 #"睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机"
-wake_up_time_offset_minutes = 15 #"起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机"
-wakeup_threshold = 15.0 #唤醒阈值，达到此值时会被唤醒"
-private_message_increment = 3.0 #"私聊消息增加的唤醒度"
-group_mention_increment = 2.0 #"群聊艾特增加的唤醒度"
-decay_rate = 0.2 #"每次衰减的唤醒度数值"
-decay_interval = 30.0 #"唤醒度衰减间隔(秒)"
-angry_duration = 300.0 #"愤怒状态持续时间(秒)"
-angry_prompt = "你被人吵醒了非常生气，说话带着怒气" # "被吵醒后的愤怒提示词"
-re_sleep_delay_minutes = 5 # "被唤醒后，如果多久没有新消息则尝试重新入睡（分钟）"
-
-# --- 失眠机制相关参数 ---
-enable_insomnia_system = false # 是否启用失眠系统
-# 失眠概率 (0.0 to 1.0)
-insomnia_chance_pressure = 0.1
-
-# --- 弹性睡眠与睡前消息 ---
-# 是否启用弹性睡眠。启用后，AI不会到点立刻入睡，而是会根据睡眠压力增加5-10分钟的缓冲，并可能因为压力不足而推迟睡眠。
-enable_flexible_sleep = false
-# 触发弹性睡眠的睡眠压力阈值。当AI的睡眠压力低于此值时，可能会推迟入睡。
-flexible_sleep_pressure_threshold = 40.0
-# 每日最大可推迟入睡的总分钟数。
-max_sleep_delay_minutes = 60
-
-# 是否在进入“准备入睡”状态时发送一条消息通知。
-enable_pre_sleep_notification = false
-# 用于生成睡前消息的提示。AI会根据这个提示生成一句晚安问候。
-pre_sleep_prompt = "我准备睡觉了，请生成一句简短自然的晚安问候。"
-insomnia_duration_minutes = [30, 60] # 单次失眠状态的持续时间范围（分钟）
-# --- 睡后失眠 ---
-# 入睡后，经过一段延迟后触发失眠判定的延迟时间（分钟），设置为范围以增加随机性
-insomnia_trigger_delay_minutes = [15, 45]
 
 [cross_context] # 跨群聊/私聊上下文共享配置
 # 这是总开关，用于一键启用或禁用此功能
