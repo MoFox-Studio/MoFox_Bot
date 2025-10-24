@@ -206,7 +206,7 @@ async def build_cross_context_s4u(
                 )
 
         all_group_messages.sort(key=lambda x: x["latest_timestamp"], reverse=True)
-        
+
         # 计算群聊的额度
         remaining_limit = cross_context_config.s4u_stream_limit - (1 if private_context_block else 0)
         limited_group_messages = all_group_messages[:remaining_limit]

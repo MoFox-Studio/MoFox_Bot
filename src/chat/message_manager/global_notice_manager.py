@@ -3,12 +3,12 @@
 用于统一管理所有notice消息，将notice与正常消息分离
 """
 
-import time
 import threading
+import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
 from enum import Enum
+from typing import Any
 
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
@@ -27,7 +27,7 @@ class NoticeMessage:
     """Notice消息数据结构"""
     message: DatabaseMessages
     scope: NoticeScope
-    target_stream_id: Optional[str] = None  # 如果是STREAM类型，指定目标流ID
+    target_stream_id: str | None = None  # 如果是STREAM类型，指定目标流ID
     timestamp: float = field(default_factory=time.time)
     ttl: int = 3600  # 默认1小时过期
 
@@ -56,11 +56,11 @@ class GlobalNoticeManager:
         return cls._instance
 
     def __init__(self):
-        if hasattr(self, '_initialized'):
+        if hasattr(self, "_initialized"):
             return
 
         self._initialized = True
-        self._notices: Dict[str, deque[NoticeMessage]] = defaultdict(deque)
+        self._notices: dict[str, deque[NoticeMessage]] = defaultdict(deque)
         self._max_notices_per_type = 100  # 每种类型最大存储数量
         self._cleanup_interval = 300  # 5分钟清理一次过期消息
         self._last_cleanup_time = time.time()
@@ -80,8 +80,8 @@ class GlobalNoticeManager:
         self,
         message: DatabaseMessages,
         scope: NoticeScope = NoticeScope.STREAM,
-        target_stream_id: Optional[str] = None,
-        ttl: Optional[int] = None
+        target_stream_id: str | None = None,
+        ttl: int | None = None
     ) -> bool:
         """添加notice消息
 
@@ -142,7 +142,7 @@ class GlobalNoticeManager:
             logger.error(f"添加notice消息失败: {e}")
             return False
 
-    def get_accessible_notices(self, stream_id: str, limit: int = 20) -> List[NoticeMessage]:
+    def get_accessible_notices(self, stream_id: str, limit: int = 20) -> list[NoticeMessage]:
         """获取指定聊天流可访问的notice消息
 
         Args:
@@ -231,7 +231,7 @@ class GlobalNoticeManager:
             logger.error(f"获取notice文本失败: {e}", exc_info=True)
             return ""
 
-    def clear_notices(self, stream_id: Optional[str] = None, notice_type: Optional[str] = None) -> int:
+    def clear_notices(self, stream_id: str | None = None, notice_type: str | None = None) -> int:
         """清理notice消息
 
         Args:
@@ -289,14 +289,14 @@ class GlobalNoticeManager:
             logger.error(f"清理notice消息失败: {e}")
             return 0
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         """获取统计信息"""
         # 更新实时统计
         total_active_notices = sum(len(notices) for notices in self._notices.values())
         self.stats["total_notices"] = total_active_notices
         self.stats["active_keys"] = len(self._notices)
         self.stats["last_cleanup_time"] = int(self._last_cleanup_time)
-        
+
         # 添加详细的存储键信息
         storage_keys_info = {}
         for key, notices in self._notices.items():
@@ -313,11 +313,11 @@ class GlobalNoticeManager:
         """检查消息是否为notice类型"""
         try:
             # 首先检查消息的is_notify字段
-            if hasattr(message, 'is_notify') and message.is_notify:
+            if hasattr(message, "is_notify") and message.is_notify:
                 return True
 
             # 检查消息的附加配置
-            if hasattr(message, 'additional_config') and message.additional_config:
+            if hasattr(message, "additional_config") and message.additional_config:
                 if isinstance(message.additional_config, dict):
                     return message.additional_config.get("is_notice", False)
                 elif isinstance(message.additional_config, str):
@@ -333,7 +333,7 @@ class GlobalNoticeManager:
             logger.debug(f"检查notice类型失败: {e}")
             return False
 
-    def _get_storage_key(self, scope: NoticeScope, target_stream_id: Optional[str], message: DatabaseMessages) -> str:
+    def _get_storage_key(self, scope: NoticeScope, target_stream_id: str | None, message: DatabaseMessages) -> str:
         """生成存储键"""
         if scope == NoticeScope.PUBLIC:
             return "public"
@@ -341,10 +341,10 @@ class GlobalNoticeManager:
             notice_type = self._get_notice_type(message) or "default"
             return f"stream_{target_stream_id}_{notice_type}"
 
-    def _get_notice_type(self, message: DatabaseMessages) -> Optional[str]:
+    def _get_notice_type(self, message: DatabaseMessages) -> str | None:
         """获取notice类型"""
         try:
-            if hasattr(message, 'additional_config') and message.additional_config:
+            if hasattr(message, "additional_config") and message.additional_config:
                 if isinstance(message.additional_config, dict):
                     return message.additional_config.get("notice_type")
                 elif isinstance(message.additional_config, str):

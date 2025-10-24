@@ -5,7 +5,7 @@ Web Search Tool Plugin
 """
 
 from src.common.logger import get_logger
-from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, PythonDependency, register_plugin
+from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, register_plugin
 from src.plugin_system.apis import config_api
 
 from .tools.url_parser import URLParserTool
@@ -42,9 +42,9 @@ class WEBSEARCHPLUGIN(BasePlugin):
             from .engines.bing_engine import BingSearchEngine
             from .engines.ddg_engine import DDGSearchEngine
             from .engines.exa_engine import ExaSearchEngine
+            from .engines.metaso_engine import MetasoSearchEngine
             from .engines.searxng_engine import SearXNGSearchEngine
             from .engines.tavily_engine import TavilySearchEngine
-            from .engines.metaso_engine import MetasoSearchEngine
 
             # 实例化所有搜索引擎，这会触发API密钥管理器的初始化
             exa_engine = ExaSearchEngine()
@@ -53,7 +53,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
             bing_engine = BingSearchEngine()
             searxng_engine = SearXNGSearchEngine()
             metaso_engine = MetasoSearchEngine()
- 
+
              # 报告每个引擎的状态
             engines_status = {
                 "Exa": exa_engine.is_available(),

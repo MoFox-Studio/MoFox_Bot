@@ -7,7 +7,6 @@ from src.plugin_system import (
     BaseEventHandler,
     BasePlugin,
     BasePrompt,
-    ToolParamType,
     BaseTool,
     ChatType,
     CommandArgs,
@@ -15,6 +14,7 @@ from src.plugin_system import (
     ConfigField,
     EventType,
     PlusCommand,
+    ToolParamType,
     register_plugin,
 )
 from src.plugin_system.base.base_event import HandlerResult

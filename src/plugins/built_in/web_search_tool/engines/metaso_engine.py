@@ -2,7 +2,7 @@
 Metaso Search Engine (Chat Completions Mode)
 """
 import json
-from typing import Any, List
+from typing import Any
 
 import httpx
 
@@ -27,7 +27,7 @@ class MetasoClient:
             "Content-Type": "application/json",
         }
 
-    async def search(self, query: str, **kwargs) -> List[dict[str, Any]]:
+    async def search(self, query: str, **kwargs) -> list[dict[str, Any]]:
         """Perform a search using the Metaso Chat Completions API."""
         payload = {"model": "fast", "stream": True, "messages": [{"role": "user", "content": query}]}
         search_url = f"{self.base_url}/chat/completions"

@@ -271,7 +271,7 @@ class EmojiAction(BaseAction):
                     # 我们假设LLM返回的是精炼描述的一部分或全部
                     matched_emoji = None
                     best_match_score = 0
-                    
+
                     for item in all_emojis_data:
                         refined_info = extract_refined_info(item[1])
                         # 计算一个简单的匹配分数
@@ -280,16 +280,16 @@ class EmojiAction(BaseAction):
                             score += 2 # 包含匹配
                         if refined_info.lower() in chosen_description.lower():
                             score += 2 # 包含匹配
-                        
+
                         # 关键词匹配加分
-                        chosen_keywords = re.findall(r'\w+', chosen_description.lower())
-                        item_keywords = re.findall(r'\[(.*?)\]', refined_info)
+                        chosen_keywords = re.findall(r"\w+", chosen_description.lower())
+                        item_keywords = re.findall(r"\[(.*?)\]", refined_info)
                         if item_keywords:
-                            item_keywords_set = {k.strip().lower() for k in item_keywords[0].split(',')}
+                            item_keywords_set = {k.strip().lower() for k in item_keywords[0].split(",")}
                             for kw in chosen_keywords:
                                 if kw in item_keywords_set:
                                     score += 1
-                        
+
                         if score > best_match_score:
                             best_match_score = score
                             matched_emoji = item

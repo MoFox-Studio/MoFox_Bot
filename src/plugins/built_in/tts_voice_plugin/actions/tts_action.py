@@ -4,7 +4,7 @@ TTS 语音合成 Action
 
 from src.common.logger import get_logger
 from src.plugin_system.apis import generator_api
-from src.plugin_system.base.base_action import ActionActivationType, BaseAction, ChatMode
+from src.plugin_system.base.base_action import BaseAction, ChatMode
 
 from ..services.manager import get_service
 
@@ -65,7 +65,7 @@ class TTSVoiceAction(BaseAction):
         ):
             logger.info(f"{self.log_prefix} LLM 判断激活成功")
             return True
-            
+
         logger.debug(f"{self.log_prefix} 所有激活条件均未满足，不激活")
         return False
 
