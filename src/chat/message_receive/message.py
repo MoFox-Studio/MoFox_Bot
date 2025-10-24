@@ -133,7 +133,7 @@ class MessageRecv(Message):
 
         self.key_words = []
         self.key_words_lite = []
-        
+
         # 解析additional_config中的notice信息
         if self.message_info.additional_config and isinstance(self.message_info.additional_config, dict):
             self.is_notify = self.message_info.additional_config.get("is_notice", False)

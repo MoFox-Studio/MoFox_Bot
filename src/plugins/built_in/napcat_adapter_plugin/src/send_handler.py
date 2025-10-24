@@ -237,7 +237,6 @@ class SendHandler:
             target_id = str(target_id)
             if target_id == "notice":
                 return payload
-            logger.info(target_id if isinstance(target_id, str) else "")
             new_payload = self.build_payload(
                 payload,
                 await self.handle_reply_message(target_id if isinstance(target_id, str) else "", user_info),
@@ -322,7 +321,7 @@ class SendHandler:
             # 如果没有获取到被回复者的ID，则直接返回，不进行@
             if not replied_user_id:
                 logger.warning(f"无法获取消息 {id} 的发送者信息，跳过 @")
-                logger.info(f"最终返回的回复段: {reply_seg}")
+                logger.debug(f"最终返回的回复段: {reply_seg}")
                 return reply_seg
 
             # 根据概率决定是否艾特用户
@@ -340,7 +339,7 @@ class SendHandler:
             logger.info(f"最终返回的回复段: {reply_seg}")
             return reply_seg
 
-        logger.info(f"最终返回的回复段: {reply_seg}")
+        logger.debug(f"最终返回的回复段: {reply_seg}")
         return reply_seg
 
     def handle_text_message(self, message: str) -> dict:

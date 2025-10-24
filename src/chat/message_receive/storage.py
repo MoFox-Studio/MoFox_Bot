@@ -222,7 +222,7 @@ class MessageStorage:
     async def replace_image_descriptions(text: str) -> str:
         """异步地将文本中的所有[图片：描述]标记替换为[picid:image_id]"""
         pattern = r"\[图片：([^\]]+)\]"
-        
+
         # 如果没有匹配项，提前返回以提高效率
         if not re.search(pattern, text):
             return text
@@ -233,7 +233,7 @@ class MessageStorage:
         for match in re.finditer(pattern, text):
             # 添加上一个匹配到当前匹配之间的文本
             new_text.append(text[last_end:match.start()])
-            
+
             description = match.group(1).strip()
             replacement = match.group(0) # 默认情况下，替换为原始匹配文本
             try:
@@ -260,7 +260,7 @@ class MessageStorage:
 
         # 添加最后一个匹配到字符串末尾的文本
         new_text.append(text[last_end:])
-        
+
         return "".join(new_text)
 
     @staticmethod

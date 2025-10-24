@@ -9,7 +9,7 @@ from src.chat.utils.utils import get_chat_type_and_target_info
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.data_models.info_data_model import Plan, TargetPersonInfo
 from src.config.config import global_config
-from src.plugin_system.base.component_types import ActionInfo, ChatMode, ChatType, ComponentType
+from src.plugin_system.base.component_types import ActionInfo, ChatMode, ChatType
 from src.plugin_system.core.component_registry import component_registry
 
 

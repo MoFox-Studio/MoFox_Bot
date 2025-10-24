@@ -1,6 +1,6 @@
 import traceback
-from typing import Any
 from collections import defaultdict
+from typing import Any
 
 from sqlalchemy import func, not_, select
 from sqlalchemy.orm import DeclarativeBase

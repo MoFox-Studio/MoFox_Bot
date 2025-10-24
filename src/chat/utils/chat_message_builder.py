@@ -550,7 +550,7 @@ async def _build_readable_messages_internal(
     if pic_id_mapping is None:
         pic_id_mapping = {}
     current_pic_counter = pic_counter
-    
+
     # --- 异步图片ID处理器 (修复核心问题) ---
     async def process_pic_ids(content: str) -> str:
         """异步处理内容中的图片ID，将其直接替换为[图片：描述]格式"""
@@ -978,7 +978,7 @@ async def build_readable_messages(
         return ""
 
     copy_messages = [msg.copy() for msg in messages]
-    
+
     if not copy_messages:
         return ""
 
@@ -1092,7 +1092,7 @@ async def build_readable_messages(
         )
 
         read_mark_line = "\n--- 以上消息是你已经看过，请关注以下未读的新消息---\n"
-        
+
         # 组合结果
         result_parts = []
         if formatted_before and formatted_after:

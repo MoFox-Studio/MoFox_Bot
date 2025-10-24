@@ -30,7 +30,6 @@ class TTSVoicePlugin(BasePlugin):
     plugin_author = "Kilo Code & 靚仔"
     config_file_name = "config.toml"
     dependencies = []
-    python_dependencies = ["aiohttp", "soundfile", "pedalboard"]
 
     permission_nodes: list[PermissionNodeField] = [
         PermissionNodeField(node_name="command.use", description="是否可以使用 /tts 命令"),

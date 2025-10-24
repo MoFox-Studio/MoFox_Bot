@@ -66,10 +66,10 @@ class EmojiAction(BaseAction):
     # LLM判断提示词
     llm_judge_prompt = """
     判定是否需要使用表情动作的条件：
-    1. 用户明确要求使用表情包
-    2. 这是一个适合表达情绪的场合
-    3. 发表情包能使当前对话更有趣
-    4. 不要发送太多表情包，如果你已经发送过多个表情包则回答"否"
+    1. 用户明确要求使用表情包。
+    2. 当前的对话氛围很适合用表情来活跃气氛。
+    3. 发送表情包能让互动变得更有趣、更生动。
+    4. 请像正常人一样自然地使用表情包，不要过度依赖，也不要刷屏哦。
 
     请回答"是"或"否"。
     """
@@ -271,7 +271,7 @@ class EmojiAction(BaseAction):
                     # 我们假设LLM返回的是精炼描述的一部分或全部
                     matched_emoji = None
                     best_match_score = 0
-                    
+
                     for item in all_emojis_data:
                         refined_info = extract_refined_info(item[1])
                         # 计算一个简单的匹配分数
@@ -280,16 +280,16 @@ class EmojiAction(BaseAction):
                             score += 2 # 包含匹配
                         if refined_info.lower() in chosen_description.lower():
                             score += 2 # 包含匹配
-                        
+
                         # 关键词匹配加分
-                        chosen_keywords = re.findall(r'\w+', chosen_description.lower())
-                        item_keywords = re.findall(r'\[(.*?)\]', refined_info)
+                        chosen_keywords = re.findall(r"\w+", chosen_description.lower())
+                        item_keywords = re.findall(r"\[(.*?)\]", refined_info)
                         if item_keywords:
-                            item_keywords_set = {k.strip().lower() for k in item_keywords[0].split(',')}
+                            item_keywords_set = {k.strip().lower() for k in item_keywords[0].split(",")}
                             for kw in chosen_keywords:
                                 if kw in item_keywords_set:
                                     score += 1
-                        
+
                         if score > best_match_score:
                             best_match_score = score
                             matched_emoji = item

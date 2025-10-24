@@ -323,6 +323,33 @@ class PluginManager:
                     init_module = module_from_spec(init_spec)
                     init_spec.loader.exec_module(init_module)
 
+                    # --- 在这里进行依赖检查 ---
+                    if hasattr(init_module, "__plugin_meta__"):
+                        metadata = getattr(init_module, "__plugin_meta__")
+                        from src.plugin_system.utils.dependency_manager import get_dependency_manager
+
+                        dependency_manager = get_dependency_manager()
+
+                        # 1. 检查Python依赖
+                        if metadata.python_dependencies:
+                            success, errors = dependency_manager.check_and_install_dependencies(
+                                metadata.python_dependencies, metadata.name
+                            )
+                            if not success:
+                                error_msg = f"Python依赖检查失败: {', '.join(errors)}"
+                                self.failed_plugins[plugin_name] = error_msg
+                                logger.error(f"❌ 插件加载失败: {plugin_name} - {error_msg}")
+                                return None  # 依赖检查失败，不加载该模块
+
+                        # 2. 检查插件依赖
+                        if not self._check_plugin_dependencies(metadata):
+                            error_msg = f"插件依赖检查失败: 请确保依赖 {metadata.dependencies} 已正确安装并加载。"
+                            self.failed_plugins[plugin_name] = error_msg
+                            logger.error(f"❌ 插件加载失败: {plugin_name} - {error_msg}")
+                            return None  # 插件依赖检查失败
+
+                    # --- 依赖检查逻辑结束 ---
+
             # 然后加载 plugin.py
             spec = spec_from_file_location(module_name, plugin_file)
             if spec is None or spec.loader is None:
@@ -335,7 +362,8 @@ class PluginManager:
 
             # 将 __plugin_meta__ 从 init_module 附加到主模块
             if init_module and hasattr(init_module, "__plugin_meta__"):
-                setattr(module, "__plugin_meta__", getattr(init_module, "__plugin_meta__"))
+                metadata = getattr(init_module, "__plugin_meta__")
+                setattr(module, "__plugin_meta__", metadata)
 
             logger.debug(f"插件模块加载成功: {plugin_file} -> {plugin_name} ({plugin_dir})")
             return module
@@ -345,6 +373,20 @@ class PluginManager:
             logger.error(error_msg)
             self.failed_plugins[plugin_name if "plugin_name" in locals() else module_name] = error_msg
             return None
+
+    def _check_plugin_dependencies(self, plugin_meta: PluginMetadata) -> bool:
+        """检查插件的插件依赖"""
+        dependencies = plugin_meta.dependencies
+        if not dependencies:
+            return True
+
+        for dep_name in dependencies:
+            # 检查依赖的插件类是否已注册
+            if dep_name not in self.plugin_classes:
+                logger.error(f"插件 '{plugin_meta.name}' 缺少依赖: 插件 '{dep_name}' 未找到或加载失败。")
+                return False
+        logger.debug(f"插件 '{plugin_meta.name}' 的所有依赖都已找到。")
+        return True
 
     # == 显示统计与插件信息 ==
 
@@ -383,7 +425,7 @@ class PluginManager:
 
                     # 组件列表
                     if plugin_info.components:
-                        
+
                         def format_component(c):
                             desc = c.description
                             if len(desc) > 15:

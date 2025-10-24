@@ -1,7 +1,6 @@
 import asyncio
 import math
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 # import tqdm
