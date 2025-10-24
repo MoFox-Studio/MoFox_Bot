@@ -134,7 +134,7 @@ class ComponentInfo:
 @dataclass
 class ActionInfo(ComponentInfo):
     """动作组件信息
-    
+
     注意：激活类型相关字段已废弃，推荐使用 Action 类的 go_activate() 方法来自定义激活逻辑。
     这些字段将继续保留以提供向后兼容性，BaseAction.go_activate() 的默认实现会使用这些字段。
     """
@@ -292,7 +292,7 @@ class PluginInfo:
     is_built_in: bool = False  # 是否为内置插件
     components: list[ComponentInfo] = field(default_factory=list)  # 包含的组件列表
     dependencies: list[str] = field(default_factory=list)  # 依赖的其他插件
-    python_dependencies: list[PythonDependency] = field(default_factory=list)  # Python包依赖
+    python_dependencies: list[str | PythonDependency] = field(default_factory=list)  # Python包依赖
     config_file: str = ""  # 配置文件路径
     metadata: dict[str, Any] = field(default_factory=dict)  # 额外元数据
     # 新增：manifest相关信息

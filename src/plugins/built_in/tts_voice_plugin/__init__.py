@@ -13,5 +13,6 @@ __plugin_meta__ = PluginMetadata(
     extra={
         "is_built_in": False,
         "plugin_type": "tools",
-    }
+    },
+    python_dependencies = ["aiohttp", "soundfile", "pedalboard"]
 )

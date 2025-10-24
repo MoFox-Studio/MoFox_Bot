@@ -135,11 +135,6 @@ class BasePlugin(PluginBase):
 
         components = self.get_plugin_components()
 
-        # 检查依赖
-        if not self._check_dependencies():
-            logger.error(f"{self.log_prefix} 依赖检查失败，跳过注册")
-            return False
-
         # 注册所有组件
         registered_components = []
         for component_info, component_class in components:
