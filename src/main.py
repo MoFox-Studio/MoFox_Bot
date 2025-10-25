@@ -6,14 +6,13 @@ import time
 import traceback
 from functools import partial
 from random import choices
-from typing import Any
+from typing import Any, Callable, Coroutine
 
 from maim_message import MessageServer
 from rich.traceback import install
 
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
 from src.chat.memory_system.memory_manager import memory_manager
-from src.chat.message_manager.sleep_system.tasks import start_sleep_system_tasks
 from src.chat.message_receive.bot import chat_bot
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
@@ -402,8 +401,10 @@ MoFox_Bot(第三方修改版)
         # 注册API路由
         try:
             from src.api.message_router import router as message_router
+            from src.api.statistic_router import router as llm_statistic_router
 
             self.server.register_router(message_router, prefix="/api")
+            self.server.register_router(llm_statistic_router, prefix="/api")
             logger.info("API路由注册成功")
         except Exception as e:
             logger.error(f"注册API路由失败: {e}")
@@ -520,15 +521,7 @@ MoFox_Bot(第三方修改版)
             except Exception as e:
                 logger.error(f"日程表管理器初始化失败: {e}")
 
-        # 初始化睡眠系统
-        if global_config.sleep_system.enable:
-            try:
-                await start_sleep_system_tasks()
-                logger.info("睡眠系统初始化成功")
-            except Exception as e:
-                logger.error(f"睡眠系统初始化失败: {e}")
-
-    def _safe_init(self, component_name: str, init_func) -> callable:
+    def _safe_init(self, component_name: str, init_func) -> "Callable[[], Coroutine[Any, Any, bool]]":
         """安全初始化组件，捕获异常"""
 
         async def wrapper():

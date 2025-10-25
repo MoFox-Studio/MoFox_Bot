@@ -51,6 +51,8 @@ class StreamContext(BaseDataModel):
     current_message: Optional["DatabaseMessages"] = None
     priority_mode: str | None = None
     priority_info: dict | None = None
+    triggering_user_id: str | None = None  # 触发当前聊天流的用户ID
+    is_replying: bool = False  # 是否正在生成回复
 
     def add_action_to_message(self, message_id: str, action: str):
         """

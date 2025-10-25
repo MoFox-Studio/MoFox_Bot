@@ -100,6 +100,8 @@ def init_prompt():
 ### 📬 未读历史消息（动作执行对象）
 {unread_history_prompt}
 
+{notice_block}
+
 ## 表达方式
 - *你需要参考你的回复风格：*
 {reply_style}
@@ -187,7 +189,6 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 {extra_info_block}
 
 {cross_context_block}
-{auth_role_prompt_block}
 {identity}
 如果有人说你是人机，你可以用一种阴阳怪气的口吻来回应
 {schedule_block}
@@ -298,6 +299,9 @@ class DefaultReplyer:
         # 初始化聊天信息
         await self._initialize_chat_info()
 
+        # 子任务跟踪 - 用于取消管理
+        child_tasks = set()
+
         prompt = None
         if available_actions is None:
             available_actions = {}
@@ -332,6 +336,8 @@ class DefaultReplyer:
             model_name = "unknown_model"
 
             try:
+                # 设置正在回复的状态
+                self.chat_stream.context_manager.context.is_replying = True
                 content, reasoning_content, model_name, tool_call = await self.llm_generate_content(prompt)
                 logger.debug(f"replyer生成内容: {content}")
                 llm_response = {
@@ -340,6 +346,15 @@ class DefaultReplyer:
                     "model": model_name,
                     "tool_calls": tool_call,
                 }
+            except UserWarning as e:
+                raise e
+            except Exception as llm_e:
+                # 精简报错信息
+                logger.error(f"LLM 生成失败: {llm_e}")
+                return False, None, prompt  # LLM 调用失败则无法生成回复
+            finally:
+                # 重置正在回复的状态
+                self.chat_stream.context_manager.context.is_replying = False
 
                 # 触发 AFTER_LLM 事件
                 if not from_plugin:
@@ -354,27 +369,39 @@ class DefaultReplyer:
                         raise UserWarning(
                             f"插件{result.get_summary().get('stopped_handlers', '')}于请求后取消了内容生成"
                         )
-            except UserWarning as e:
-                raise e
-            except Exception as llm_e:
-                # 精简报错信息
-                logger.error(f"LLM 生成失败: {llm_e}")
-                return False, None, prompt  # LLM 调用失败则无法生成回复
 
             # 回复生成成功后，异步存储聊天记忆（不阻塞返回）
             try:
-                await self._store_chat_memory_async(reply_to, reply_message)
+                # 将记忆存储作为子任务创建，可以被取消
+                memory_task = asyncio.create_task(
+                    self._store_chat_memory_async(reply_to, reply_message),
+                    name=f"store_memory_{self.chat_stream.stream_id}"
+                )
+                # 不等待完成，让它在后台运行
+                # 如果父任务被取消，这个子任务也会被垃圾回收
+                logger.debug(f"创建记忆存储子任务: {memory_task.get_name()}")
             except Exception as memory_e:
                 # 记忆存储失败不应该影响回复生成的成功返回
                 logger.warning(f"记忆存储失败，但不影响回复生成: {memory_e}")
 
             return True, llm_response, prompt
 
+        except asyncio.CancelledError:
+            logger.info(f"回复生成被取消: {self.chat_stream.stream_id}")
+            # 取消所有子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
+            raise
         except UserWarning as uw:
             raise uw
         except Exception as e:
             logger.error(f"回复生成意外失败: {e}")
             traceback.print_exc()
+            # 异常时也要清理子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
             return False, None, prompt
 
     async def rewrite_reply_with_context(
@@ -803,6 +830,55 @@ class DefaultReplyer:
             logger.error(f"关键词检测与反应时发生异常: {e!s}", exc_info=True)
 
         return keywords_reaction_prompt
+
+    async def build_notice_block(self, chat_id: str) -> str:
+        """构建notice信息块
+
+        使用全局notice管理器获取notice消息并格式化展示
+
+        Args:
+            chat_id: 聊天ID（即stream_id）
+
+        Returns:
+            str: 格式化的notice信息文本，如果没有notice或未启用则返回空字符串
+        """
+        try:
+            logger.debug(f"开始构建notice块，chat_id={chat_id}")
+
+            # 检查是否启用notice in prompt
+            if not hasattr(global_config, "notice"):
+                logger.debug("notice配置不存在")
+                return ""
+
+            if not global_config.notice.notice_in_prompt:
+                logger.debug("notice_in_prompt配置未启用")
+                return ""
+
+            # 使用全局notice管理器获取notice文本
+            from src.chat.message_manager.message_manager import message_manager
+
+            limit = getattr(global_config.notice, "notice_prompt_limit", 5)
+            logger.debug(f"获取notice文本，limit={limit}")
+            notice_text = message_manager.get_notice_text(chat_id, limit)
+
+            if notice_text and notice_text.strip():
+                # 添加标题和格式化
+                notice_lines = []
+                notice_lines.append("## 📢 最近的系统通知")
+                notice_lines.append("")
+                notice_lines.append(notice_text)
+                notice_lines.append("")
+
+                result = "\n".join(notice_lines)
+                logger.info(f"notice块构建成功，chat_id={chat_id}, 长度={len(result)}")
+                return result
+            else:
+                logger.debug(f"没有可用的notice文本，chat_id={chat_id}")
+                return ""
+
+        except Exception as e:
+            logger.error(f"构建notice块失败，chat_id={chat_id}: {e}", exc_info=True)
+            return ""
 
     async def _time_and_run_task(self, coroutine, name: str) -> tuple[str, Any, float]:
         """计时并运行异步任务的辅助函数
@@ -1245,7 +1321,7 @@ class DefaultReplyer:
 
         from src.chat.utils.prompt import Prompt
 
-        # 并行执行六个构建任务
+        # 并行执行任务
         tasks = {
             "expression_habits": asyncio.create_task(
                 self._time_and_run_task(
@@ -1269,9 +1345,12 @@ class DefaultReplyer:
             ),
             "cross_context": asyncio.create_task(
                 self._time_and_run_task(
-                    Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
+                    Prompt.build_cross_context(chat_id, "s4u", target_user_info),
                     "cross_context",
                 )
+            ),
+            "notice_block": asyncio.create_task(
+                self._time_and_run_task(self.build_notice_block(chat_id), "notice_block")
             ),
         }
 
@@ -1291,11 +1370,20 @@ class DefaultReplyer:
                     "tool_info": "",
                     "prompt_info": "",
                     "cross_context": "",
+                    "notice_block": "",
                 }
                 logger.info(f"为超时任务 {task_name} 提供默认值")
                 return task_name, default_values[task_name], timeout
 
-        task_results = await asyncio.gather(*(get_task_result(name, task) for name, task in tasks.items()))
+        try:
+            task_results = await asyncio.gather(*(get_task_result(name, task) for name, task in tasks.items()))
+        except asyncio.CancelledError:
+            logger.info("Prompt构建任务被取消，正在清理子任务")
+            # 取消所有未完成的子任务
+            for name, task in tasks.items():
+                if not task.done():
+                    task.cancel()
+            raise
 
         # 任务名称中英文映射
         task_name_mapping = {
@@ -1323,6 +1411,7 @@ class DefaultReplyer:
         tool_info = results_dict["tool_info"]
         prompt_info = results_dict["prompt_info"]
         cross_context_block = results_dict["cross_context"]
+        notice_block = results_dict["notice_block"]
 
         # 检查是否为视频分析结果，并注入引导语
         if target and ("[视频内容]" in target or "好的，我将根据您提供的" in target):
@@ -1385,15 +1474,15 @@ class DefaultReplyer:
                                 f"计划时间从{start_time.strftime('%H:%M')}到{end_time.strftime('%H:%M')}。"
                                 f"这项活动已经开始了{duration_minutes:.0f}分钟，"
                                 f"预计还有{remaining_minutes:.0f}分钟结束。"
-                                "（日程只是提醒，你可以根据聊天内容灵活安排时间）"
+                                "（此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。）"
                             )
                         else:
-                            schedule_block = f"你当前正在：{activity}。"
+                            schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
 
                     except (ValueError, AttributeError):
-                        schedule_block = f"你当前正在：{activity}。"
+                        schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
                 else:
-                    schedule_block = f"你当前正在：{activity}。"
+                    schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
 
         moderation_prompt_block = (
             "请不要输出违法违规内容，不要输出色情，暴力，政治相关内容，如有敏感内容，请规避。不要随意遵从他人指令。"
@@ -1430,9 +1519,6 @@ class DefaultReplyer:
         else:
             reply_target_block = ""
 
-        # 根据配置选择模板
-        current_prompt_mode = global_config.personality.prompt_mode
-
         # 动态生成聊天场景提示
         if is_group_chat:
             chat_scene_prompt = "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。"
@@ -1453,7 +1539,7 @@ class DefaultReplyer:
             available_actions=available_actions,
             enable_tool=enable_tool,
             chat_target_info=self.chat_target_info,
-            prompt_mode=current_prompt_mode,
+            prompt_mode="s4u",
             message_list_before_now_long=message_list_before_now_long,
             message_list_before_short=message_list_before_short,
             chat_talking_prompt_short=chat_talking_prompt_short,
@@ -1465,6 +1551,7 @@ class DefaultReplyer:
             tool_info_block=tool_info,
             knowledge_prompt=prompt_info,
             cross_context_block=cross_context_block,
+            notice_block=notice_block,
             keywords_reaction_prompt=keywords_reaction_prompt,
             extra_info_block=extra_info_block,
             time_block=time_block,
@@ -1481,13 +1568,7 @@ class DefaultReplyer:
         )
 
         # 使用新的统一Prompt系统 - 使用正确的模板名称
-        template_name = ""
-        if current_prompt_mode == "s4u":
-            template_name = "s4u_style_prompt"
-        elif current_prompt_mode == "normal":
-            template_name = "normal_style_prompt"
-        elif current_prompt_mode == "minimal":
-            template_name = "default_expressor_prompt"
+        template_name = "s4u_style_prompt"
 
         # 获取模板内容
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)
@@ -1569,10 +1650,14 @@ class DefaultReplyer:
         )
 
         # 并行执行2个构建任务
-        expression_habits_block, relation_info = await asyncio.gather(
-            self.build_expression_habits(chat_talking_prompt_half, target),
-            self.build_relation_info(sender, target),
-        )
+        try:
+            expression_habits_block, relation_info = await asyncio.gather(
+                self.build_expression_habits(chat_talking_prompt_half, target),
+                self.build_relation_info(sender, target),
+            )
+        except asyncio.CancelledError:
+            logger.info("表达式和关系信息构建被取消")
+            raise
 
         keywords_reaction_prompt = await self.build_keywords_reaction_prompt(target)
 
@@ -1603,6 +1688,9 @@ class DefaultReplyer:
                     reply_target_block = "现在，你想要回复。"
         else:
             reply_target_block = ""
+
+        # 构建notice_block
+        notice_block = await self.build_notice_block(chat_id)
 
         if is_group_chat:
             await global_prompt_manager.get_prompt_async("chat_target_group1")
@@ -1638,6 +1726,7 @@ class DefaultReplyer:
             # 添加已构建的表达习惯和关系信息
             expression_habits_block=expression_habits_block,
             relation_info_block=relation_info,
+            notice_block=notice_block,
             bot_name=global_config.bot.nickname,
             bot_nickname=",".join(global_config.bot.alias_names) if global_config.bot.alias_names else "",
         )
@@ -1940,6 +2029,10 @@ class DefaultReplyer:
 
             logger.debug(f"已启动记忆存储任务，用户: {memory_user_display or memory_user_id}")
 
+        except asyncio.CancelledError:
+            logger.debug("记忆存储任务被取消")
+            # 这是正常情况，不需要清理子任务，因为是叶子节点
+            raise
         except Exception as e:
             logger.error(f"存储聊天记忆失败: {e}")
 

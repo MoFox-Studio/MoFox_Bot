@@ -1,6 +1,5 @@
 import os
 import re
-import time
 import traceback
 from typing import Any
 
@@ -12,7 +11,7 @@ from src.chat.message_manager import message_manager
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.utils.prompt import Prompt, global_prompt_manager
+from src.chat.utils.prompt import create_prompt_async, global_prompt_manager
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -301,12 +300,35 @@ class ChatBot:
             return False, None, True  # 出错时继续处理消息
 
     async def handle_notice_message(self, message: MessageRecv):
+        """处理notice消息
+        
+        notice消息是系统事件通知（如禁言、戳一戳等），具有以下特点：
+        1. 默认不触发聊天流程，只记录
+        2. 可通过配置开启触发聊天流程
+        3. 会在提示词中展示
+        """
+        # 检查是否是notice消息
+        if message.is_notify:
+            logger.info(f"收到notice消息: {message.notice_type}")
+
+            # 根据配置决定是否触发聊天流程
+            if not global_config.notice.enable_notice_trigger_chat:
+                logger.debug("notice消息不触发聊天流程（配置已关闭）")
+                return True  # 返回True表示已处理，不继续后续流程
+            else:
+                logger.debug("notice消息触发聊天流程（配置已开启）")
+                return False  # 返回False表示继续处理，触发聊天流程
+
+        # 兼容旧的notice判断方式
         if message.message_info.message_id == "notice":
             message.is_notify = True
-            logger.info("notice消息")
-            # print(message)
+            logger.info("旧格式notice消息")
 
-            return True
+            # 同样根据配置决定
+            if not global_config.notice.enable_notice_trigger_chat:
+                return True
+            else:
+                return False
 
         # 处理适配器响应消息
         if hasattr(message, "message_segment") and message.message_segment:
@@ -326,8 +348,12 @@ class ChatBot:
             from src.plugin_system.apis.send_api import put_adapter_response
 
             seg_data = message.message_segment.data
-            request_id = seg_data.get("request_id")
-            response_data = seg_data.get("response")
+            if isinstance(seg_data, dict):
+                request_id = seg_data.get("request_id")
+                response_data = seg_data.get("response")
+            else:
+                request_id = None
+                response_data = None
 
             if request_id and response_data:
                 logger.debug(f"收到适配器响应: request_id={request_id}")
@@ -409,7 +435,6 @@ class ChatBot:
             # logger.debug(str(message_data))
             message = MessageRecv(message_data)
 
-            message.is_mentioned, _ = is_mentioned_bot_in_message(message)
             group_info = message.message_info.group_info
             user_info = message.message_info.user_info
             if message.message_info.additional_config:
@@ -431,11 +456,122 @@ class ChatBot:
             # 处理消息内容，生成纯文本
             await message.process()
 
+            message.is_mentioned, _ = is_mentioned_bot_in_message(message)
+
             # 在这里打印[所见]日志，确保在所有处理和过滤之前记录
             chat_name = chat.group_info.group_name if chat.group_info else "私聊"
-            logger.info(
-                f"[{chat_name}]{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
-            )
+            if message.message_info.user_info:
+                logger.info(
+                    f"[{chat_name}]{message.message_info.user_info.user_nickname}:{message.processed_plain_text}\u001b[0m"
+                )
+
+            # 在此添加硬编码过滤，防止回复图片处理失败的消息
+            failure_keywords = ["[表情包(描述生成失败)]", "[图片(描述生成失败)]"]
+            if any(keyword in message.processed_plain_text for keyword in failure_keywords):
+                logger.info(f"[硬编码过滤] 检测到媒体内容处理失败（{message.processed_plain_text}），消息被静默处理。")
+                return
+
+            # 处理notice消息
+            notice_handled = await self.handle_notice_message(message)
+            if notice_handled:
+                # notice消息已处理，需要先添加到message_manager再存储
+                try:
+                    import time
+
+                    from src.common.data_models.database_data_model import DatabaseMessages
+
+                    message_info = message.message_info
+                    msg_user_info = getattr(message_info, "user_info", None)
+                    stream_user_info = getattr(message.chat_stream, "user_info", None)
+                    group_info = getattr(message.chat_stream, "group_info", None)
+
+                    message_id = message_info.message_id or ""
+                    message_time = message_info.time if message_info.time is not None else time.time()
+
+                    user_id = ""
+                    user_nickname = ""
+                    user_cardname = None
+                    user_platform = ""
+                    if msg_user_info:
+                        user_id = str(getattr(msg_user_info, "user_id", "") or "")
+                        user_nickname = getattr(msg_user_info, "user_nickname", "") or ""
+                        user_cardname = getattr(msg_user_info, "user_cardname", None)
+                        user_platform = getattr(msg_user_info, "platform", "") or ""
+                    elif stream_user_info:
+                        user_id = str(getattr(stream_user_info, "user_id", "") or "")
+                        user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
+                        user_cardname = getattr(stream_user_info, "user_cardname", None)
+                        user_platform = getattr(stream_user_info, "platform", "") or ""
+
+                    chat_user_id = str(getattr(stream_user_info, "user_id", "") or "")
+                    chat_user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
+                    chat_user_cardname = getattr(stream_user_info, "user_cardname", None)
+                    chat_user_platform = getattr(stream_user_info, "platform", "") or ""
+
+                    group_id = getattr(group_info, "group_id", None)
+                    group_name = getattr(group_info, "group_name", None)
+                    group_platform = getattr(group_info, "platform", None)
+
+                    # 构建additional_config，确保包含is_notice标志
+                    import json
+                    additional_config_dict = {
+                        "is_notice": True,
+                        "notice_type": message.notice_type or "unknown",
+                        "is_public_notice": bool(message.is_public_notice),
+                    }
+
+                    # 如果message_info有additional_config，合并进来
+                    if hasattr(message_info, "additional_config") and message_info.additional_config:
+                        if isinstance(message_info.additional_config, dict):
+                            additional_config_dict.update(message_info.additional_config)
+                        elif isinstance(message_info.additional_config, str):
+                            try:
+                                existing_config = json.loads(message_info.additional_config)
+                                additional_config_dict.update(existing_config)
+                            except Exception:
+                                pass
+
+                    additional_config_json = json.dumps(additional_config_dict)
+
+                    # 创建数据库消息对象
+                    db_message = DatabaseMessages(
+                        message_id=message_id,
+                        time=float(message_time),
+                        chat_id=message.chat_stream.stream_id,
+                        processed_plain_text=message.processed_plain_text,
+                        display_message=message.processed_plain_text,
+                        is_notify=bool(message.is_notify),
+                        is_public_notice=bool(message.is_public_notice),
+                        notice_type=message.notice_type,
+                        additional_config=additional_config_json,
+                        user_id=user_id,
+                        user_nickname=user_nickname,
+                        user_cardname=user_cardname,
+                        user_platform=user_platform,
+                        chat_info_stream_id=message.chat_stream.stream_id,
+                        chat_info_platform=message.chat_stream.platform,
+                        chat_info_create_time=float(message.chat_stream.create_time),
+                        chat_info_last_active_time=float(message.chat_stream.last_active_time),
+                        chat_info_user_id=chat_user_id,
+                        chat_info_user_nickname=chat_user_nickname,
+                        chat_info_user_cardname=chat_user_cardname,
+                        chat_info_user_platform=chat_user_platform,
+                        chat_info_group_id=group_id,
+                        chat_info_group_name=group_name,
+                        chat_info_group_platform=group_platform,
+                    )
+
+                    # 添加到message_manager（这会将notice添加到全局notice管理器）
+                    await message_manager.add_message(message.chat_stream.stream_id, db_message)
+                    logger.info(f"✅ Notice消息已添加到message_manager: type={message.notice_type}, stream={message.chat_stream.stream_id}")
+
+                except Exception as e:
+                    logger.error(f"Notice消息添加到message_manager失败: {e}", exc_info=True)
+
+                # 存储后直接返回
+                await MessageStorage.store_message(message, chat)
+                logger.debug("notice消息已存储，跳过后续处理")
+                return
 
             # 过滤检查
             if _check_ban_words(message.processed_plain_text, chat, user_info) or _check_ban_regex(  # type: ignore
@@ -465,7 +601,7 @@ class ChatBot:
                     return
 
             result = await event_manager.trigger_event(EventType.ON_MESSAGE, permission_group="SYSTEM", message=message)
-            if not result.all_continue_process():
+            if result and not result.all_continue_process():
                 raise UserWarning(f"插件{result.get_summary().get('stopped_handlers', '')}于消息到达时取消了消息处理")
 
             # TODO:暂不可用
@@ -476,12 +612,14 @@ class ChatBot:
                 async with global_prompt_manager.async_message_scope(template_group_name):
                     if isinstance(template_items, dict):
                         for k in template_items.keys():
-                            await Prompt.create_async(template_items[k], k)
+                            await create_prompt_async(template_items[k], k)
                             logger.debug(f"注册{template_items[k]},{k}")
             else:
                 template_group_name = None
 
             async def preprocess():
+                import time
+
                 from src.common.data_models.database_data_model import DatabaseMessages
 
                 message_info = message.message_info
@@ -490,7 +628,7 @@ class ChatBot:
                 group_info = getattr(message.chat_stream, "group_info", None)
 
                 message_id = message_info.message_id or ""
-                message_time = message_info.time if message_info.time is not None else time.time()
+                message_time = message_info.time if hasattr(message_info, "time") and message_info.time is not None else time.time()
                 is_mentioned = None
                 if isinstance(message.is_mentioned, bool):
                     is_mentioned = message.is_mentioned
@@ -534,6 +672,8 @@ class ChatBot:
                     is_picid=bool(message.is_picid),
                     is_command=bool(message.is_command),
                     is_notify=bool(message.is_notify),
+                    is_public_notice=bool(message.is_public_notice),
+                    notice_type=message.notice_type,
                     user_id=user_id,
                     user_nickname=user_nickname,
                     user_cardname=user_cardname,
@@ -563,8 +703,22 @@ class ChatBot:
 
                 # 先交给消息管理器处理，计算兴趣度等衍生数据
                 try:
-                    await message_manager.add_message(message.chat_stream.stream_id, db_message)
-                    logger.debug(f"消息已添加到消息管理器: {message.chat_stream.stream_id}")
+                    # 在将消息添加到管理器之前进行最终的静默检查
+                    should_process_in_manager = True
+                    if group_info and str(group_info.group_id) in global_config.message_receive.mute_group_list:
+                        # 检查消息是否为图片或表情包
+                        is_image_or_emoji = message.is_picid or message.is_emoji
+                        if not message.is_mentioned and not is_image_or_emoji:
+                            logger.debug(f"群组 {group_info.group_id} 在静默列表中，且消息不是@、回复或图片/表情包，跳过消息管理器处理")
+                            should_process_in_manager = False
+                        elif is_image_or_emoji:
+                            logger.debug(f"群组 {group_info.group_id} 在静默列表中，但消息是图片/表情包，静默处理")
+                            should_process_in_manager = False
+
+                    if should_process_in_manager:
+                        await message_manager.add_message(message.chat_stream.stream_id, db_message)
+                        logger.debug(f"消息已添加到消息管理器: {message.chat_stream.stream_id}")
+
                 except Exception as e:
                     logger.error(f"消息添加到消息管理器失败: {e}")
 

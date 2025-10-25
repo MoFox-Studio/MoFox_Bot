@@ -961,6 +961,7 @@ class LLMRequest:
             )
 
             await self._record_usage(model_info, response.usage, time.time() - start_time, "/chat/completions")
+            logger.debug(f"LLM原始响应: {response.content}")
 
             if not response.content and not response.tool_calls:
                 if raise_when_empty:

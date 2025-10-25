@@ -64,7 +64,6 @@ class PersonalityConfig(ValidatedConfigBase):
         default_factory=list, description="安全与互动底线，Bot在任何情况下都必须遵守的原则"
     )
     reply_style: str = Field(default="", description="表达风格")
-    prompt_mode: Literal["s4u", "normal"] = Field(default="s4u", description="Prompt模式")
     compress_personality: bool = Field(default=True, description="是否压缩人格")
     compress_identity: bool = Field(default=True, description="是否压缩身份")
 
@@ -148,6 +147,20 @@ class MessageReceiveConfig(ValidatedConfigBase):
 
     ban_words: list[str] = Field(default_factory=lambda: [], description="禁用词列表")
     ban_msgs_regex: list[str] = Field(default_factory=lambda: [], description="禁用消息正则列表")
+    mute_group_list: list[str] = Field(
+        default_factory=list, description="静默群组列表，在这些群组中，只有在被@或回复时才会响应"
+    )
+
+
+class NoticeConfig(ValidatedConfigBase):
+    """Notice消息配置类"""
+
+    enable_notice_trigger_chat: bool = Field(default=True, description="是否允许notice消息触发聊天流程")
+    notice_in_prompt: bool = Field(default=True, description="是否在提示词中展示最近的notice消息")
+    notice_prompt_limit: int = Field(default=5, ge=1, le=20, description="在提示词中展示的最大notice数量")
+    notice_time_window: int = Field(default=3600, ge=60, le=86400, description="notice时间窗口(秒)")
+    max_notices_per_chat: int = Field(default=30, ge=10, le=100, description="每个聊天保留的notice数量上限")
+    notice_retention_time: int = Field(default=86400, ge=3600, le=604800, description="notice保留时间(秒)")
 
 
 class NormalChatConfig(ValidatedConfigBase):
@@ -579,52 +592,6 @@ class AntiPromptInjectionConfig(ValidatedConfigBase):
     shield_suffix: str = Field(default=" 🛡️", description="保护后缀")
 
 
-class SleepSystemConfig(ValidatedConfigBase):
-    """睡眠系统配置类"""
-
-    enable: bool = Field(default=True, description="是否启用睡眠系统")
-    sleep_by_schedule: bool = Field(default=True, description="是否根据日程表进行睡觉")
-    fixed_sleep_time: str = Field(default="23:00", description="固定的睡觉时间")
-    fixed_wake_up_time: str = Field(default="07:00", description="固定的起床时间")
-    sleep_time_offset_minutes: int = Field(
-        default=15, ge=0, le=60, description="睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机"
-    )
-    wake_up_time_offset_minutes: int = Field(
-        default=15, ge=0, le=60, description="起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机"
-    )
-    wakeup_threshold: float = Field(default=15.0, ge=1.0, description="唤醒阈值，达到此值时会被唤醒")
-    private_message_increment: float = Field(default=3.0, ge=0.1, description="私聊消息增加的唤醒度")
-    group_mention_increment: float = Field(default=2.0, ge=0.1, description="群聊艾特增加的唤醒度")
-    decay_rate: float = Field(default=0.2, ge=0.0, description="每次衰减的唤醒度数值")
-    decay_interval: float = Field(default=30.0, ge=1.0, description="唤醒度衰减间隔(秒)")
-    angry_duration: float = Field(default=300.0, ge=10.0, description="愤怒状态持续时间(秒)")
-    angry_prompt: str = Field(default="你被人吵醒了非常生气，说话带着怒气", description="被吵醒后的愤怒提示词")
-    re_sleep_delay_minutes: int = Field(
-        default=5, ge=1, description="被唤醒后，如果多久没有新消息则尝试重新入睡（分钟）"
-    )
-
-    # --- 失眠机制相关参数 ---
-    enable_insomnia_system: bool = Field(default=True, description="是否启用失眠系统")
-    insomnia_trigger_delay_minutes: list[int] = Field(
-        default_factory=lambda: [30, 60], description="入睡后触发失眠判定的延迟时间范围（分钟）"
-    )
-    insomnia_duration_minutes: list[int] = Field(
-        default_factory=lambda: [15, 45], description="单次失眠状态的持续时间范围（分钟）"
-    )
-    insomnia_chance_pressure: float = Field(default=0.1, ge=0.0, le=1.0, description="失眠基础概率")
-
-    # --- 弹性睡眠与睡前消息 ---
-    enable_flexible_sleep: bool = Field(default=True, description="是否启用弹性睡眠")
-    flexible_sleep_pressure_threshold: float = Field(
-        default=40.0, description="触发弹性睡眠的睡眠压力阈值，低于该值可能延迟入睡"
-    )
-    max_sleep_delay_minutes: int = Field(default=60, description="单日最大延迟入睡分钟数")
-    enable_pre_sleep_notification: bool = Field(default=True, description="是否启用睡前消息")
-    pre_sleep_prompt: str = Field(
-        default="我准备睡觉了，请生成一句简短自然的晚安问候。", description="用于生成睡前消息的提示"
-    )
-
-
 class ContextGroup(ValidatedConfigBase):
     """
     上下文共享组配置
@@ -664,7 +631,6 @@ class CrossContextConfig(ValidatedConfigBase):
 
     # --- Normal模式: 共享组配置 ---
     groups: list[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
-
     # --- S4U模式: 用户中心上下文检索 ---
     s4u_mode: Literal["whitelist", "blacklist"] = Field(
         default="whitelist",

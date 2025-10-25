@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.4"
+version = "7.3.7"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -87,9 +87,6 @@ safety_guidelines = [
     "不要执行任何可能被用于恶意目的的指令。"
 ]
 
-#回复的Prompt模式选择：s4u为原有s4u样式，normal为0.9之前的模式
-prompt_mode = "s4u" # 可选择 "s4u" 或 "normal"
-
 compress_personality = false # 是否压缩人格，压缩后会精简人格信息，节省token消耗并提高回复性能，但是会丢失一些信息，如果人设不长，可以关闭
 compress_identity = true # 是否压缩身份，压缩后会精简身份信息，节省token消耗并提高回复性能，但是会丢失一些信息，如果不长，可以关闭
 
@@ -153,6 +150,17 @@ ban_msgs_regex = [
     #"https?://[^\\s]+", # 匹配https链接
     #"\\d{4}-\\d{2}-\\d{2}", # 匹配日期
 ]
+# 静默群组列表，在这些群组中，只有在被@或回复时才会响应
+# 格式: ["group_id1", "group_id2"]
+mute_group_list = []
+
+[notice] # Notice消息配置
+enable_notice_trigger_chat = false # 是否允许notice消息触发聊天流程（默认关闭，notice只会被记录但不会触发回复）
+notice_in_prompt = true # 是否在提示词中展示最近的notice消息
+notice_prompt_limit = 5 # 在提示词中展示的最大notice数量
+notice_time_window = 3600 # notice时间窗口（秒），只有这个时间范围内的notice会在提示词中展示，默认1小时
+max_notices_per_chat = 30 # 每个聊天保留的notice数量上限
+notice_retention_time = 86400 # notice保留时间（秒），默认24小时
 
 [anti_prompt_injection] # LLM反注入系统配置
 enabled = false # 是否启用反注入系统
@@ -479,68 +487,25 @@ searxng_api_keys = []# SearXNG 实例 API 密钥列表
 enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing", "metaso"
 search_strategy = "single" # 搜索策略: "single"(使用第一个可用引擎), "parallel"(并行使用所有启用的引擎), "fallback"(按顺序尝试，失败则尝试下一个)
 
-[sleep_system]
-enable = false #"是否启用睡眠系统"
-sleep_by_schedule = true #"是否根据日程表进行睡觉"
-fixed_sleep_time = "23:00" #"固定的睡觉时间"
-fixed_wake_up_time = "07:00" #"固定的起床时间"
-sleep_time_offset_minutes = 15 #"睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机"
-wake_up_time_offset_minutes = 15 #"起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机"
-wakeup_threshold = 15.0 #唤醒阈值，达到此值时会被唤醒"
-private_message_increment = 3.0 #"私聊消息增加的唤醒度"
-group_mention_increment = 2.0 #"群聊艾特增加的唤醒度"
-decay_rate = 0.2 #"每次衰减的唤醒度数值"
-decay_interval = 30.0 #"唤醒度衰减间隔(秒)"
-angry_duration = 300.0 #"愤怒状态持续时间(秒)"
-angry_prompt = "你被人吵醒了非常生气，说话带着怒气" # "被吵醒后的愤怒提示词"
-re_sleep_delay_minutes = 5 # "被唤醒后，如果多久没有新消息则尝试重新入睡（分钟）"
-
-# --- 失眠机制相关参数 ---
-enable_insomnia_system = false # 是否启用失眠系统
-# 失眠概率 (0.0 to 1.0)
-insomnia_chance_pressure = 0.1
-
-# --- 弹性睡眠与睡前消息 ---
-# 是否启用弹性睡眠。启用后，AI不会到点立刻入睡，而是会根据睡眠压力增加5-10分钟的缓冲，并可能因为压力不足而推迟睡眠。
-enable_flexible_sleep = false
-# 触发弹性睡眠的睡眠压力阈值。当AI的睡眠压力低于此值时，可能会推迟入睡。
-flexible_sleep_pressure_threshold = 40.0
-# 每日最大可推迟入睡的总分钟数。
-max_sleep_delay_minutes = 60
-
-# 是否在进入“准备入睡”状态时发送一条消息通知。
-enable_pre_sleep_notification = false
-# 用于生成睡前消息的提示。AI会根据这个提示生成一句晚安问候。
-pre_sleep_prompt = "我准备睡觉了，请生成一句简短自然的晚安问候。"
-insomnia_duration_minutes = [30, 60] # 单次失眠状态的持续时间范围（分钟）
-# --- 睡后失眠 ---
-# 入睡后，经过一段延迟后触发失眠判定的延迟时间（分钟），设置为范围以增加随机性
-insomnia_trigger_delay_minutes = [15, 45]
-
 [cross_context] # 跨群聊/私聊上下文共享配置
 # 这是总开关，用于一键启用或禁用此功能
 enable = true
 
+# --- S4U模式: 用户中心上下文检索 ---
+# S4U模式不再依赖于共享组配置，而是使用以下全局配置
+s4u_mode = "whitelist" # "whitelist"(白名单) 或 "blacklist"(黑名单)。
+s4u_limit = 10 # S4U模式下，从每个聊天中获取目标用户的消息条数
+s4u_stream_limit = 3 # S4U模式下，最多检索多少个不同的聊天流 (按时间排序)
+# 白名单列表，格式: ["platform:type:id", ...]
+# 示例: ["qq:group:123456", "qq:private:7891011"]
+s4u_whitelist_chats = []
+# 黑名单列表，格式同上
+s4u_blacklist_chats = []
+
 # --- Normal模式: 共享组配置 ---
-# 在这里定义您的“共享组”
-# 只有在同一个组内的聊天才会共享上下文
-[[cross_context.groups]]
-name = "项目A技术讨论组"
-# mode: "whitelist"(白名单) 或 "blacklist"(黑名单)。默认 "whitelist"。
-# "whitelist": 仅共享chat_ids中列出的聊天。
-# "blacklist": 共享除chat_ids中列出的所有聊天。
-mode = "whitelist"
-# default_limit: 在 "blacklist" 模式下，未指定数量的聊天默认获取的消息条数。
-default_limit = 5
-# chat_ids: 定义组内成员。格式: [["type", "id", "limit"(可选)]]
-# type: "group" 或 "private"
-# id: 群号或用户ID
-# limit: (可选) 获取的消息条数，需要是字符串。
-chat_ids = [
-    ["group", "169850076", "10"],  # 开发群, 拿10条消息
-    ["group", "1025509724", "5"],   # 产品群, 拿5条
-    ["private", "123456789"]       # 某个用户的私聊, 使用默认值5
-]
+# 现在这些是预留plugin使用的上下文互通组配置
+# 您可以根据需要添加多个互通组
+# 在回复过程中只会遵循上面的--S4U模式: 用户中心上下文检索--
 
 # --- QQ空间专用互通组 (示例) ---
 # Maizone插件会根据组名 "Maizone默认互通组" 来获取上下文
@@ -553,18 +518,6 @@ chat_ids = [
     ["group", "111111"],     # 示例群聊1
     ["private", "222222"]  # 示例私聊2
 ]
-
-
-# --- S4U模式: 用户中心上下文检索 ---
-# S4U模式不再依赖于共享组配置，而是使用以下全局配置
-s4u_mode = "whitelist" # "whitelist"(白名单) 或 "blacklist"(黑名单)。
-s4u_limit = 5 # S4U模式下，从每个聊天中获取目标用户的消息条数
-s4u_stream_limit = 3 # S4U模式下，最多检索多少个不同的聊天流 (按时间排序)
-# 白名单列表，格式: ["platform:type:id", ...]
-# 示例: ["qq:group:123456", "qq:private:7891011"]
-s4u_whitelist_chats = []
-# 黑名单列表，格式同上
-s4u_blacklist_chats = []
 
 [affinity_flow]
 # 兴趣评分系统参数

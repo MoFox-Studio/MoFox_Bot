@@ -507,8 +507,8 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
 def calculate_typing_time(
     input_string: str,
     thinking_start_time: float,
-    chinese_time: float = 0.1,
-    english_time: float = 0.05,
+    chinese_time: float = 0.2,
+    english_time: float = 0.1,
     is_emoji: bool = False,
 ) -> float:
     """

@@ -383,7 +383,7 @@ class PluginManager:
 
                     # 组件列表
                     if plugin_info.components:
-                        
+
                         def format_component(c):
                             desc = c.description
                             if len(desc) > 15:

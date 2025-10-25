@@ -60,13 +60,13 @@ class ChatterPlanFilter:
             prompt, used_message_id_list = await self._build_prompt(plan)
             plan.llm_prompt = prompt
             if global_config.debug.show_prompt:
-                logger.info(f"规划器原始提示词:{prompt}")
+                logger.debug(f"规划器原始提示词:{prompt}")
 
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 
             if llm_content:
                 if global_config.debug.show_prompt:
-                    logger.info(f"LLM规划器原始响应:{llm_content}")
+                    logger.debug(f"LLM规划器原始响应:{llm_content}")
                 try:
                     parsed_json = orjson.loads(repair_json(llm_content))
                 except orjson.JSONDecodeError:
@@ -158,7 +158,7 @@ class ChatterPlanFilter:
             if global_config.planning_system.schedule_enable:
                 if activity_info := schedule_manager.get_current_activity():
                     activity = activity_info.get("activity", "未知活动")
-                    schedule_block = f"你当前正在：{activity},但注意它与群聊的聊天无关。"
+                    schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
 
             mood_block = ""
             # 需要情绪模块打开才能获得情绪,否则会引发报错

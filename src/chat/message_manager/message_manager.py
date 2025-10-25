@@ -19,7 +19,7 @@ from src.config.config import global_config
 from src.plugin_system.apis.chat_api import get_chat_manager
 
 from .distribution_manager import stream_loop_manager
-from .sleep_system.state_manager import SleepState, sleep_state_manager
+from .global_notice_manager import NoticeScope, global_notice_manager
 
 if TYPE_CHECKING:
     pass
@@ -51,6 +51,9 @@ class MessageManager:
         }
 
         # 不再需要全局上下文管理器，直接通过 ChatManager 访问各个 ChatStream 的 context_manager
+
+        # 全局Notice管理器
+        self.notice_manager = global_notice_manager
 
     async def start(self):
         """启动消息管理器"""
@@ -144,21 +147,29 @@ class MessageManager:
 
     async def add_message(self, stream_id: str, message: DatabaseMessages):
         """添加消息到指定聊天流"""
-        # 在消息处理的最前端检查睡眠状态
-        current_sleep_state = sleep_state_manager.get_current_state()
-        if current_sleep_state == SleepState.SLEEPING:
-            logger.info(f"处于 {current_sleep_state.name} 状态，消息被拦截。")
-            return  # 直接返回，不处理消息
-
-        # TODO: 在这里为 WOKEN_UP_ANGRY 等未来状态添加特殊处理逻辑
 
         try:
+            # 检查是否为notice消息
+            if self._is_notice_message(message):
+                # Notice消息处理 - 添加到全局管理器
+                logger.info(f"📢 检测到notice消息: message_id={message.message_id}, is_notify={message.is_notify}, notice_type={getattr(message, 'notice_type', None)}")
+                await self._handle_notice_message(stream_id, message)
+
+                # 根据配置决定是否继续处理（触发聊天流程）
+                if not global_config.notice.enable_notice_trigger_chat:
+                    logger.info(f"根据配置，流 {stream_id} 的Notice消息将被忽略，不触发聊天流程。")
+                    return  # 停止处理，不进入未读消息队列
+                else:
+                    logger.info(f"根据配置，流 {stream_id} 的Notice消息将触发聊天流程。")
+                    # 继续执行，将消息添加到未读队列
+
+            # 普通消息处理
             chat_manager = get_chat_manager()
             chat_stream = await chat_manager.get_stream(stream_id)
             if not chat_stream:
                 logger.warning(f"MessageManager.add_message: 聊天流 {stream_id} 不存在")
                 return
-            await self._check_and_handle_interruption(chat_stream)
+            await self._check_and_handle_interruption(chat_stream, message)
             await chat_stream.context_manager.add_message(message)
 
         except Exception as e:
@@ -348,15 +359,31 @@ class MessageManager:
         except Exception as e:
             logger.error(f"清理不活跃聊天流时发生错误: {e}")
 
-    async def _check_and_handle_interruption(self, chat_stream: ChatStream | None = None):
+    async def _check_and_handle_interruption(self, chat_stream: ChatStream | None = None, message: DatabaseMessages | None = None):
         """检查并处理消息打断 - 支持多重回复任务取消"""
-        if not global_config.chat.interruption_enabled or not chat_stream:
+        if not global_config.chat.interruption_enabled or not chat_stream or not message:
             return
 
-        # 🌟 修复：获取所有处理任务（包括多重回复）
+        # 检查是否正在回复
+        if chat_stream.context_manager.context.is_replying:
+            logger.info(f"聊天流 {chat_stream.stream_id} 正在回复中，跳过打断检查")
+            return
+
+        # 检查是否为表情包消息
+        if message.is_picid or message.is_emoji:
+            logger.info(f"消息 {message.message_id} 是表情包或Emoji，跳过打断检查")
+            return
+
+        # 修复：获取所有处理任务（包括多重回复）
         all_processing_tasks = self.chatter_manager.get_all_processing_tasks(chat_stream.stream_id)
 
         if all_processing_tasks:
+            # 检查触发用户ID
+            triggering_user_id = chat_stream.context_manager.context.triggering_user_id
+            if triggering_user_id and message.user_info.user_id != triggering_user_id:
+                logger.info(f"消息来自非触发用户 {message.user_info.user_id}，实际触发用户为 {triggering_user_id}，跳过打断检查")
+                return
+
             # 计算打断概率 - 使用新的线性概率模型
             interruption_probability = chat_stream.context_manager.context.calculate_interruption_probability(
                 global_config.chat.interruption_max_limit
@@ -373,7 +400,7 @@ class MessageManager:
             if random.random() < interruption_probability:
                 logger.info(f"聊天流 {chat_stream.stream_id} 触发消息打断，打断概率: {interruption_probability:.2f}，检测到 {len(all_processing_tasks)} 个任务")
 
-                # 🌟 修复：取消所有任务（包括多重回复）
+                # 修复：取消所有任务（包括多重回复）
                 cancelled_count = self.chatter_manager.cancel_all_stream_tasks(chat_stream.stream_id)
 
                 if cancelled_count > 0:
@@ -384,8 +411,8 @@ class MessageManager:
                 # 增加打断计数
                 await chat_stream.context_manager.context.increment_interruption_count()
 
-                # 🚀 新增：打断后立即重新进入聊天流程
-                # 🚀 新增：打断后延迟重新进入聊天流程，以合并短时间内的多条消息
+                # 新增：打断后立即重新进入聊天流程
+                # 新增：打断后延迟重新进入聊天流程，以合并短时间内的多条消息
                 asyncio.create_task(self._trigger_delayed_reprocess(chat_stream, delay=0.5))
 
                 # 检查是否已达到最大次数
@@ -406,7 +433,7 @@ class MessageManager:
         await self._trigger_reprocess(chat_stream)
 
     async def _trigger_reprocess(self, chat_stream: ChatStream):
-        """重新处理聊天流的核心逻辑"""
+        """重新处理聊天流的核心逻辑 - 支持子任务管理"""
         try:
             stream_id = chat_stream.stream_id
 
@@ -426,37 +453,44 @@ class MessageManager:
 
             logger.info(f"💬 开始重新处理 {len(unread_messages)} 条未读消息: {stream_id}")
 
-            # 创建新的处理任务
+            # 创建处理任务并使用try-catch实现子任务管理
             task = asyncio.create_task(
-                self.chatter_manager.process_stream_context(stream_id, context),
+                self._managed_reprocess_with_cleanup(stream_id, context),
                 name=f"reprocess_{stream_id}_{int(time.time())}"
             )
 
             # 设置处理任务
             self.chatter_manager.set_processing_task(stream_id, task)
 
-            # 等待处理完成（使用超时防止无限等待）
-            try:
-                result = await asyncio.wait_for(task, timeout=30.0)
-                success = result.get("success", False)
-                actions_count = result.get("actions_count", 0)
-
-                if success:
-                    logger.info(f"✅ 聊天流 {stream_id} 重新处理成功: 执行了 {actions_count} 个动作")
-                else:
-                    logger.warning(f"❌ 聊天流 {stream_id} 重新处理失败")
-
-            except asyncio.TimeoutError:
-                logger.warning(f"⏰ 聊天流 {stream_id} 重新处理超时")
-                if not task.done():
-                    task.cancel()
-            except Exception as e:
-                logger.error(f"💥 聊天流 {stream_id} 重新处理出错: {e}")
-                if not task.done():
-                    task.cancel()
+            # 不等待完成，让它异步执行
+            # 如果需要等待，调用者会等待 chatter_manager.process_stream_context
 
         except Exception as e:
             logger.error(f"🚨 触发重新处理时出错: {e}")
+
+    async def _managed_reprocess_with_cleanup(self, stream_id: str, context):
+        """带清理功能的重新处理"""
+        child_tasks = set()  # 跟踪子任务
+
+        try:
+            # 处理流上下文
+            result = await self.chatter_manager.process_stream_context(stream_id, context)
+            return result
+
+        except asyncio.CancelledError:
+            logger.info(f"重新处理任务被取消: {stream_id}")
+            # 取消所有子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
+            raise
+        except Exception as e:
+            logger.error(f"重新处理任务执行出错: {stream_id} - {e}")
+            # 清理子任务
+            for child_task in child_tasks:
+                if not child_task.done():
+                    child_task.cancel()
+            raise
 
     async def clear_all_unread_messages(self, stream_id: str):
         """清除指定上下文中的所有未读消息，在消息处理完成后调用"""
@@ -616,6 +650,143 @@ class MessageManager:
             "cached_streams": len([s for s in self.message_caches.keys() if self.message_caches[s]]),
             "processing_streams": len([s for s in self.stream_processing_status.keys() if self.stream_processing_status[s]]),
         }
+
+    # ===== Notice管理相关方法 =====
+
+    def _is_notice_message(self, message: DatabaseMessages) -> bool:
+        """检查消息是否为notice类型"""
+        try:
+            # 首先检查消息的is_notify字段
+            if hasattr(message, "is_notify") and message.is_notify:
+                return True
+
+            # 检查消息的附加配置
+            if hasattr(message, "additional_config") and message.additional_config:
+                if isinstance(message.additional_config, dict):
+                    return message.additional_config.get("is_notice", False)
+                elif isinstance(message.additional_config, str):
+                    # 兼容JSON字符串格式
+                    import json
+                    config = json.loads(message.additional_config)
+                    return config.get("is_notice", False)
+
+            return False
+
+        except Exception as e:
+            logger.debug(f"检查notice类型失败: {e}")
+            return False
+
+    async def _handle_notice_message(self, stream_id: str, message: DatabaseMessages) -> None:
+        """处理notice消息，将其添加到全局notice管理器"""
+        try:
+            # 获取notice作用域
+            scope = self._determine_notice_scope(message, stream_id)
+
+            # 添加到全局notice管理器
+            success = self.notice_manager.add_notice(
+                message=message,
+                scope=scope,
+                target_stream_id=stream_id if scope == NoticeScope.STREAM else None,
+                ttl=self._get_notice_ttl(message)
+            )
+
+            if success:
+                logger.info(f"✅ Notice消息已添加到全局管理器: message_id={message.message_id}, scope={scope.value}, stream={stream_id}, ttl={self._get_notice_ttl(message)}s")
+            else:
+                logger.warning(f"❌ Notice消息添加失败: message_id={message.message_id}")
+
+        except Exception as e:
+            logger.error(f"处理notice消息失败: {e}")
+
+    def _determine_notice_scope(self, message: DatabaseMessages, stream_id: str) -> NoticeScope:
+        """确定notice的作用域
+        
+        作用域完全由 additional_config 中的 is_public_notice 字段决定：
+        - is_public_notice=True: 公共notice，所有聊天流可见
+        - is_public_notice=False 或未设置: 特定聊天流notice
+        """
+        try:
+            # 检查附加配置中的公共notice标志
+            if hasattr(message, "additional_config") and message.additional_config:
+                if isinstance(message.additional_config, dict):
+                    is_public = message.additional_config.get("is_public_notice", False)
+                elif isinstance(message.additional_config, str):
+                    import json
+                    config = json.loads(message.additional_config)
+                    is_public = config.get("is_public_notice", False)
+                else:
+                    is_public = False
+
+                if is_public:
+                    logger.debug(f"Notice被标记为公共: message_id={message.message_id}")
+                    return NoticeScope.PUBLIC
+
+            # 默认为特定聊天流notice
+            return NoticeScope.STREAM
+
+        except Exception as e:
+            logger.debug(f"确定notice作用域失败: {e}")
+            return NoticeScope.STREAM
+
+    def _get_notice_type(self, message: DatabaseMessages) -> str | None:
+        """获取notice类型"""
+        try:
+            if hasattr(message, "additional_config") and message.additional_config:
+                if isinstance(message.additional_config, dict):
+                    return message.additional_config.get("notice_type")
+                elif isinstance(message.additional_config, str):
+                    import json
+                    config = json.loads(message.additional_config)
+                    return config.get("notice_type")
+            return None
+        except Exception:
+            return None
+
+    def _get_notice_ttl(self, message: DatabaseMessages) -> int:
+        """获取notice的生存时间"""
+        try:
+            # 根据notice类型设置不同的TTL
+            notice_type = self._get_notice_type(message)
+            if notice_type is None:
+                return 3600
+
+            ttl_mapping = {
+                "poke": 1800,  # 戳一戳30分钟
+                "emoji_like": 3600,  # 表情回复1小时
+                "group_ban": 7200,  # 禁言2小时
+                "group_lift_ban": 7200,  # 解禁2小时
+                "group_whole_ban": 3600,  # 全体禁言1小时
+                "group_whole_lift_ban": 3600,  # 解除全体禁言1小时
+            }
+
+            return ttl_mapping.get(notice_type, 3600)  # 默认1小时
+
+        except Exception:
+            return 3600
+
+    def get_notice_text(self, stream_id: str, limit: int = 10) -> str:
+        """获取指定聊天流的notice文本，用于构建提示词"""
+        try:
+            return self.notice_manager.get_notice_text(stream_id, limit)
+        except Exception as e:
+            logger.error(f"获取notice文本失败: {e}")
+            return ""
+
+    def clear_notices(self, stream_id: str | None = None, notice_type: str | None = None) -> int:
+        """清理notice消息"""
+        try:
+            return self.notice_manager.clear_notices(stream_id, notice_type)
+        except Exception as e:
+            logger.error(f"清理notice失败: {e}")
+            return 0
+
+    def get_notice_stats(self) -> dict[str, Any]:
+        """获取notice管理器统计信息"""
+        try:
+            return self.notice_manager.get_stats()
+        except Exception as e:
+            logger.error(f"获取notice统计失败: {e}")
+            return {}
 
 
 # 创建全局消息管理器实例

@@ -66,7 +66,7 @@ class PlusCommand(ABC):
 
         # 验证聊天类型限制
         if not self._validate_chat_type():
-            is_group = hasattr(self.message, "is_group_message") and self.message.is_group_message
+            is_group =  self.message.message_info.group_info.group_id
             logger.warning(
                 f"{self.log_prefix} 命令 '{self.command_name}' 不支持当前聊天类型: "
                 f"{'群聊' if is_group else '私聊'}, 允许类型: {self.chat_type_allow.value}"
@@ -74,11 +74,11 @@ class PlusCommand(ABC):
 
     def _parse_command(self) -> None:
         """解析命令和参数"""
-        if not hasattr(self.message, "plain_text") or not self.message.plain_text:
+        if not hasattr(self.message, "processed_plain_text") or not self.message.processed_plain_text:
             self.args = CommandArgs("")
             return
 
-        plain_text = self.message.plain_text.strip()
+        plain_text = self.message.processed_plain_text.strip()
 
         # 获取配置的命令前缀
         prefixes = global_config.command.command_prefixes
@@ -152,10 +152,10 @@ class PlusCommand(ABC):
 
     def _is_exact_command_call(self) -> bool:
         """检查是否是精确的命令调用（无参数）"""
-        if not hasattr(self.message, "plain_text") or not self.message.plain_text:
+        if not hasattr(self.message, "plain_text") or not self.message.processed_plain_text:
             return False
 
-        plain_text = self.message.plain_text.strip()
+        plain_text = self.message.processed_plain_text.strip()
 
         # 获取配置的命令前缀
         prefixes = global_config.command.command_prefixes
@@ -435,3 +435,4 @@ def create_plus_command_adapter(plus_command_class):
 
 # 兼容旧的命名
 PlusCommandAdapter = create_plus_command_adapter
+

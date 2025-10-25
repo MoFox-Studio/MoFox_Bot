@@ -33,13 +33,13 @@ from src.config.official_configs import (
     MessageReceiveConfig,
     MoodConfig,
     NormalChatConfig,
+    NoticeConfig,
     PermissionConfig,
     PersonalityConfig,
     PlanningSystemConfig,
     ProactiveThinkingConfig,
     ResponsePostProcessConfig,
     ResponseSplitterConfig,
-    SleepSystemConfig,
     ToolConfig,
     VideoAnalysisConfig,
     VoiceConfig,
@@ -378,6 +378,7 @@ class Config(ValidatedConfigBase):
     personality: PersonalityConfig = Field(..., description="个性配置")
     chat: ChatConfig = Field(..., description="聊天配置")
     message_receive: MessageReceiveConfig = Field(..., description="消息接收配置")
+    notice: NoticeConfig = Field(..., description="Notice消息配置")
     normal_chat: NormalChatConfig = Field(..., description="普通聊天配置")
     emoji: EmojiConfig = Field(..., description="表情配置")
     expression: ExpressionConfig = Field(..., description="表达配置")
@@ -408,7 +409,6 @@ class Config(ValidatedConfigBase):
         default_factory=lambda: DependencyManagementConfig(), description="依赖管理配置"
     )
     web_search: WebSearchConfig = Field(default_factory=lambda: WebSearchConfig(), description="网络搜索配置")
-    sleep_system: SleepSystemConfig = Field(default_factory=lambda: SleepSystemConfig(), description="睡眠系统配置")
     planning_system: PlanningSystemConfig = Field(
         default_factory=lambda: PlanningSystemConfig(), description="规划系统配置"
     )

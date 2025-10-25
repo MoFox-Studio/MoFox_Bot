@@ -2,13 +2,55 @@
 TTS 语音合成 Action
 """
 
+from pathlib import Path
+
+import toml
+
 from src.common.logger import get_logger
-from src.plugin_system.apis import generator_api
-from src.plugin_system.base.base_action import ActionActivationType, BaseAction, ChatMode
+from src.plugin_system.base.base_action import BaseAction, ChatMode
 
 from ..services.manager import get_service
 
 logger = get_logger("tts_voice_plugin.action")
+
+
+def _get_available_styles() -> list[str]:
+    """动态读取配置文件，获取所有可用的TTS风格名称"""
+    try:
+        # 这个路径构建逻辑是为了确保无论从哪里启动，都能准确定位到配置文件
+        plugin_file = Path(__file__).resolve()
+        # Bot/src/plugins/built_in/tts_voice_plugin/actions -> Bot
+        bot_root = plugin_file.parent.parent.parent.parent.parent.parent
+        config_file = bot_root / "config" / "plugins" / "tts_voice_plugin" / "config.toml"
+
+        if not config_file.is_file():
+            logger.warning("在 tts_action 中未找到 tts_voice_plugin 的配置文件，无法动态加载风格列表。")
+            return ["default"]
+
+        config = toml.loads(config_file.read_text(encoding="utf-8"))
+
+        styles_config = config.get("tts_styles", [])
+        if not isinstance(styles_config, list):
+            return ["default"]
+
+        # 使用显式循环和类型检查来提取 style_name，以确保 Pylance 类型检查通过
+        style_names: list[str] = []
+        for style in styles_config:
+            if isinstance(style, dict):
+                name = style.get("style_name")
+                # 确保 name 是一个非空字符串
+                if isinstance(name, str) and name:
+                    style_names.append(name)
+
+        return style_names if style_names else ["default"]
+    except Exception as e:
+        logger.error(f"动态加载TTS风格列表时出错: {e}", exc_info=True)
+        return ["default"]  # 出现任何错误都回退
+
+
+# 在类定义之前执行函数，获取风格列表
+AVAILABLE_STYLES = _get_available_styles()
+STYLE_OPTIONS_DESC = ", ".join(f"'{s}'" for s in AVAILABLE_STYLES)
 
 
 class TTSVoiceAction(BaseAction):
@@ -17,24 +59,51 @@ class TTSVoiceAction(BaseAction):
     """
 
     action_name = "tts_voice_action"
-    action_description = "使用GPT-SoVITS将文本转换为语音并发送"
+    action_description = "将你生成好的文本转换为语音并发送。你必须提供要转换的文本。"
 
-    focus_activation_type = ActionActivationType.KEYWORD
-    normal_activation_type = ActionActivationType.KEYWORD
-    activation_keywords = [
-        "发语音", "语音", "说句话", "用语音说", "听你", "听声音", "想你", "想听声音",
-        "讲个话", "说段话", "念一下", "读一下", "用嘴说", "说", "能发语音吗","亲口"
-    ]
     mode_enable = ChatMode.ALL
     parallel_action = False
 
+    action_parameters = {
+        "text": {
+            "type": "string",
+            "description": "需要转换为语音并发送的完整、自然、适合口语的文本内容。",
+            "required": True
+        },
+        "voice_style": {
+            "type": "string",
+            "description": f"语音的风格。可用选项: [{STYLE_OPTIONS_DESC}]。请根据对话的情感和上下文选择一个最合适的风格。如果未提供，将使用默认风格。",
+            "required": False
+        },
+        "text_language": {
+            "type": "string",
+            "description": (
+                "指定用于合成的语言模式，请务必根据文本内容选择最精确、范围最小的选项以获得最佳效果。"
+                "可用选项说明：\n"
+                "- 'zh': 中文与英文混合 (最优选)\n"
+                "- 'ja': 日文与英文混合 (最优选)\n"
+                "- 'yue': 粤语与英文混合 (最优选)\n"
+                "- 'ko': 韩文与英文混合 (最优选)\n"
+                "- 'en': 纯英文\n"
+                "- 'all_zh': 纯中文\n"
+                "- 'all_ja': 纯日文\n"
+                "- 'all_yue': 纯粤语\n"
+                "- 'all_ko': 纯韩文\n"
+                "- 'auto': 多语种混合自动识别 (备用选项，当前两种语言时优先使用上面的精确选项)\n"
+                "- 'auto_yue': 多语种混合自动识别（包含粤语）(备用选项)"
+            ),
+            "required": False
+        }
+    }
+
     action_require = [
+        "在调用此动作时，你必须在 'text' 参数中提供要合成语音的完整回复内容。这是强制性的。",
         "当用户明确请求使用语音进行回复时，例如‘发个语音听听’、‘用语音说’等。",
-        "当对话内容适合用语音表达，例如讲故事、念诗、撒娇或进行角色扮演时。",
+        "当对话内容适合用语音表达，例如讲故事、念诗、撒嬌或进行角色扮演时。",
         "在表达特殊情感（如安慰、鼓励、庆祝）的场景下，可以主动使用语音来增强感染力。",
         "不要在日常的、简短的问答或闲聊中频繁使用语音，避免打扰用户。",
-        "文本内容必须是纯粹的对话，不能包含任何括号或方括号括起来的动作、表情、或场景描述（例如，不要出现 '(笑)' 或 '[歪头]'）",
-        "必须使用标准、完整的标点符号（如逗号、句号、问号）来进行自然的断句，以确保语音停顿自然，避免生成一长串没有停顿的文本。"
+        "提供的 'text' 内容必须是纯粹的对话，不能包含任何括号或方括号括起来的动作、表情、或场景描述（例如，不要出现 '(笑)' 或 '[歪头]'）",
+        "【**铁则**】为了确保语音停顿自然，'text' 参数中的所有断句【必须】使用且仅能使用以下标准标点符号：'，'、'。'、'？'、'！'。严禁使用 '～'、'...' 或其他任何非标准符号来分隔句子，否则将导致语音合成失败。"
     ]
 
     def __init__(self, *args, **kwargs):
@@ -42,26 +111,67 @@ class TTSVoiceAction(BaseAction):
         # 关键配置项现在由 TTSService 管理
         self.tts_service = get_service("tts")
 
+    async def go_activate(self, llm_judge_model=None) -> bool:
+        """
+        判断此 Action 是否应该被激活。
+        满足以下任一条件即可激活：
+        1. 55% 的随机概率
+        2. 匹配到预设的关键词
+        3. LLM 判断当前场景适合发送语音
+        """
+        # 条件1: 随机激活
+        if await self._random_activation(0.25):
+            logger.info(f"{self.log_prefix} 随机激活成功 (25%)")
+            return True
+
+        # 条件2: 关键词激活
+        keywords = [
+            "发语音", "语音", "说句话", "用语音说", "听你", "听声音", "想你", "想听声音",
+            "讲个话", "说段话", "念一下", "读一下", "用嘴说", "说", "能发语音吗", "亲口"
+        ]
+        if await self._keyword_match(keywords):
+            logger.info(f"{self.log_prefix} 关键词激活成功")
+            return True
+
+        # 条件3: LLM 判断激活
+        # 注意：这里我们复用 action_require 里的描述，让 LLM 的判断更精准
+        if await self._llm_judge_activation(
+            llm_judge_model=llm_judge_model
+        ):
+            logger.info(f"{self.log_prefix} LLM 判断激活成功")
+            return True
+
+        logger.debug(f"{self.log_prefix} 所有激活条件均未满足，不激活")
+        return False
+
     async def execute(self) -> tuple[bool, str]:
         """
         执行 Action 的核心逻辑
         """
         try:
             if not self.tts_service:
-                raise RuntimeError("TTSService 未注册或初始化失败")
+                logger.error(f"{self.log_prefix} TTSService 未注册或初始化失败，静默处理。")
+                return False, "TTSService 未注册或初始化失败"
 
             initial_text = self.action_data.get("text", "").strip()
             voice_style = self.action_data.get("voice_style", "default")
-            logger.info(f"{self.log_prefix} 接收到规划器的初步文本: '{initial_text[:70]}...'")
+            # 新增：从决策模型获取指定的语言模式
+            text_language = self.action_data.get("text_language") # 如果模型没给，就是 None
+            logger.info(f"{self.log_prefix} 接收到规划器初步文本: '{initial_text[:70]}...', 指定风格: {voice_style}, 指定语言: {text_language}")
 
-            # 1. 请求主回复模型生成高质量文本
-            text = await self._generate_final_text(initial_text)
+            # 1. 使用规划器提供的文本
+            text = initial_text
             if not text:
-                await self.send_text("❌ 语音合成出错：最终生成的文本为空。")
-                return False, "最终生成的文本为空"
+                logger.warning(f"{self.log_prefix} 规划器提供的文本为空，静默处理。")
+                return False, "规划器提供的文本为空"
 
             # 2. 调用 TTSService 生成语音
-            audio_b64 = await self.tts_service.generate_voice(text, voice_style)
+            logger.info(f"{self.log_prefix} 使用最终文本进行语音合成: '{text[:70]}...'")
+            audio_b64 = await self.tts_service.generate_voice(
+                text=text,
+                style_hint=voice_style,
+                language_hint=text_language  # 新增：将决策模型指定的语言传递给服务
+            )
 
             if audio_b64:
                 await self.send_custom(message_type="voice", content=audio_b64)
@@ -72,76 +182,18 @@ class TTSVoiceAction(BaseAction):
                 )
                 return True, f"成功生成并发送语音，文本长度: {len(text)}字符"
             else:
-                await self._handle_error_and_reply("tts_api_error", Exception("TTS服务未能返回音频数据"))
+                logger.error(f"{self.log_prefix} TTS服务未能返回音频数据，静默处理。")
+                await self.store_action_info(
+                    action_prompt_display="语音合成失败: TTS服务未能返回音频数据",
+                    action_done=False
+                )
                 return False, "语音合成失败"
 
         except Exception as e:
-            await self._handle_error_and_reply("generic_error", e)
+            logger.error(f"{self.log_prefix} 语音合成过程中发生未知错误: {e!s}", exc_info=True)
+            await self.store_action_info(
+                action_prompt_display=f"语音合成失败: {e!s}",
+                action_done=False
+            )
             return False, f"语音合成出错: {e!s}"
 
-    async def _generate_final_text(self, initial_text: str) -> str:
-        """请求主回复模型生成或优化文本"""
-        try:
-            generation_reason = (
-                "这是一个为语音消息（TTS）生成文本的特殊任务。"
-                "请基于规划器提供的初步文本，结合对话历史和自己的人设，将它优化成一句自然、富有感情、适合用语音说出的话。"
-                "最终指令：请务-必确保文本听起来像真实的、自然的口语对话，而不是书面语。"
-            )
-
-            logger.info(f"{self.log_prefix} 请求主回复模型(replyer)全新生成TTS文本...")
-            success, response_set, _ = await generator_api.rewrite_reply(
-                chat_stream=self.chat_stream,
-                reply_data={"raw_reply": initial_text, "reason": generation_reason},
-                request_type="replyer"
-            )
-
-            if success and response_set:
-                text = "".join(str(seg[1]) if isinstance(seg, tuple) else str(seg) for seg in response_set).strip()
-                logger.info(f"{self.log_prefix} 成功生成高质量TTS文本: {text}")
-                return text
-
-            if initial_text:
-                logger.warning(f"{self.log_prefix} 主模型生成失败，使用规划器原始文本作为兜底。")
-                return initial_text
-
-            raise Exception("主模型未能生成回复，且规划器也未提供兜底文本。")
-
-        except Exception as e:
-            logger.error(f"{self.log_prefix} 生成高质量回复内容时失败: {e}", exc_info=True)
-            return ""
-
-    async def _handle_error_and_reply(self, error_context: str, exception: Exception):
-        """处理错误并生成一个动态的、拟人化的回复"""
-        logger.error(f"{self.log_prefix} 在 {error_context} 阶段出错: {exception}", exc_info=True)
-
-        error_prompts = {
-            "generic_error": {
-                "raw_reply": "糟糕，我的思路好像缠成一团毛线球了，需要一点时间来解开...你能耐心等我一下吗？",
-                "reason": f"客观原因：插件在执行时发生了未知异常。详细信息: {exception!s}"
-            },
-            "tts_api_error": {
-                "raw_reply": "我的麦克风好像有点小情绪，突然不想工作了...我正在哄它呢，请稍等片刻哦！",
-                "reason": f"客观原因：语音合成服务返回了一个错误。详细信息: {exception!s}"
-            }
-        }
-        prompt_data = error_prompts.get(error_context, error_prompts["generic_error"])
-
-        try:
-            success, result_message, _ = await generator_api.rewrite_reply(
-                chat_stream=self.chat_stream,
-                raw_reply=prompt_data["raw_reply"],
-                reason=prompt_data["reason"]
-            )
-            if success and result_message:
-                message_text = "".join(str(seg[1]) if isinstance(seg, tuple) else str(seg) for seg in result_message).strip()
-                await self.send_text(message_text)
-            else:
-                await self.send_text("哎呀，好像出了一点小问题，我稍后再试试吧~")
-        except Exception as gen_e:
-            logger.error(f"生成动态错误回复时也出错了: {gen_e}", exc_info=True)
-            await self.send_text("唔...我的思路好像卡壳了，请稍等一下哦！")
-
-        await self.store_action_info(
-            action_prompt_display=f"语音合成失败: {exception!s}",
-            action_done=False
-        )
