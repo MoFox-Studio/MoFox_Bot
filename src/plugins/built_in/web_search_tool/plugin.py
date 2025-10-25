@@ -74,29 +74,6 @@ class WEBSEARCHPLUGIN(BasePlugin):
 
         except Exception as e:
             logger.error(f"❌ 搜索引擎初始化失败: {e}", exc_info=True)
-
-    # Python包依赖列表
-    python_dependencies: list[PythonDependency] = [  # noqa: RUF012
-        PythonDependency(package_name="asyncddgs", description="异步DuckDuckGo搜索库", optional=False),
-        PythonDependency(
-            package_name="exa_py",
-            description="Exa搜索API客户端库",
-            optional=True,  # 如果没有API密钥，这个是可选的
-        ),
-        PythonDependency(
-            package_name="tavily",
-            install_name="tavily-python",  # 安装时使用这个名称
-            description="Tavily搜索API客户端库",
-            optional=True,  # 如果没有API密钥，这个是可选的
-        ),
-        PythonDependency(
-            package_name="httpx",
-            version=">=0.20.0",
-            install_name="httpx[socks]",  # 安装时使用这个名称（包含可选依赖）
-            description="支持SOCKS代理的HTTP客户端库",
-            optional=False,
-        ),
-    ]
     config_file_name: str = "config.toml"  # 配置文件名
 
     # 配置节描述

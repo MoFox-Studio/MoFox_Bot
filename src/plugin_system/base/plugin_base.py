@@ -12,7 +12,6 @@ from src.config.config import CONFIG_DIR
 from src.plugin_system.base.component_types import (
     PermissionNodeField,
     PluginInfo,
-    PythonDependency,
 )
 from src.plugin_system.base.config_types import ConfigField
 from src.plugin_system.base.plugin_metadata import PluginMetadata
@@ -30,8 +29,6 @@ class PluginBase(ABC):
     plugin_name: str
     config_file_name: str
     enable_plugin: bool = True
-    dependencies: list[str] = []
-    python_dependencies: list[str | PythonDependency] = []
 
     config_schema: dict[str, dict[str, ConfigField] | str] = {}
 
@@ -64,12 +61,6 @@ class PluginBase(ABC):
         self.plugin_description = self.plugin_meta.description
         self.plugin_author = self.plugin_meta.author
 
-        # 标准化Python依赖为PythonDependency对象
-        normalized_python_deps = self._normalize_python_dependencies(self.python_dependencies)
-
-        # 检查Python依赖
-        self._check_python_dependencies(normalized_python_deps)
-
         # 创建插件信息对象
         self.plugin_info = PluginInfo(
             name=self.plugin_name,
@@ -80,8 +71,8 @@ class PluginBase(ABC):
             enabled=self._is_enabled,
             is_built_in=False,
             config_file=self.config_file_name or "",
-            dependencies=self.dependencies.copy(),
-            python_dependencies=normalized_python_deps,
+            dependencies=self.plugin_meta.dependencies.copy(),
+            python_dependencies=self.plugin_meta.python_dependencies.copy(),
         )
 
         logger.debug(f"{self.log_prefix} 插件基类初始化完成")
@@ -367,20 +358,6 @@ class PluginBase(ABC):
             self._is_enabled = self.config["plugin"]["enabled"]
             logger.info(f"{self.log_prefix} 从配置更新插件启用状态: {self._is_enabled}")
 
-    def _check_dependencies(self) -> bool:
-        """检查插件依赖"""
-        from src.plugin_system.core.component_registry import component_registry
-
-        if not self.dependencies:
-            return True
-
-        for dep in self.dependencies:
-            if not component_registry.get_plugin_info(dep):
-                logger.error(f"{self.log_prefix} 缺少依赖插件: {dep}")
-                return False
-
-        return True
-
     def get_config(self, key: str, default: Any = None) -> Any:
         """获取插件配置值，支持嵌套键访问
 
@@ -402,61 +379,6 @@ class PluginBase(ABC):
                 return default
 
         return current
-
-    def _normalize_python_dependencies(self, dependencies: Any) -> list[PythonDependency]:
-        """将依赖列表标准化为PythonDependency对象"""
-        from packaging.requirements import Requirement
-
-        normalized = []
-        for dep in dependencies:
-            if isinstance(dep, str):
-                try:
-                    # 尝试解析为requirement格式 (如 "package>=1.0.0")
-                    req = Requirement(dep)
-                    version_spec = str(req.specifier) if req.specifier else ""
-
-                    normalized.append(
-                        PythonDependency(
-                            package_name=req.name,
-                            version=version_spec,
-                            install_name=dep,  # 保持原始的安装名称
-                        )
-                    )
-                except Exception:
-                    # 如果解析失败，作为简单包名处理
-                    normalized.append(PythonDependency(package_name=dep, install_name=dep))
-            elif isinstance(dep, PythonDependency):
-                normalized.append(dep)
-            else:
-                logger.warning(f"{self.log_prefix} 未知的依赖格式: {dep}")
-
-        return normalized
-
-    def _check_python_dependencies(self, dependencies: list[PythonDependency]) -> bool:
-        """检查Python依赖并尝试自动安装"""
-        if not dependencies:
-            logger.info(f"{self.log_prefix} 无Python依赖需要检查")
-            return True
-
-        try:
-            # 延迟导入以避免循环依赖
-            from src.plugin_system.utils.dependency_manager import get_dependency_manager
-
-            dependency_manager = get_dependency_manager()
-            success, errors = dependency_manager.check_and_install_dependencies(dependencies, self.plugin_name)
-
-            if success:
-                logger.info(f"{self.log_prefix} Python依赖检查通过")
-                return True
-            else:
-                logger.error(f"{self.log_prefix} Python依赖检查失败:")
-                for error in errors:
-                    logger.error(f"{self.log_prefix}   - {error}")
-                return False
-
-        except Exception as e:
-            logger.error(f"{self.log_prefix} Python依赖检查时发生异常: {e}", exc_info=True)
-            return False
 
     @abstractmethod
     def register_plugin(self) -> bool:
