@@ -24,6 +24,7 @@ install(extra_lines=3)
 logger = get_logger("unified_prompt")
 
 
+
 class PromptContext:
     """提示词上下文管理器"""
 
@@ -808,10 +809,39 @@ class Prompt:
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
             "safety_guidelines_block": self.parameters.safety_guidelines_block
             or context_data.get("safety_guidelines_block", ""),
+            "auth_role_prompt_block": self.parameters.auth_role_prompt_block
+            or context_data.get("auth_role_prompt_block", ""),
             "chat_scene": self.parameters.chat_scene
             or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
         }
 
+    def _prepare_normal_params(self, context_data: dict[str, Any]) -> dict[str, Any]:
+        """准备Normal模式的参数"""
+        return {
+            **context_data,
+            "expression_habits_block": context_data.get("expression_habits_block", ""),
+            "tool_info_block": context_data.get("tool_info_block", ""),
+            "knowledge_prompt": context_data.get("knowledge_prompt", ""),
+            "memory_block": context_data.get("memory_block", ""),
+            "relation_info_block": context_data.get("relation_info_block", ""),
+            "extra_info_block": self.parameters.extra_info_block or context_data.get("extra_info_block", ""),
+            "cross_context_block": context_data.get("cross_context_block", ""),
+            "identity": self.parameters.identity_block or context_data.get("identity", ""),
+            "action_descriptions": self.parameters.action_descriptions or context_data.get("action_descriptions", ""),
+            "schedule_block": self.parameters.schedule_block or context_data.get("schedule_block", ""),
+            "time_block": context_data.get("time_block", ""),
+            "chat_info": context_data.get("chat_info", ""),
+            "reply_target_block": context_data.get("reply_target_block", ""),
+            "config_expression_style": global_config.personality.reply_style,
+            "mood_state": self.parameters.mood_prompt or context_data.get("mood_state", ""),
+            "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt
+            or context_data.get("keywords_reaction_prompt", ""),
+            "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
+            "safety_guidelines_block": self.parameters.safety_guidelines_block
+            or context_data.get("safety_guidelines_block", ""),
+            "chat_scene": self.parameters.chat_scene
+            or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
+        }
 
     def _prepare_default_params(self, context_data: dict[str, Any]) -> dict[str, Any]:
         """准备默认模式的参数"""
@@ -833,6 +863,8 @@ class Prompt:
             "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
             "safety_guidelines_block": self.parameters.safety_guidelines_block
             or context_data.get("safety_guidelines_block", ""),
+            "auth_role_prompt_block": self.parameters.auth_role_prompt_block
+            or context_data.get("auth_role_prompt_block", ""),
             "bot_name": self.parameters.bot_name,
             "bot_nickname": self.parameters.bot_nickname,
         }

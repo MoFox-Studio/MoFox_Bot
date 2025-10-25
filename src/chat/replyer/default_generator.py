@@ -38,9 +38,13 @@ from src.mais4u.mai_think import mai_thinking_manager
 from src.mood.mood_manager import mood_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.apis import llm_api
+from src.plugin_system.apis.permission_api import permission_api
 from src.plugin_system.base.component_types import ActionInfo, EventType
 
 logger = get_logger("replyer")
+
+# 用于存储后台任务的集合，防止被垃圾回收
+_background_tasks: set[asyncio.Task] = set()
 
 
 def init_prompt():
@@ -58,6 +62,7 @@ def init_prompt():
 {time_block}
 {chat_info}
 {identity}
+{auth_role_prompt_block}
 
 你正在{chat_target_2},{reply_target_block}
 对这句话，你想表达，原句：{raw_reply},原因是：{reason}。你现在要思考怎么组织回复
@@ -113,6 +118,7 @@ def init_prompt():
 {relation_info_block}
 
 {extra_info_block}
+{auth_role_prompt_block}
 
 {action_descriptions}
 
@@ -162,6 +168,60 @@ If you need to use the search tool, please directly call the function "lpmm_sear
         name="lpmm_get_knowledge_prompt",
     )
 
+    # normal 版 prompt 模板（0.9之前的简化模式）
+    logger.debug("[Prompt模式调试] 正在注册normal_style_prompt模板")
+    Prompt(
+        """
+{chat_scene}
+
+**重要：消息针对性判断**
+在回应之前，首先分析消息的针对性：
+1. **直接针对你**：@你、回复你、明确询问你 → 必须回应
+2. **间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与
+3. **他人对话**：与你无关的私人交流 → 通常不参与
+4. **重复内容**：他人已充分回答的问题 → 避免重复
+
+{expression_habits_block}
+{tool_info_block}
+{knowledge_prompt}
+{memory_block}
+{relation_info_block}
+{extra_info_block}
+
+{cross_context_block}
+{identity}
+如果有人说你是人机，你可以用一种阴阳怪气的口吻来回应
+{schedule_block}
+
+{action_descriptions}
+
+下面是群里最近的聊天内容：
+--------------------------------
+{time_block}
+{chat_info}
+--------------------------------
+
+{reply_target_block}
+
+你现在的心情是：{mood_state}
+{config_expression_style}
+注意不要复读你前面发过的内容，意思相近也不行。
+{keywords_reaction_prompt}
+请注意不要输出多余内容(包括前后缀，冒号和引号，at或 @等 )。只输出回复内容。
+{moderation_prompt}
+你的核心任务是针对 {reply_target_block} 中提到的内容，{relation_info_block}生成一段紧密相关且能推动对话的回复。你的回复应该：
+1.  明确回应目标消息，而不是宽泛地评论。
+2.  可以分享你的看法、提出相关问题，或者开个合适的玩笑。
+3.  目的是让对话更有趣、更深入。
+最终请输出一条简短、完整且口语化的回复。
+
+*你叫{bot_name}，也有人叫你{bot_nickname}*
+
+现在，你说：
+""",
+        "normal_style_prompt",
+    )
+    logger.debug("[Prompt模式调试] normal_style_prompt模板注册完成")
 
 
 class DefaultReplyer:
@@ -195,6 +255,22 @@ class DefaultReplyer:
         from src.plugin_system.core.tool_use import ToolExecutor  # 延迟导入ToolExecutor，不然会循环依赖
 
         self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id)
+
+
+    async def _build_auth_role_prompt(self) -> str:
+        """根据主人配置生成额外提示词"""
+        master_config = getattr(global_config.permission, "master_prompt", None)
+        if not master_config or not master_config.enable:
+            return ""
+
+        platform, user_id = self.chat_stream.platform, self.chat_stream.user_info.user_id
+        try:
+            is_master = await permission_api.is_master(platform, user_id)
+            hint = master_config.master_hint if is_master else master_config.non_master_hint
+            return hint.strip()
+        except Exception as e:
+            logger.warning(f"检测主人身份失败: {e}")
+            return ""
 
     async def generate_reply_with_context(
         self,
@@ -347,6 +423,7 @@ class DefaultReplyer:
         Returns:
             Tuple[bool, Optional[str]]: (是否成功, 重写后的回复内容)
         """
+        prompt = None
         try:
             with Timer("构建Prompt", {}):  # 内部计时器，可选保留
                 prompt = await self.build_prompt_rewrite_context(
@@ -960,29 +1037,24 @@ class DefaultReplyer:
         unread_messages = []
         bot_id = str(global_config.bot.qq_account)
 
+        # 第一次遍历：按 is_read 字段分离
         for msg_dict in message_list_before_now:
-            try:
-                msg_user_id = str(msg_dict.get("user_id"))
-                if msg_dict.get("is_read", False):
-                    read_messages.append(msg_dict)
-                else:
-                    unread_messages.append(msg_dict)
-            except Exception as e:
-                logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
+            msg_user_id = str(msg_dict.get("user_id", ""))
+            if msg_dict.get("is_read", False):
+                read_messages.append(msg_dict)
+            else:
+                unread_messages.append(msg_dict)
 
         # 如果没有is_read字段，使用原有的逻辑
         if not read_messages and not unread_messages:
             # 使用原有的核心对话逻辑
             core_dialogue_list = []
             for msg_dict in message_list_before_now:
-                try:
-                    msg_user_id = str(msg_dict.get("user_id"))
-                    reply_to = msg_dict.get("reply_to", "")
-                    _platform, reply_to_user_id = self._parse_reply_target(reply_to)
-                    if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
-                        core_dialogue_list.append(msg_dict)
-                except Exception as e:
-                    logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
+                msg_user_id = str(msg_dict.get("user_id", ""))
+                reply_to = msg_dict.get("reply_to", "")
+                _platform, reply_to_user_id = self._parse_reply_target(reply_to)
+                if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
+                    core_dialogue_list.append(msg_dict)
 
             read_messages = [msg for msg in message_list_before_now if msg not in core_dialogue_list]
             unread_messages = core_dialogue_list
@@ -1453,6 +1525,8 @@ class DefaultReplyer:
         else:
             chat_scene_prompt = f"你正在和 {sender} 私下聊天，你需要理解你们的对话并做出自然的回应。"
 
+        auth_role_prompt_block = await self._build_auth_role_prompt()
+
         # 使用新的统一Prompt系统 - 创建PromptParameters
         prompt_parameters = PromptParameters(
             chat_scene=chat_scene_prompt,
@@ -1487,6 +1561,7 @@ class DefaultReplyer:
             safety_guidelines_block=safety_guidelines_block,
             reply_target_block=reply_target_block,
             mood_prompt=mood_prompt,
+            auth_role_prompt_block=auth_role_prompt_block,
             action_descriptions=action_descriptions,
             bot_name=global_config.bot.nickname,
             bot_nickname=",".join(global_config.bot.alias_names) if global_config.bot.alias_names else "",
@@ -1629,6 +1704,8 @@ class DefaultReplyer:
             await global_prompt_manager.format_prompt("chat_target_private1", sender_name=chat_target_name)
             await global_prompt_manager.format_prompt("chat_target_private2", sender_name=chat_target_name)
 
+        auth_role_prompt_block = await self._build_auth_role_prompt()
+
         # 使用新的统一Prompt系统 - Expressor模式，创建PromptParameters
         prompt_parameters = PromptParameters(
             chat_id=chat_id,
@@ -1645,6 +1722,7 @@ class DefaultReplyer:
             mood_prompt=mood_prompt,
             keywords_reaction_prompt=keywords_reaction_prompt,
             moderation_prompt_block=moderation_prompt_block,
+            auth_role_prompt_block=auth_role_prompt_block,
             # 添加已构建的表达习惯和关系信息
             expression_habits_block=expression_habits_block,
             relation_info_block=relation_info,
@@ -1935,7 +2013,7 @@ class DefaultReplyer:
 
             # 异步存储聊天历史（完全非阻塞）
             memory_system = get_memory_system()
-            asyncio.create_task(
+            task = asyncio.create_task(
                 memory_system.process_conversation_memory(
                     context={
                         "conversation_text": chat_history,
@@ -1945,6 +2023,9 @@ class DefaultReplyer:
                     }
                 )
             )
+            # 将任务添加到全局集合以防止被垃圾回收
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
             logger.debug(f"已启动记忆存储任务，用户: {memory_user_display or memory_user_id}")
 
