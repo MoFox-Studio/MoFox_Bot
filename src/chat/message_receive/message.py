@@ -12,6 +12,7 @@ from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.utils_image import get_image_manager
 from src.chat.utils.utils_video import get_video_analyzer, is_video_analysis_available
 from src.chat.utils.utils_voice import get_voice_text
+from src.chat.utils.self_voice_cache import consume_self_voice_text
 from src.common.logger import get_logger
 from src.config.config import global_config
 
@@ -30,7 +31,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 @dataclass
 class Message(MessageBase, metaclass=ABCMeta):
-    chat_stream: "ChatStream" = None  # type: ignore
+    chat_stream: Optional["ChatStream"] = None
     reply: Optional["Message"] = None
     processed_plain_text: str = ""
     memorized_times: int = 0
@@ -170,10 +171,10 @@ class MessageRecv(Message):
                 self.is_emoji = False
                 self.is_video = False
                 # 处理at消息，格式为"昵称:QQ号"
-                if segment.data and ":" in segment.data:
+                if isinstance(segment.data, str) and ":" in segment.data:
                     nickname, qq_id = segment.data.split(":", 1)
                     return f"@{nickname}"
-                return f"@{segment.data}" if segment.data else "@未知用户"
+                return f"@{segment.data}" if isinstance(segment.data, str) else "@未知用户"
             elif segment.type == "image":
                 # 如果是base64图片数据
                 if isinstance(segment.data, str):
@@ -200,6 +201,19 @@ class MessageRecv(Message):
                 self.is_emoji = False
                 self.is_voice = True
                 self.is_video = False
+
+                # 检查消息是否由机器人自己发送
+                if self.message_info and self.message_info.user_info and str(self.message_info.user_info.user_id) == str(global_config.bot.qq_account):
+                    logger.info(f"检测到机器人自身发送的语音消息 (User ID: {self.message_info.user_info.user_id})，尝试从缓存获取文本。")
+                    if isinstance(segment.data, str):
+                        cached_text = consume_self_voice_text(segment.data)
+                        if cached_text:
+                            logger.info(f"成功从缓存中获取语音文本: '{cached_text[:70]}...'")
+                            return f"[语音：{cached_text}]"
+                        else:
+                            logger.warning("机器人自身语音消息缓存未命中，将回退到标准语音识别。")
+                
+                # 标准语音识别流程 (也作为缓存未命中的后备方案)
                 if isinstance(segment.data, str):
                     return await get_voice_text(segment.data)
                 return "[发了一段语音，网卡了加载不出来]"
@@ -298,7 +312,7 @@ class MessageRecvS4U(MessageRecv):
         self.is_superchat = False
         self.gift_info = None
         self.gift_name = None
-        self.gift_count: str | None = None
+        self.gift_count: int | None = None
         self.superchat_info = None
         self.superchat_price = None
         self.superchat_message_text = None
@@ -350,6 +364,20 @@ class MessageRecvS4U(MessageRecv):
                 self.is_picid = False
                 self.is_emoji = False
                 self.is_voice = True
+                
+                # 检查消息是否由机器人自己发送
+                # 检查消息是否由机器人自己发送
+                if self.message_info and self.message_info.user_info and str(self.message_info.user_info.user_id) == str(global_config.bot.qq_account):
+                    logger.info(f"检测到机器人自身发送的语音消息 (User ID: {self.message_info.user_info.user_id})，尝试从缓存获取文本。")
+                    if isinstance(segment.data, str):
+                        cached_text = consume_self_voice_text(segment.data)
+                        if cached_text:
+                            logger.info(f"成功从缓存中获取语音文本: '{cached_text[:70]}...'")
+                            return f"[语音：{cached_text}]"
+                        else:
+                            logger.warning("机器人自身语音消息缓存未命中，将回退到标准语音识别。")
+
+                # 标准语音识别流程 (也作为缓存未命中的后备方案)
                 if isinstance(segment.data, str):
                     return await get_voice_text(segment.data)
                 return "[发了一段语音，网卡了加载不出来]"
@@ -435,8 +463,8 @@ class MessageRecvS4U(MessageRecv):
 
                                 # 使用video analyzer分析视频
                                 video_analyzer = get_video_analyzer()
-                                result = await video_analyzer.analyze_video(
-                                    video_bytes, filename, prompt=global_config.video_analysis.batch_analysis_prompt
+                                result = await video_analyzer.analyze_video_from_bytes(
+                                    video_bytes, filename
                                 )
 
                                 logger.info(f"视频分析结果: {result}")
@@ -524,15 +552,28 @@ class MessageProcessBase(Message):
                     return await get_image_manager().get_emoji_tag(seg.data)
                 return "[表情，网卡了加载不出来]"
             elif seg.type == "voice":
+                # 检查消息是否由机器人自己发送
+                # 检查消息是否由机器人自己发送
+                if self.message_info and self.message_info.user_info and str(self.message_info.user_info.user_id) == str(global_config.bot.qq_account):
+                    logger.info(f"检测到机器人自身发送的语音消息 (User ID: {self.message_info.user_info.user_id})，尝试从缓存获取文本。")
+                    if isinstance(seg.data, str):
+                        cached_text = consume_self_voice_text(seg.data)
+                        if cached_text:
+                            logger.info(f"成功从缓存中获取语音文本: '{cached_text[:70]}...'")
+                            return f"[语音：{cached_text}]"
+                        else:
+                            logger.warning("机器人自身语音消息缓存未命中，将回退到标准语音识别。")
+
+                # 标准语音识别流程 (也作为缓存未命中的后备方案)
                 if isinstance(seg.data, str):
                     return await get_voice_text(seg.data)
                 return "[发了一段语音，网卡了加载不出来]"
             elif seg.type == "at":
                 # 处理at消息，格式为"昵称:QQ号"
-                if seg.data and ":" in seg.data:
+                if isinstance(seg.data, str) and ":" in seg.data:
                     nickname, qq_id = seg.data.split(":", 1)
                     return f"@{nickname}"
-                return f"@{seg.data}" if seg.data else "@未知用户"
+                return f"@{seg.data}" if isinstance(seg.data, str) else "@未知用户"
             elif seg.type == "reply":
                 if self.reply and hasattr(self.reply, "processed_plain_text"):
                     # print(f"self.reply.processed_plain_text: {self.reply.processed_plain_text}")
@@ -617,7 +658,8 @@ class MessageSending(MessageProcessBase):
 
     def to_dict(self):
         ret = super().to_dict()
-        ret["message_info"]["user_info"] = self.chat_stream.user_info.to_dict()
+        if self.chat_stream and self.chat_stream.user_info:
+            ret["message_info"]["user_info"] = self.chat_stream.user_info.to_dict()
         return ret
 
     def is_private_message(self) -> bool:

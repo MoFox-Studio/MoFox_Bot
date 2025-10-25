@@ -8,6 +8,7 @@ import toml
 
 from src.common.logger import get_logger
 from src.plugin_system.base.base_action import BaseAction, ChatMode
+from src.chat.utils.self_voice_cache import register_self_voice
 
 from ..services.manager import get_service
 
@@ -174,6 +175,8 @@ class TTSVoiceAction(BaseAction):
             )
 
             if audio_b64:
+                # 在发送语音前，将文本注册到缓存中
+                register_self_voice(audio_b64, text)
                 await self.send_custom(message_type="voice", content=audio_b64)
                 logger.info(f"{self.log_prefix} GPT-SoVITS语音发送成功")
                 await self.store_action_info(
