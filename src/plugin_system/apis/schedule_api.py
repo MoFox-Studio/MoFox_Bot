@@ -46,8 +46,8 @@
 """
 
 import random
-from datetime import datetime, time
-from typing import Any, List, Optional, Union
+from datetime import datetime
+from typing import Any
 
 import orjson
 from sqlalchemy import func, select
@@ -62,7 +62,7 @@ logger = get_logger("schedule_api")
 # --- 内部辅助函数 ---
 
 def _format_schedule_list(
-    items: Union[List[dict[str, Any]], List[MonthlyPlan]],
+    items: list[dict[str, Any]] | list[MonthlyPlan],
     template: str,
     item_type: str,
 ) -> str:
@@ -79,7 +79,7 @@ def _format_schedule_list(
     return "\\n".join(lines)
 
 
-async def _get_schedule_from_db(date_str: str) -> Optional[List[dict[str, Any]]]:
+async def _get_schedule_from_db(date_str: str) -> list[dict[str, Any]] | None:
     """从数据库中获取并解析指定日期的日程"""
     async with get_db_session() as session:
         result = await session.execute(select(Schedule).filter(Schedule.date == date_str))
@@ -100,10 +100,10 @@ class ScheduleAPI:
 
     @staticmethod
     async def get_schedule(
-        date: Optional[str] = None,
+        date: str | None = None,
         formatted: bool = False,
         format_template: str = "{time_range}: {activity}",
-    ) -> Union[List[dict[str, Any]], str, None]:
+    ) -> list[dict[str, Any]] | str | None:
         """
         (异步) 获取指定日期的日程安排。
 
@@ -132,7 +132,7 @@ class ScheduleAPI:
     async def get_current_activity(
         formatted: bool = False,
         format_template: str = "{time_range}: {activity}",
-    ) -> Union[dict[str, Any], str, None]:
+    ) -> dict[str, Any] | str | None:
         """
         (异步) 获取当前正在进行的活动。
 
@@ -174,10 +174,10 @@ class ScheduleAPI:
     async def get_activities_between(
         start_time: str,
         end_time: str,
-        date: Optional[str] = None,
+        date: str | None = None,
         formatted: bool = False,
         format_template: str = "{time_range}: {activity}",
-    ) -> Union[List[dict[str, Any]], str, None]:
+    ) -> list[dict[str, Any]] | str | None:
         """
         (异步) 获取指定日期和时间范围内的所有活动。
 
@@ -223,11 +223,11 @@ class ScheduleAPI:
 
     @staticmethod
     async def get_monthly_plans(
-        target_month: Optional[str] = None,
-        random_count: Optional[int] = None,
+        target_month: str | None = None,
+        random_count: int | None = None,
         formatted: bool = False,
         format_template: str = "- {plan_text}",
-    ) -> Union[List[MonthlyPlan], str, None]:
+    ) -> list[MonthlyPlan] | str | None:
         """
         (异步) 获取指定月份的有效月度计划。
 
@@ -258,7 +258,7 @@ class ScheduleAPI:
             return None
 
     @staticmethod
-    async def count_monthly_plans(target_month: Optional[str] = None) -> int:
+    async def count_monthly_plans(target_month: str | None = None) -> int:
         """
         (异步) 获取指定月份的有效月度计划总数。
 
@@ -288,10 +288,10 @@ class ScheduleAPI:
 # =============================================================================
 
 async def get_schedule(
-    date: Optional[str] = None,
+    date: str | None = None,
     formatted: bool = False,
     format_template: str = "{time_range}: {activity}",
-) -> Union[List[dict[str, Any]], str, None]:
+) -> list[dict[str, Any]] | str | None:
     """(异步) 获取指定日期的日程安排的便捷函数。"""
     return await ScheduleAPI.get_schedule(date, formatted, format_template)
 
@@ -299,7 +299,7 @@ async def get_schedule(
 async def get_current_activity(
     formatted: bool = False,
     format_template: str = "{time_range}: {activity}",
-) -> Union[dict[str, Any], str, None]:
+) -> dict[str, Any] | str | None:
     """(异步) 获取当前正在进行的活动的便捷函数。"""
     return await ScheduleAPI.get_current_activity(formatted, format_template)
 
@@ -307,24 +307,24 @@ async def get_current_activity(
 async def get_activities_between(
     start_time: str,
     end_time: str,
-    date: Optional[str] = None,
+    date: str | None = None,
     formatted: bool = False,
     format_template: str = "{time_range}: {activity}",
-) -> Union[List[dict[str, Any]], str, None]:
+) -> list[dict[str, Any]] | str | None:
     """(异步) 获取指定时间范围内活动的便捷函数。"""
     return await ScheduleAPI.get_activities_between(start_time, end_time, date, formatted, format_template)
 
 
 async def get_monthly_plans(
-    target_month: Optional[str] = None,
-    random_count: Optional[int] = None,
+    target_month: str | None = None,
+    random_count: int | None = None,
     formatted: bool = False,
     format_template: str = "- {plan_text}",
-) -> Union[List[MonthlyPlan], str, None]:
+) -> list[MonthlyPlan] | str | None:
     """(异步) 获取月度计划的便捷函数。"""
     return await ScheduleAPI.get_monthly_plans(target_month, random_count, formatted, format_template)
 
 
-async def count_monthly_plans(target_month: Optional[str] = None) -> int:
+async def count_monthly_plans(target_month: str | None = None) -> int:
     """(异步) 获取月度计划总数的便捷函数。"""
     return await ScheduleAPI.count_monthly_plans(target_month)

@@ -9,7 +9,7 @@
 import json
 import os
 import threading
-from typing import Any, Dict  # noqa: UP035
+from typing import Any
 
 from src.common.logger import get_logger
 

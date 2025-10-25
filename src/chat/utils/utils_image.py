@@ -1,5 +1,5 @@
-import base64
 import asyncio
+import base64
 import hashlib
 import io
 import os
@@ -174,7 +174,7 @@ class ImageManager:
 
             # 3. 查询通用图片描述缓存（ImageDescriptions表）
             if cached_description := await self._get_description_from_db(image_hash, "emoji"):
-                logger.info(f"[缓存命中] 使用通用图片缓存(ImageDescriptions表)中的描述")
+                logger.info("[缓存命中] 使用通用图片缓存(ImageDescriptions表)中的描述")
                 refined_part = cached_description.split(" Keywords:")[0]
                 return f"[表情包：{refined_part}]"
 
@@ -185,7 +185,7 @@ class ImageManager:
             if not full_description:
                 logger.warning("未能通过新逻辑生成有效描述")
                 return "[表情包(描述生成失败)]"
-                
+
             # 4. (可选) 如果启用了“偷表情包”，则将图片和完整描述存入待注册区
             if global_config.emoji.steal_emoji:
                 logger.debug(f"偷取表情包功能已开启，保存待注册表情包: {image_hash}")
@@ -231,7 +231,7 @@ class ImageManager:
                 if existing_image and existing_image.description:
                     logger.debug(f"[缓存命中] 使用Images表中的图片描述: {existing_image.description[:50]}...")
                     return f"[图片：{existing_image.description}]"
-            
+
             # 3. 其次查询 ImageDescriptions 表缓存
             if cached_description := await self._get_description_from_db(image_hash, "image"):
                 logger.debug(f"[缓存命中] 使用ImageDescriptions表中的描述: {cached_description[:50]}...")
@@ -256,9 +256,9 @@ class ImageManager:
                         break  # 成功获取描述则跳出循环
                 except Exception as e:
                     logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
-                
+
                 if i < 2: # 如果不是最后一次，则等待1秒
-                    logger.warning(f"识图失败，将在1秒后重试...")
+                    logger.warning("识图失败，将在1秒后重试...")
                     await asyncio.sleep(1)
 
             if not description or not description.strip():
@@ -278,7 +278,7 @@ class ImageManager:
                     logger.debug(f"[数据库] 为现有图片记录补充描述: {image_hash[:8]}...")
                 # 注意：这里不创建新的Images记录，因为process_image会负责创建
                 await session.commit()
-            
+
             logger.info(f"新生成的图片描述已存入缓存 (Hash: {image_hash[:8]}...)")
 
             return f"[图片：{description}]"
@@ -330,7 +330,7 @@ class ImageManager:
                 # 使用linspace计算4个均匀分布的索引
                 indices = np.linspace(0, num_frames - 1, 4, dtype=int)
                 selected_frames = [all_frames[i] for i in indices]
-            
+
             logger.debug(f"GIF Frame Analysis: Total frames={num_frames}, Selected indices={indices if num_frames > 4 else list(range(num_frames))}")
             # --- 帧选择逻辑结束 ---
 

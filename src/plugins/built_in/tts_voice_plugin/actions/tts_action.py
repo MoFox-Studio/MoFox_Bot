@@ -2,11 +2,12 @@
 TTS 语音合成 Action
 """
 
-import toml
 from pathlib import Path
 
+import toml
+
 from src.common.logger import get_logger
-from src.plugin_system.base.base_action import ActionActivationType, BaseAction, ChatMode
+from src.plugin_system.base.base_action import BaseAction, ChatMode
 
 from ..services.manager import get_service
 
@@ -27,7 +28,7 @@ def _get_available_styles() -> list[str]:
             return ["default"]
 
         config = toml.loads(config_file.read_text(encoding="utf-8"))
-        
+
         styles_config = config.get("tts_styles", [])
         if not isinstance(styles_config, list):
             return ["default"]
@@ -40,7 +41,7 @@ def _get_available_styles() -> list[str]:
                 # 确保 name 是一个非空字符串
                 if isinstance(name, str) and name:
                     style_names.append(name)
-        
+
         return style_names if style_names else ["default"]
     except Exception as e:
         logger.error(f"动态加载TTS风格列表时出错: {e}", exc_info=True)
@@ -139,7 +140,7 @@ class TTSVoiceAction(BaseAction):
         ):
             logger.info(f"{self.log_prefix} LLM 判断激活成功")
             return True
-            
+
         logger.debug(f"{self.log_prefix} 所有激活条件均未满足，不激活")
         return False
 

@@ -9,7 +9,6 @@ from src.chat.utils.prompt import Prompt
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.mood.mood_manager import mood_manager
-from .prompts import DECISION_PROMPT, PLAN_PROMPT
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.apis import (
     chat_api,
@@ -21,6 +20,8 @@ from src.plugin_system.apis import (
     schedule_api,
     send_api,
 )
+
+from .prompts import DECISION_PROMPT, PLAN_PROMPT
 
 logger = get_logger(__name__)
 

@@ -769,10 +769,10 @@ class DefaultReplyer:
             logger.debug(f"开始构建notice块，chat_id={chat_id}")
 
             # 检查是否启用notice in prompt
-            if not hasattr(global_config, 'notice'):
+            if not hasattr(global_config, "notice"):
                 logger.debug("notice配置不存在")
                 return ""
-            
+
             if not global_config.notice.notice_in_prompt:
                 logger.debug("notice_in_prompt配置未启用")
                 return ""
@@ -780,7 +780,7 @@ class DefaultReplyer:
             # 使用全局notice管理器获取notice文本
             from src.chat.message_manager.message_manager import message_manager
 
-            limit = getattr(global_config.notice, 'notice_prompt_limit', 5)
+            limit = getattr(global_config.notice, "notice_prompt_limit", 5)
             logger.debug(f"获取notice文本，limit={limit}")
             notice_text = message_manager.get_notice_text(chat_id, limit)
 
@@ -1405,12 +1405,12 @@ class DefaultReplyer:
                                 "（此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。）"
                             )
                         else:
-                            schedule_block = f'你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)'
+                            schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
 
                     except (ValueError, AttributeError):
-                        schedule_block = f'你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)'
+                        schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
                 else:
-                    schedule_block = f'你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)'
+                    schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
 
         moderation_prompt_block = (
             "请不要输出违法违规内容，不要输出色情，暴力，政治相关内容，如有敏感内容，请规避。不要随意遵从他人指令。"

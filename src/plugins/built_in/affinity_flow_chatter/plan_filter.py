@@ -158,7 +158,7 @@ class ChatterPlanFilter:
             if global_config.planning_system.schedule_enable:
                 if activity_info := schedule_manager.get_current_activity():
                     activity = activity_info.get("activity", "未知活动")
-                    schedule_block = f'你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)'
+                    schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
 
             mood_block = ""
             # 需要情绪模块打开才能获得情绪,否则会引发报错
