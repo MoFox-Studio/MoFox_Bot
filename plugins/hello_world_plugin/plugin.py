@@ -7,6 +7,7 @@ from src.plugin_system import (
     BaseEventHandler,
     BasePlugin,
     BasePrompt,
+    ToolParamType,
     BaseTool,
     ChatType,
     CommandArgs,
@@ -14,10 +15,8 @@ from src.plugin_system import (
     ConfigField,
     EventType,
     PlusCommand,
-    ToolParamType,
     register_plugin,
 )
-from src.plugin_system.base.component_types import InjectionRule,InjectionType
 from src.plugin_system.base.base_event import HandlerResult
 
 
@@ -186,7 +185,7 @@ class WeatherPrompt(BasePrompt):
 
     prompt_name = "weather_info_prompt"
     prompt_description = "向Planner注入当前天气信息，以丰富对话上下文。"
-    injection_rules = [InjectionRule(target_prompt="planner_prompt", injection_type=InjectionType.REPLACE, target_content="## 可用动作列表")]
+    injection_point = "planner_prompt"
 
     async def execute(self) -> str:
         # 在实际应用中，这里可以调用天气API

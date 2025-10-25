@@ -130,19 +130,15 @@ class PromptManager:
             # 确保我们有有效的parameters实例
             params_for_injection = parameters or original_prompt.parameters
 
-            # 应用所有匹配的注入规则，获取修改后的模板
-            modified_template = await prompt_component_manager.apply_injections(
-                target_prompt_name=original_prompt.name,
-                original_template=original_prompt.template,
-                params=params_for_injection,
+            components_prefix = await prompt_component_manager.execute_components_for(
+                injection_point=original_prompt.name, params=params_for_injection
             )
-
-            # 如果模板被修改了，就创建一个新的临时Prompt实例
-            if modified_template != original_prompt.template:
-                logger.info(f"为'{name}'应用了Prompt注入规则")
+            if components_prefix:
+                logger.info(f"为'{name}'注入插件内容: \n{components_prefix}")
                 # 创建一个新的临时Prompt实例，不进行注册
+                new_template = f"{components_prefix}\n\n{original_prompt.template}"
                 temp_prompt = Prompt(
-                    template=modified_template,
+                    template=new_template,
                     name=original_prompt.name,
                     parameters=original_prompt.parameters,
                     should_register=False,  # 确保不重新注册
@@ -1083,12 +1079,12 @@ async def create_prompt_async(
 
     # 动态注入插件内容
     if name:
-        modified_template = await prompt_component_manager.apply_injections(
-            target_prompt_name=name, original_template=template, params=final_params
+        components_prefix = await prompt_component_manager.execute_components_for(
+            injection_point=name, params=final_params
         )
-        if modified_template != template:
-            logger.debug(f"为'{name}'应用了Prompt注入规则")
-            template = modified_template
+        if components_prefix:
+            logger.debug(f"为'{name}'注入插件内容: \n{components_prefix}")
+            template = f"{components_prefix}\n\n{template}"
 
     # 使用可能已修改的模板创建实例
     prompt = create_prompt(template, name, final_params)

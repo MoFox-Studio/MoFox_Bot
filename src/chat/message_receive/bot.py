@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import traceback
 from typing import Any
 
@@ -11,7 +12,7 @@ from src.chat.message_manager import message_manager
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.utils.prompt import create_prompt_async, global_prompt_manager
+from src.chat.utils.prompt import Prompt, global_prompt_manager, create_prompt_async
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -318,12 +319,12 @@ class ChatBot:
             else:
                 logger.debug("notice消息触发聊天流程（配置已开启）")
                 return False  # 返回False表示继续处理，触发聊天流程
-
+        
         # 兼容旧的notice判断方式
         if message.message_info.message_id == "notice":
             message.is_notify = True
             logger.info("旧格式notice消息")
-
+            
             # 同样根据配置决定
             if not global_config.notice.enable_notice_trigger_chat:
                 return True
@@ -476,18 +477,17 @@ class ChatBot:
             if notice_handled:
                 # notice消息已处理，需要先添加到message_manager再存储
                 try:
-                    import time
-
                     from src.common.data_models.database_data_model import DatabaseMessages
-
+                    import time
+                    
                     message_info = message.message_info
                     msg_user_info = getattr(message_info, "user_info", None)
                     stream_user_info = getattr(message.chat_stream, "user_info", None)
                     group_info = getattr(message.chat_stream, "group_info", None)
-
+                    
                     message_id = message_info.message_id or ""
                     message_time = message_info.time if message_info.time is not None else time.time()
-
+                    
                     user_id = ""
                     user_nickname = ""
                     user_cardname = None
@@ -502,16 +502,16 @@ class ChatBot:
                         user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
                         user_cardname = getattr(stream_user_info, "user_cardname", None)
                         user_platform = getattr(stream_user_info, "platform", "") or ""
-
+                    
                     chat_user_id = str(getattr(stream_user_info, "user_id", "") or "")
                     chat_user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
                     chat_user_cardname = getattr(stream_user_info, "user_cardname", None)
                     chat_user_platform = getattr(stream_user_info, "platform", "") or ""
-
+                    
                     group_id = getattr(group_info, "group_id", None)
                     group_name = getattr(group_info, "group_name", None)
                     group_platform = getattr(group_info, "platform", None)
-
+                    
                     # 构建additional_config，确保包含is_notice标志
                     import json
                     additional_config_dict = {
@@ -519,9 +519,9 @@ class ChatBot:
                         "notice_type": message.notice_type or "unknown",
                         "is_public_notice": bool(message.is_public_notice),
                     }
-
+                    
                     # 如果message_info有additional_config，合并进来
-                    if hasattr(message_info, "additional_config") and message_info.additional_config:
+                    if hasattr(message_info, 'additional_config') and message_info.additional_config:
                         if isinstance(message_info.additional_config, dict):
                             additional_config_dict.update(message_info.additional_config)
                         elif isinstance(message_info.additional_config, str):
@@ -530,9 +530,9 @@ class ChatBot:
                                 additional_config_dict.update(existing_config)
                             except Exception:
                                 pass
-
+                    
                     additional_config_json = json.dumps(additional_config_dict)
-
+                    
                     # 创建数据库消息对象
                     db_message = DatabaseMessages(
                         message_id=message_id,
@@ -560,14 +560,14 @@ class ChatBot:
                         chat_info_group_name=group_name,
                         chat_info_group_platform=group_platform,
                     )
-
+                    
                     # 添加到message_manager（这会将notice添加到全局notice管理器）
                     await message_manager.add_message(message.chat_stream.stream_id, db_message)
                     logger.info(f"✅ Notice消息已添加到message_manager: type={message.notice_type}, stream={message.chat_stream.stream_id}")
-
+                    
                 except Exception as e:
                     logger.error(f"Notice消息添加到message_manager失败: {e}", exc_info=True)
-
+                
                 # 存储后直接返回
                 await MessageStorage.store_message(message, chat)
                 logger.debug("notice消息已存储，跳过后续处理")
@@ -618,9 +618,8 @@ class ChatBot:
                 template_group_name = None
 
             async def preprocess():
-                import time
-
                 from src.common.data_models.database_data_model import DatabaseMessages
+                import time
 
                 message_info = message.message_info
                 msg_user_info = getattr(message_info, "user_info", None)

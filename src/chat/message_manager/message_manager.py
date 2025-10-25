@@ -7,7 +7,7 @@ import asyncio
 import random
 import time
 from collections import defaultdict, deque
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from src.chat.chatter_manager import ChatterManager
 from src.chat.message_receive.chat_stream import ChatStream
@@ -19,7 +19,9 @@ from src.config.config import global_config
 from src.plugin_system.apis.chat_api import get_chat_manager
 
 from .distribution_manager import stream_loop_manager
-from .global_notice_manager import NoticeScope, global_notice_manager
+from .sleep_system.state_manager import SleepState, sleep_state_manager
+from .global_notice_manager import global_notice_manager, NoticeScope
+
 
 if TYPE_CHECKING:
     pass
@@ -147,6 +149,13 @@ class MessageManager:
 
     async def add_message(self, stream_id: str, message: DatabaseMessages):
         """添加消息到指定聊天流"""
+        # 在消息处理的最前端检查睡眠状态
+        current_sleep_state = sleep_state_manager.get_current_state()
+        if current_sleep_state == SleepState.SLEEPING:
+            logger.info(f"处于 {current_sleep_state.name} 状态，消息被拦截。")
+            return  # 直接返回，不处理消息
+
+        # TODO: 在这里为 WOKEN_UP_ANGRY 等未来状态添加特殊处理逻辑
 
         try:
             # 检查是否为notice消息
@@ -154,7 +163,7 @@ class MessageManager:
                 # Notice消息处理 - 添加到全局管理器
                 logger.info(f"📢 检测到notice消息: message_id={message.message_id}, is_notify={message.is_notify}, notice_type={getattr(message, 'notice_type', None)}")
                 await self._handle_notice_message(stream_id, message)
-
+                
                 # 根据配置决定是否继续处理（触发聊天流程）
                 if not global_config.notice.enable_notice_trigger_chat:
                     logger.info(f"根据配置，流 {stream_id} 的Notice消息将被忽略，不触发聊天流程。")
@@ -657,11 +666,11 @@ class MessageManager:
         """检查消息是否为notice类型"""
         try:
             # 首先检查消息的is_notify字段
-            if hasattr(message, "is_notify") and message.is_notify:
+            if hasattr(message, 'is_notify') and message.is_notify:
                 return True
 
             # 检查消息的附加配置
-            if hasattr(message, "additional_config") and message.additional_config:
+            if hasattr(message, 'additional_config') and message.additional_config:
                 if isinstance(message.additional_config, dict):
                     return message.additional_config.get("is_notice", False)
                 elif isinstance(message.additional_config, str):
@@ -707,7 +716,7 @@ class MessageManager:
         """
         try:
             # 检查附加配置中的公共notice标志
-            if hasattr(message, "additional_config") and message.additional_config:
+            if hasattr(message, 'additional_config') and message.additional_config:
                 if isinstance(message.additional_config, dict):
                     is_public = message.additional_config.get("is_public_notice", False)
                 elif isinstance(message.additional_config, str):
@@ -728,10 +737,10 @@ class MessageManager:
             logger.debug(f"确定notice作用域失败: {e}")
             return NoticeScope.STREAM
 
-    def _get_notice_type(self, message: DatabaseMessages) -> str | None:
+    def _get_notice_type(self, message: DatabaseMessages) -> Optional[str]:
         """获取notice类型"""
         try:
-            if hasattr(message, "additional_config") and message.additional_config:
+            if hasattr(message, 'additional_config') and message.additional_config:
                 if isinstance(message.additional_config, dict):
                     return message.additional_config.get("notice_type")
                 elif isinstance(message.additional_config, str):
@@ -772,7 +781,7 @@ class MessageManager:
             logger.error(f"获取notice文本失败: {e}")
             return ""
 
-    def clear_notices(self, stream_id: str | None = None, notice_type: str | None = None) -> int:
+    def clear_notices(self, stream_id: Optional[str] = None, notice_type: Optional[str] = None) -> int:
         """清理notice消息"""
         try:
             return self.notice_manager.clear_notices(stream_id, notice_type)
@@ -780,7 +789,7 @@ class MessageManager:
             logger.error(f"清理notice失败: {e}")
             return 0
 
-    def get_notice_stats(self) -> dict[str, Any]:
+    def get_notice_stats(self) -> Dict[str, Any]:
         """获取notice管理器统计信息"""
         try:
             return self.notice_manager.get_stats()

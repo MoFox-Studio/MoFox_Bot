@@ -99,21 +99,6 @@ class MessageStorage:
             # 将priority_info字典序列化为JSON字符串，以便存储到数据库的Text字段
             priority_info_json = orjson.dumps(priority_info).decode("utf-8") if priority_info else None
 
-            # 准备additional_config，包含format_info和其他配置
-            additional_config_data = {}
-
-            # 保存format_info到additional_config中
-            if hasattr(message.message_info, 'format_info') and message.message_info.format_info:
-                format_info_dict = message.message_info.format_info.to_dict()
-                additional_config_data["format_info"] = format_info_dict
-
-            # 合并adapter传递的其他additional_config
-            if hasattr(message.message_info, 'additional_config') and message.message_info.additional_config:
-                additional_config_data.update(message.message_info.additional_config)
-
-            # 序列化为JSON字符串以便存储
-            additional_config_json = orjson.dumps(additional_config_data).decode("utf-8") if additional_config_data else None
-
             # 获取数据库会话
 
             new_message = Messages(
@@ -149,7 +134,6 @@ class MessageStorage:
                 is_command=is_command,
                 key_words=key_words,
                 key_words_lite=key_words_lite,
-                additional_config=additional_config_json,
             )
             async with get_db_session() as session:
                 session.add(new_message)
@@ -222,7 +206,7 @@ class MessageStorage:
     async def replace_image_descriptions(text: str) -> str:
         """异步地将文本中的所有[图片：描述]标记替换为[picid:image_id]"""
         pattern = r"\[图片：([^\]]+)\]"
-
+        
         # 如果没有匹配项，提前返回以提高效率
         if not re.search(pattern, text):
             return text
@@ -233,7 +217,7 @@ class MessageStorage:
         for match in re.finditer(pattern, text):
             # 添加上一个匹配到当前匹配之间的文本
             new_text.append(text[last_end:match.start()])
-
+            
             description = match.group(1).strip()
             replacement = match.group(0) # 默认情况下，替换为原始匹配文本
             try:
@@ -260,7 +244,7 @@ class MessageStorage:
 
         # 添加最后一个匹配到字符串末尾的文本
         new_text.append(text[last_end:])
-
+        
         return "".join(new_text)
 
     @staticmethod

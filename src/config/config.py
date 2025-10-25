@@ -40,6 +40,7 @@ from src.config.official_configs import (
     ProactiveThinkingConfig,
     ResponsePostProcessConfig,
     ResponseSplitterConfig,
+    SleepSystemConfig,
     ToolConfig,
     VideoAnalysisConfig,
     VoiceConfig,
@@ -409,6 +410,7 @@ class Config(ValidatedConfigBase):
         default_factory=lambda: DependencyManagementConfig(), description="依赖管理配置"
     )
     web_search: WebSearchConfig = Field(default_factory=lambda: WebSearchConfig(), description="网络搜索配置")
+    sleep_system: SleepSystemConfig = Field(default_factory=lambda: SleepSystemConfig(), description="睡眠系统配置")
     planning_system: PlanningSystemConfig = Field(
         default_factory=lambda: PlanningSystemConfig(), description="规划系统配置"
     )

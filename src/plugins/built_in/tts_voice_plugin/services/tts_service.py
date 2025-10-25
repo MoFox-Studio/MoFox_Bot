@@ -80,21 +80,34 @@ class TTSService:
                 "prompt_language": style_cfg.get("prompt_language", "zh"),
                 "gpt_weights": style_cfg.get("gpt_weights", default_gpt_weights),
                 "sovits_weights": style_cfg.get("sovits_weights", default_sovits_weights),
-                "speed_factor": style_cfg.get("speed_factor"),  # 读取独立的语速配置
+                "speed_factor": style_cfg.get("speed_factor"),
+                "text_language": style_cfg.get("text_language", "auto"),  # 新增：读取文本语言模式
             }
         return styles
 
-    # ... [其他方法保持不变] ...
-    def _detect_language(self, text: str) -> str:
-        chinese_chars = len(re.findall(r"[\u4e00-\u9fff]", text))
-        english_chars = len(re.findall(r"[a-zA-Z]", text))
+    def _determine_final_language(self, text: str, mode: str) -> str:
+        """根据配置的语言策略和文本内容，决定最终发送给API的语言代码"""
+        # 如果策略是具体的语言（如 all_zh, ja），直接使用
+        if mode not in ["auto", "auto_yue"]:
+            return mode
+
+        # 对于 auto 和 auto_yue 策略，进行内容检测
+        # 优先检测粤语
+        if mode == "auto_yue":
+            cantonese_keywords = ["嘅", "喺", "咗", "唔", "係", "啲", "咩", "乜", "喂"]
+            if any(keyword in text for keyword in cantonese_keywords):
+                logger.info("在 auto_yue 模式下检测到粤语关键词，最终语言: yue")
+                return "yue"
+
+        # 检测日语（简单启发式规则）
         japanese_chars = len(re.findall(r"[\u3040-\u309f\u30a0-\u30ff]", text))
-        total_chars = chinese_chars + english_chars + japanese_chars
-        if total_chars == 0: return "zh"
-        if chinese_chars / total_chars > 0.3: return "zh"
-        elif japanese_chars / total_chars > 0.3: return "ja"
-        elif english_chars / total_chars > 0.8: return "en"
-        else: return "zh"
+        if japanese_chars > 5 and japanese_chars > len(re.findall(r"[\u4e00-\u9fff]", text)) * 0.5:
+            logger.info("检测到日语字符，最终语言: ja")
+            return "ja"
+
+        # 默认回退到中文
+        logger.info(f"在 {mode} 模式下未检测到特定语言，默认回退到: zh")
+        return "zh"
 
     def _clean_text_for_tts(self, text: str) -> str:
         # 1. 基本清理
@@ -259,7 +272,7 @@ class TTSService:
             logger.error(f"应用空间效果时出错: {e}", exc_info=True)
             return audio_data  # 如果出错，返回原始音频
 
-    async def generate_voice(self, text: str, style_hint: str = "default") -> str | None:
+    async def generate_voice(self, text: str, style_hint: str = "default", language_hint: str | None = None) -> str | None:
         self._load_config()
 
         if not self.tts_styles:
@@ -282,11 +295,21 @@ class TTSService:
         clean_text = self._clean_text_for_tts(text)
         if not clean_text: return None
 
-        text_language = self._detect_language(clean_text)
-        logger.info(f"开始TTS语音合成，文本：{clean_text[:50]}..., 风格：{style}")
+        # 语言决策流程：
+        # 1. 优先使用决策模型直接指定的 language_hint (最高优先级)
+        if language_hint:
+            final_language = language_hint
+            logger.info(f"使用决策模型指定的语言: {final_language}")
+        else:
+            # 2. 如果模型未指定，则使用风格配置的 language_policy
+            language_policy = server_config.get("text_language", "auto")
+            final_language = self._determine_final_language(clean_text, language_policy)
+            logger.info(f"决策模型未指定语言，使用策略 '{language_policy}' -> 最终语言: {final_language}")
+
+        logger.info(f"开始TTS语音合成，文本：{clean_text[:50]}..., 风格：{style}, 最终语言: {final_language}")
 
         audio_data = await self._call_tts_api(
-            server_config=server_config, text=clean_text, text_language=text_language,
+            server_config=server_config, text=clean_text, text_language=final_language,
             refer_wav_path=server_config.get("refer_wav_path"),
             prompt_text=server_config.get("prompt_text"),
             prompt_language=server_config.get("prompt_language"),

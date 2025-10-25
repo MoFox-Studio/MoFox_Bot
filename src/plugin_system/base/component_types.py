@@ -2,38 +2,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-
-class InjectionType(Enum):
-    """Prompt注入类型枚举"""
-
-    PREPEND = "prepend"  # 在开头添加
-    APPEND = "append"  # 在末尾添加
-    REPLACE = "replace"  # 替换指定内容
-    REMOVE = "remove"  # 删除指定内容
-    INSERT_AFTER = "insert_after"  # 在指定内容之后插入
-
-    def __str__(self) -> str:
-        return self.value
-
-
-@dataclass
-class InjectionRule:
-    """Prompt注入规则"""
-
-    target_prompt: str  # 目标Prompt的名称
-    injection_type: InjectionType = InjectionType.PREPEND  # 注入类型
-    priority: int = 100  # 优先级，数字越小越先执行
-    target_content: str | None = None  # 用于REPLACE、REMOVE和INSERT_AFTER操作的目标内容（支持正则表达式）
-
-    def __post_init__(self):
-        if self.injection_type in [
-            InjectionType.REPLACE,
-            InjectionType.REMOVE,
-            InjectionType.INSERT_AFTER,
-        ] and self.target_content is None:
-            raise ValueError(f"'{self.injection_type.value}'类型的注入规则必须提供 'target_content'。")
-
-
 from maim_message import Seg
 
 from src.llm_models.payload_content.tool_option import ToolCall as ToolCall
@@ -166,7 +134,7 @@ class ComponentInfo:
 @dataclass
 class ActionInfo(ComponentInfo):
     """动作组件信息
-
+    
     注意：激活类型相关字段已废弃，推荐使用 Action 类的 go_activate() 方法来自定义激活逻辑。
     这些字段将继续保留以提供向后兼容性，BaseAction.go_activate() 的默认实现会使用这些字段。
     """
@@ -303,29 +271,12 @@ class EventInfo(ComponentInfo):
 class PromptInfo(ComponentInfo):
     """Prompt组件信息"""
 
-    injection_rules: list[InjectionRule] = field(default_factory=list)
-    """定义此组件如何注入到其他Prompt中"""
-
-    # 旧的injection_point，用于向后兼容
-    injection_point: str | list[str] | None = None
+    injection_point: str | list[str] = ""
+    """要注入的目标Prompt名称或列表"""
 
     def __post_init__(self):
         super().__post_init__()
         self.component_type = ComponentType.PROMPT
-
-        # 向后兼容逻辑：如果定义了旧的 injection_point，则自动转换为新的 injection_rules
-        if self.injection_point:
-            if not self.injection_rules:  # 仅当rules为空时转换
-                points = []
-                if isinstance(self.injection_point, str):
-                    points.append(self.injection_point)
-                elif isinstance(self.injection_point, list):
-                    points = self.injection_point
-
-                for point in points:
-                    self.injection_rules.append(InjectionRule(target_prompt=point))
-            # 转换后可以清空旧字段，避免混淆
-            self.injection_point = None
 
 
 @dataclass
@@ -341,7 +292,7 @@ class PluginInfo:
     is_built_in: bool = False  # 是否为内置插件
     components: list[ComponentInfo] = field(default_factory=list)  # 包含的组件列表
     dependencies: list[str] = field(default_factory=list)  # 依赖的其他插件
-    python_dependencies: list[str | PythonDependency] = field(default_factory=list)  # Python包依赖
+    python_dependencies: list[PythonDependency] = field(default_factory=list)  # Python包依赖
     config_file: str = ""  # 配置文件路径
     metadata: dict[str, Any] = field(default_factory=dict)  # 额外元数据
     # 新增：manifest相关信息

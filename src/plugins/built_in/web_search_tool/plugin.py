@@ -5,7 +5,7 @@ Web Search Tool Plugin
 """
 
 from src.common.logger import get_logger
-from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, register_plugin
+from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, PythonDependency, register_plugin
 from src.plugin_system.apis import config_api
 
 from .tools.url_parser import URLParserTool
@@ -42,9 +42,9 @@ class WEBSEARCHPLUGIN(BasePlugin):
             from .engines.bing_engine import BingSearchEngine
             from .engines.ddg_engine import DDGSearchEngine
             from .engines.exa_engine import ExaSearchEngine
-            from .engines.metaso_engine import MetasoSearchEngine
             from .engines.searxng_engine import SearXNGSearchEngine
             from .engines.tavily_engine import TavilySearchEngine
+            from .engines.metaso_engine import MetasoSearchEngine
 
             # 实例化所有搜索引擎，这会触发API密钥管理器的初始化
             exa_engine = ExaSearchEngine()
@@ -53,7 +53,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
             bing_engine = BingSearchEngine()
             searxng_engine = SearXNGSearchEngine()
             metaso_engine = MetasoSearchEngine()
-
+ 
              # 报告每个引擎的状态
             engines_status = {
                 "Exa": exa_engine.is_available(),
@@ -74,6 +74,29 @@ class WEBSEARCHPLUGIN(BasePlugin):
 
         except Exception as e:
             logger.error(f"❌ 搜索引擎初始化失败: {e}", exc_info=True)
+
+    # Python包依赖列表
+    python_dependencies: list[PythonDependency] = [  # noqa: RUF012
+        PythonDependency(package_name="asyncddgs", description="异步DuckDuckGo搜索库", optional=False),
+        PythonDependency(
+            package_name="exa_py",
+            description="Exa搜索API客户端库",
+            optional=True,  # 如果没有API密钥，这个是可选的
+        ),
+        PythonDependency(
+            package_name="tavily",
+            install_name="tavily-python",  # 安装时使用这个名称
+            description="Tavily搜索API客户端库",
+            optional=True,  # 如果没有API密钥，这个是可选的
+        ),
+        PythonDependency(
+            package_name="httpx",
+            version=">=0.20.0",
+            install_name="httpx[socks]",  # 安装时使用这个名称（包含可选依赖）
+            description="支持SOCKS代理的HTTP客户端库",
+            optional=False,
+        ),
+    ]
     config_file_name: str = "config.toml"  # 配置文件名
 
     # 配置节描述
