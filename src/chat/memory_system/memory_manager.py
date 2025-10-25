@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from src.chat.memory_system.memory_chunk import MemoryChunk, MemoryType, MessageCollection
-from src.chat.memory_system.memory_system import MemorySystem, initialize_memory_system
+from src.chat.memory_system.memory_chunk import MemoryChunk, MemoryType
+from src.chat.memory_system.memory_system import MemorySystem
 from src.chat.memory_system.message_collection_processor import MessageCollectionProcessor
 from src.chat.memory_system.message_collection_storage import MessageCollectionStorage
 from src.common.logger import get_logger
@@ -64,14 +64,9 @@ class MemoryManager:
 
             logger.info("正在初始化记忆系统...")
 
-            # 获取LLM模型
-            from src.config.config import model_config
-            from src.llm_models.utils_model import LLMRequest
-
-            llm_model = LLMRequest(model_set=model_config.model_task_config.utils, request_type="memory")
-
             # 初始化记忆系统
-            self.memory_system = await initialize_memory_system(llm_model)
+            from src.chat.memory_system.memory_system import get_memory_system
+            self.memory_system = get_memory_system()
 
             # 初始化消息集合系统
             self.message_collection_storage = MessageCollectionStorage()
@@ -499,60 +494,6 @@ class MemoryManager:
         if len(text) <= max_length:
             return text
         return text[: max_length - 1] + "…"
-
-    async def get_relevant_message_collection(self, query_text: str, n_results: int = 3) -> list[MessageCollection]:
-        """获取相关的消息集合列表"""
-        if not self.is_initialized or not self.message_collection_storage:
-            return []
-
-        try:
-            return await self.message_collection_storage.get_relevant_collection(query_text, n_results=n_results)
-        except Exception as e:
-            logger.error(f"get_relevant_message_collection 失败: {e}")
-            return []
-
-    async def get_message_collection_context(self, query_text: str, chat_id: str) -> str:
-        """获取消息集合上下文，用于添加到 prompt 中。优先展示当前聊天的上下文。"""
-        if not self.is_initialized or not self.message_collection_storage:
-            return ""
-
-        try:
-            collections = await self.get_relevant_message_collection(query_text, n_results=3)
-            if not collections:
-                return ""
-
-            # 根据传入的 chat_id 对集合进行排序
-            collections.sort(key=lambda c: c.chat_id == chat_id, reverse=True)
-
-            context_parts = []
-            for collection in collections:
-                if not collection.combined_text:
-                    continue
-
-                header = "## 📝 相关对话上下文\n"
-                if collection.chat_id == chat_id:
-                    # 匹配的ID，使用更明显的标识
-                    context_parts.append(
-                        f"{header} [🔥 来自当前聊天的上下文]\n```\n{collection.combined_text}\n```"
-                    )
-                else:
-                    # 不匹配的ID
-                    context_parts.append(
-                        f"{header} [💡 来自其他聊天的相关上下文 (ID: {collection.chat_id})]\n```\n{collection.combined_text}\n```"
-                    )
-
-            if not context_parts:
-                return ""
-
-            # 格式化消息集合为 prompt 上下文
-            final_context = "\n\n---\n\n".join(context_parts) + "\n\n---"
-            
-            logger.info(f"🔗 为查询 '{query_text[:50]}...' 在聊天 '{chat_id}' 中找到 {len(collections)} 个相关消息集合上下文")
-            return f"\n{final_context}\n"
-
-        except Exception as e:
-            logger.error(f"get_message_collection_context 失败: {e}")
-            return ""
 
     async def shutdown(self):
         """关闭增强记忆系统"""

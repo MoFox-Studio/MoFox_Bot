@@ -131,6 +131,46 @@ class MessageCollectionStorage:
             logger.error(f"检索相关消息集合失败: {e}", exc_info=True)
             return []
 
+    async def get_message_collection_context(self, query_text: str, chat_id: str) -> str:
+        """获取消息集合上下文，用于添加到 prompt 中。优先展示当前聊天的上下文。"""
+        try:
+            collections = await self.get_relevant_collection(query_text, n_results=5)
+            if not collections:
+                return ""
+
+            # 根据传入的 chat_id 对集合进行排序
+            collections.sort(key=lambda c: c.chat_id == chat_id, reverse=True)
+
+            context_parts = []
+            for collection in collections:
+                if not collection.combined_text:
+                    continue
+
+                header = "## 📝 相关对话上下文\n"
+                if collection.chat_id == chat_id:
+                    # 匹配的ID，使用更明显的标识
+                    context_parts.append(
+                        f"{header} [🔥 来自当前聊天的上下文]\n```\n{collection.combined_text}\n```"
+                    )
+                else:
+                    # 不匹配的ID
+                    context_parts.append(
+                        f"{header} [💡 来自其他聊天的相关上下文 (ID: {collection.chat_id})]\n```\n{collection.combined_text}\n```"
+                    )
+
+            if not context_parts:
+                return ""
+
+            # 格式化消息集合为 prompt 上下文
+            final_context = "\n\n---\n\n".join(context_parts) + "\n\n---"
+            
+            logger.info(f"🔗 为查询 '{query_text[:50]}...' 在聊天 '{chat_id}' 中找到 {len(collections)} 个相关消息集合上下文")
+            return f"\n{final_context}\n"
+
+        except Exception as e:
+            logger.error(f"get_message_collection_context 失败: {e}")
+            return ""
+
     def clear_all(self):
         """清空所有消息集合"""
         try:

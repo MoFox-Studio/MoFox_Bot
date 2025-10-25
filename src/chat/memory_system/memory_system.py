@@ -18,7 +18,6 @@ import orjson
 from src.chat.memory_system.memory_builder import MemoryBuilder, MemoryExtractionError
 from src.chat.memory_system.memory_chunk import MemoryChunk
 from src.chat.memory_system.memory_fusion import MemoryFusionEngine
-from src.chat.memory_system.memory_manager import MemoryManager
 from src.chat.memory_system.memory_query_planner import MemoryQueryPlanner
 from src.chat.memory_system.message_collection_storage import MessageCollectionStorage
 
@@ -147,7 +146,6 @@ class MemorySystem:
         self.message_collection_storage: MessageCollectionStorage | None = None
         self.query_planner: MemoryQueryPlanner | None = None
         self.forgetting_engine: MemoryForgettingEngine | None = None
-        self.memory_manager: MemoryManager | None = None
 
         # LLM模型
         self.value_assessment_model: LLMRequest | None = None
@@ -173,10 +171,6 @@ class MemorySystem:
     async def initialize(self):
         """异步初始化记忆系统"""
         try:
-            # 初始化 MemoryManager
-            self.memory_manager = MemoryManager()
-            await self.memory_manager.initialize()
-
             # 初始化LLM模型
             fallback_task = getattr(self.llm_model, "model_for_task", None) if self.llm_model else None
 
@@ -942,13 +936,10 @@ class MemorySystem:
 
     async def _retrieve_instant_memories(self, query_text: str, chat_id: str | None) -> list[MemoryChunk]:
         """检索瞬时记忆（消息集合）并转换为MemoryChunk"""
-        if not self.memory_manager:
+        if not self.message_collection_storage or not chat_id:
             return []
 
-        if not chat_id:
-            return []
-
-        context_text = await self.memory_manager.get_message_collection_context(query_text, chat_id=chat_id)
+        context_text = await self.message_collection_storage.get_message_collection_context(query_text, chat_id=chat_id)
         if not context_text:
             return []
 
