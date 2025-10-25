@@ -1,13 +1,14 @@
-import logging
 import random
 from typing import Any
 
+from src.common.logger import get_logger
+
+# 修正导入路径，让Pylance不再抱怨
 from src.plugin_system import (
     BaseAction,
     BaseEventHandler,
     BasePlugin,
     BasePrompt,
-    ToolParamType,
     BaseTool,
     ChatType,
     CommandArgs,
@@ -15,10 +16,12 @@ from src.plugin_system import (
     ConfigField,
     EventType,
     PlusCommand,
+    ToolParamType,
     register_plugin,
 )
 from src.plugin_system.base.base_event import HandlerResult
 
+logger = get_logger("hello_world_plugin")
 
 class StartupMessageHandler(BaseEventHandler):
     """启动时打印消息的事件处理器。"""
@@ -28,7 +31,7 @@ class StartupMessageHandler(BaseEventHandler):
     init_subscribe = [EventType.ON_START]
 
     async def execute(self, params: dict) -> HandlerResult:
-        logging.info("🎉 Hello World 插件已启动，准备就绪！")
+        logger.info("🎉 Hello World 插件已启动，准备就绪！")
         return HandlerResult(success=True, continue_process=True)
 
 
