@@ -1,6 +1,5 @@
 import os
 import re
-import time
 import traceback
 from typing import Any
 
@@ -12,7 +11,7 @@ from src.chat.message_manager import message_manager
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.utils.prompt import Prompt, global_prompt_manager, create_prompt_async
+from src.chat.utils.prompt import create_prompt_async, global_prompt_manager
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
 from src.config.config import global_config
