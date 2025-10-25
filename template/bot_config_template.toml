@@ -1,5 +1,5 @@
 [inner]
-version = "7.4.7"
+version = "7.4.8"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -289,6 +289,8 @@ dormant_threshold_days = 90 # 休眠状态判定天数（超过此天数未访�
 enable_vector_memory_storage = true # 启用Vector DB存储
 enable_llm_instant_memory = true # 启用基于LLM的瞬时记忆
 enable_vector_instant_memory = true # 启用基于向量的瞬时记忆
+instant_memory_max_collections = 100 # 瞬时记忆最大集合数
+instant_memory_retention_hours = 0 # 瞬时记忆保留时间（小时），0表示不基于时间清理
 
 # Vector DB配置
 vector_db_similarity_threshold = 0.5 # Vector DB相似度阈值 (推荐范围: 0.5-0.6, 过高会导致检索不到结果)

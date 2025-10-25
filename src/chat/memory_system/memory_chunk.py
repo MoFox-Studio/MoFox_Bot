@@ -454,7 +454,7 @@ class MemoryChunk:
 
     def to_json(self) -> str:
         """转换为JSON字符串"""
-        return orjson.dumps(self.to_dict(), ensure_ascii=False).decode("utf-8")
+        return orjson.dumps(self.to_dict()).decode("utf-8")
 
     @classmethod
     def from_json(cls, json_str: str) -> "MemoryChunk":
@@ -610,3 +610,38 @@ def create_memory_chunk(
     chunk = MemoryChunk(metadata=metadata, content=content, memory_type=memory_type, **kwargs)
 
     return chunk
+
+
+@dataclass
+class MessageCollection:
+    """消息集合数据结构"""
+
+    collection_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    chat_id: str | None = None  # 聊天ID（群聊或私聊）
+    messages: list[str] = field(default_factory=list)
+    combined_text: str = ""
+    created_at: float = field(default_factory=time.time)
+    embedding: list[float] | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """转换为字典格式"""
+        return {
+            "collection_id": self.collection_id,
+            "chat_id": self.chat_id,
+            "messages": self.messages,
+            "combined_text": self.combined_text,
+            "created_at": self.created_at,
+            "embedding": self.embedding,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "MessageCollection":
+        """从字典创建实例"""
+        return cls(
+            collection_id=data.get("collection_id", str(uuid.uuid4())),
+            chat_id=data.get("chat_id"),
+            messages=data.get("messages", []),
+            combined_text=data.get("combined_text", ""),
+            created_at=data.get("created_at", time.time()),
+            embedding=data.get("embedding"),
+        )

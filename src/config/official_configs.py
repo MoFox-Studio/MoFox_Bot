@@ -315,6 +315,10 @@ class MemoryConfig(ValidatedConfigBase):
     enable_vector_memory_storage: bool = Field(default=True, description="启用Vector DB记忆存储")
     enable_llm_instant_memory: bool = Field(default=True, description="启用基于LLM的瞬时记忆")
     enable_vector_instant_memory: bool = Field(default=True, description="启用基于向量的瞬时记忆")
+    instant_memory_max_collections: int = Field(default=100, ge=1, description="瞬时记忆最大集合数")
+    instant_memory_retention_hours: int = Field(
+        default=0, ge=0, description="瞬时记忆保留时间（小时），0表示不基于时间清理"
+    )
 
     # Vector DB配置
     vector_db_similarity_threshold: float = Field(

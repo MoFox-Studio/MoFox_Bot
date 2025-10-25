@@ -7,8 +7,10 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from src.chat.memory_system.memory_chunk import MemoryChunk, MemoryType
+from src.chat.memory_system.memory_chunk import MemoryChunk, MemoryType, MessageCollection
 from src.chat.memory_system.memory_system import MemorySystem, initialize_memory_system
+from src.chat.memory_system.message_collection_processor import MessageCollectionProcessor
+from src.chat.memory_system.message_collection_storage import MessageCollectionStorage
 from src.common.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,6 +35,8 @@ class MemoryManager:
 
     def __init__(self):
         self.memory_system: MemorySystem | None = None
+        self.message_collection_storage: MessageCollectionStorage | None = None
+        self.message_collection_processor: MessageCollectionProcessor | None = None
         self.is_initialized = False
         self.user_cache = {}  # 用户记忆缓存
 
@@ -69,6 +73,10 @@ class MemoryManager:
             # 初始化记忆系统
             self.memory_system = await initialize_memory_system(llm_model)
 
+            # 初始化消息集合系统
+            self.message_collection_storage = MessageCollectionStorage()
+            self.message_collection_processor = MessageCollectionProcessor(self.message_collection_storage)
+
             self.is_initialized = True
             logger.info(" 记忆系统初始化完成")
 
@@ -76,6 +84,8 @@ class MemoryManager:
             logger.error(f"记忆系统初始化失败: {e}")
             # 如果系统初始化失败，创建一个空的管理器避免系统崩溃
             self.memory_system = None
+            self.message_collection_storage = None
+            self.message_collection_processor = None
             self.is_initialized = True  # 标记为已初始化但系统不可用
 
     def get_hippocampus(self):
@@ -235,6 +245,11 @@ class MemoryManager:
             return []
 
         try:
+            # 将消息添加到消息集合处理器
+            chat_id = context.get("chat_id")
+            if self.message_collection_processor and chat_id:
+                await self.message_collection_processor.add_message(conversation_text, chat_id)
+
             payload_context = dict(context or {})
             payload_context.setdefault("conversation_text", conversation_text)
             if timestamp is not None:
@@ -484,6 +499,60 @@ class MemoryManager:
         if len(text) <= max_length:
             return text
         return text[: max_length - 1] + "…"
+
+    async def get_relevant_message_collection(self, query_text: str, n_results: int = 3) -> list[MessageCollection]:
+        """获取相关的消息集合列表"""
+        if not self.is_initialized or not self.message_collection_storage:
+            return []
+
+        try:
+            return await self.message_collection_storage.get_relevant_collection(query_text, n_results=n_results)
+        except Exception as e:
+            logger.error(f"get_relevant_message_collection 失败: {e}")
+            return []
+
+    async def get_message_collection_context(self, query_text: str, chat_id: str) -> str:
+        """获取消息集合上下文，用于添加到 prompt 中。优先展示当前聊天的上下文。"""
+        if not self.is_initialized or not self.message_collection_storage:
+            return ""
+
+        try:
+            collections = await self.get_relevant_message_collection(query_text, n_results=3)
+            if not collections:
+                return ""
+
+            # 根据传入的 chat_id 对集合进行排序
+            collections.sort(key=lambda c: c.chat_id == chat_id, reverse=True)
+
+            context_parts = []
+            for collection in collections:
+                if not collection.combined_text:
+                    continue
+
+                header = "## 📝 相关对话上下文\n"
+                if collection.chat_id == chat_id:
+                    # 匹配的ID，使用更明显的标识
+                    context_parts.append(
+                        f"{header} [🔥 来自当前聊天的上下文]\n```\n{collection.combined_text}\n```"
+                    )
+                else:
+                    # 不匹配的ID
+                    context_parts.append(
+                        f"{header} [💡 来自其他聊天的相关上下文 (ID: {collection.chat_id})]\n```\n{collection.combined_text}\n```"
+                    )
+
+            if not context_parts:
+                return ""
+
+            # 格式化消息集合为 prompt 上下文
+            final_context = "\n\n---\n\n".join(context_parts) + "\n\n---"
+            
+            logger.info(f"🔗 为查询 '{query_text[:50]}...' 在聊天 '{chat_id}' 中找到 {len(collections)} 个相关消息集合上下文")
+            return f"\n{final_context}\n"
+
+        except Exception as e:
+            logger.error(f"get_message_collection_context 失败: {e}")
+            return ""
 
     async def shutdown(self):
         """关闭增强记忆系统"""

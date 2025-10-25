@@ -702,7 +702,7 @@ class MemoryBuilder:
 
         if isinstance(value, list | dict):
             try:
-                value = orjson.dumps(value, ensure_ascii=False).decode("utf-8")
+                value = orjson.dumps(value).decode("utf-8")
             except Exception:
                 value = str(value)
 

@@ -19,6 +19,7 @@ from src.chat.memory_system.memory_builder import MemoryBuilder, MemoryExtractio
 from src.chat.memory_system.memory_chunk import MemoryChunk
 from src.chat.memory_system.memory_fusion import MemoryFusionEngine
 from src.chat.memory_system.memory_query_planner import MemoryQueryPlanner
+from src.chat.memory_system.message_collection_storage import MessageCollectionStorage
 
 
 # 记忆采样模式枚举
@@ -142,6 +143,7 @@ class MemorySystem:
         self.memory_builder: MemoryBuilder | None = None
         self.fusion_engine: MemoryFusionEngine | None = None
         self.unified_storage: VectorMemoryStorage | None = None  # 统一存储系统
+        self.message_collection_storage: MessageCollectionStorage | None = None
         self.query_planner: MemoryQueryPlanner | None = None
         self.forgetting_engine: MemoryForgettingEngine | None = None
 
@@ -153,6 +155,7 @@ class MemorySystem:
         self.total_memories = 0
         self.last_build_time = None
         self.last_retrieval_time = None
+        self.last_collection_cleanup_time: float = time.time()
 
         # 构建节流记录
         self._last_memory_build_times: dict[str, float] = {}
@@ -198,6 +201,9 @@ class MemorySystem:
             # 初始化核心组件（简化版）
             self.memory_builder = MemoryBuilder(self.memory_extraction_model)
             self.fusion_engine = MemoryFusionEngine(self.config.fusion_similarity_threshold)
+
+            # 初始化消息集合存储
+            self.message_collection_storage = MessageCollectionStorage()
 
             # 初始化Vector DB存储系统（替代旧的unified_memory_storage）
             from src.chat.memory_system.vector_memory_storage_v2 import VectorMemoryStorage, VectorStorageConfig
@@ -694,7 +700,7 @@ class MemorySystem:
         limit: int = 5,
         **kwargs,
     ) -> list[MemoryChunk]:
-        """检索相关记忆（三阶段召回：元数据粗筛 → 向量精筛 → 综合重排）"""
+        """检索相关记忆（三阶段召回：元数据粗筛 → 向量精筛 → 综合重排），并融合瞬时记忆"""
         raw_query = query_text or kwargs.get("query")
         if not raw_query:
             raise ValueError("query_text 或 query 参数不能为空")
@@ -839,7 +845,22 @@ class MemorySystem:
             scored_memories.sort(key=lambda x: x[1], reverse=True)
 
             # 返回 Top-K
-            final_memories = [mem for mem, score, details in scored_memories[:effective_limit]]
+            final_memories = [mem for mem, score, details in scored_memories]
+
+            # === 新增：融合瞬时记忆 ===
+            try:
+                chat_id = normalized_context.get("chat_id")
+                instant_memories = await self._retrieve_instant_memories(raw_query, chat_id)
+                if instant_memories:
+                    # 将瞬时记忆放在列表最前面
+                    final_memories = instant_memories + final_memories
+                    logger.info(f"融合了 {len(instant_memories)} 条瞬时记忆")
+
+            except Exception as e:
+                logger.warning(f"检索瞬时记忆失败: {e}", exc_info=True)
+            
+            # 最终截断
+            final_memories = final_memories[:effective_limit]
 
             retrieval_time = time.time() - start_time
 
@@ -912,6 +933,61 @@ class MemorySystem:
             self.status = MemorySystemStatus.ERROR
             logger.error(f"❌ 记忆检索失败: {e}", exc_info=True)
             raise
+
+    async def _retrieve_instant_memories(self, query_text: str, chat_id: str | None) -> list[MemoryChunk]:
+        """检索瞬时记忆（消息集合）并转换为MemoryChunk"""
+        if not self.message_collection_storage:
+            return []
+
+        # 1. 优先检索当前聊天的消息集合
+        collections = []
+        if chat_id:
+            collections = await self.memory_manger.get_message_collection_context(query_text, chat_id=chat_id, n_results=1)
+
+        # 2. 如果当前聊天没有，或者不需要区分聊天，则进行全局检索
+        if not collections:
+            collections = await self.message_collection_storage.get_relevant_collection(query_text, chat_id=None, n_results=1)
+
+        if not collections:
+            return []
+
+        # 3. 将 MessageCollection 转换为 MemoryChunk
+        instant_memories = []
+        for collection in collections:
+            from src.chat.memory_system.memory_chunk import (
+                ContentStructure,
+                ImportanceLevel,
+                MemoryMetadata,
+                MemoryType,
+            )
+            
+            header = f"[来自群/聊 {collection.chat_id} 的近期对话]"
+            if collection.chat_id == chat_id:
+                header = f"[🔥 来自当前聊天的近期对话]"
+
+            display_text = f"{header}\n---\n{collection.combined_text}"
+
+            metadata = MemoryMetadata(
+                memory_id=f"instant_{collection.collection_id}",
+                user_id=GLOBAL_MEMORY_SCOPE,
+                chat_id=collection.chat_id,
+                created_at=collection.created_at,
+                importance=ImportanceLevel.HIGH, # 瞬时记忆通常具有高重要性
+            )
+            content = ContentStructure(
+                subject="对话上下文",
+                predicate="包含",
+                object=collection.combined_text,
+                display=display_text
+            )
+            chunk = MemoryChunk(
+                metadata=metadata,
+                content=content,
+                memory_type=MemoryType.CONTEXTUAL,
+            )
+            instant_memories.append(chunk)
+            
+        return instant_memories
 
     @staticmethod
     def _extract_json_payload(response: str) -> str | None:
@@ -1520,6 +1596,15 @@ class MemorySystem:
             # 记忆融合引擎维护
             if self.fusion_engine:
                 await self.fusion_engine.maintenance()
+
+            # 清理消息集合（每12小时）
+            if self.message_collection_storage:
+                current_time = time.time()
+                if current_time - self.last_collection_cleanup_time > 12 * 3600:
+                    logger.info("开始清理过期的消息集合...")
+                    self.message_collection_storage.clear_all()
+                    self.last_collection_cleanup_time = current_time
+                    logger.info("✅ 消息集合清理完成")
 
             logger.info("✅ 简化记忆系统维护完成")
 
