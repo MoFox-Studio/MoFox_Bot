@@ -30,15 +30,6 @@ max_retry = 2
 timeout = 30
 retry_interval = 10
 
-[[api_providers]] # MCP SSE协议支持（Model Context Protocol via Server-Sent Events）
-name = "MCPProvider"
-base_url = "https://your-mcp-server.com"  # MCP服务器地址
-api_key = "your-mcp-api-key-here"
-client_type = "mcp_sse"  # 使用MCP SSE客户端
-max_retry = 2
-timeout = 60  # MCP流式请求可能需要更长超时时间
-retry_interval = 10
-
 # 内容混淆功能示例配置（可选）
 [[api_providers]]
 name = "ExampleProviderWithObfuscation"           # 启用混淆功能的API提供商示例
@@ -129,15 +120,6 @@ name = "moonshotai-Kimi-K2-Instruct"
 api_provider = "SiliconFlow"
 price_in = 4.0
 price_out = 16.0
-
-# MCP SSE模型示例配置
-#[[models]]
-#model_identifier = "claude-3-5-sonnet-20241022"  # 或其他支持MCP的模型
-#name = "mcp-claude-sonnet"
-#api_provider = "MCPProvider"  # 对应上面配置的MCP provider
-#price_in = 3.0
-#price_out = 15.0
-#force_stream_mode = true  # MCP SSE默认使用流式模式
 
 [model_task_config.utils] # 在麦麦的一些组件中使用的模型，例如表情包模块，取名模块，关系模块，是麦麦必须的模型
 model_list = ["siliconflow-deepseek-ai/DeepSeek-V3.1-Terminus"] # 使用的模型列表，每个子项对应上面的模型名称(name)

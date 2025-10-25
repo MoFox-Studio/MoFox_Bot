@@ -414,37 +414,28 @@ MoFox_Bot(第三方修改版)
 
         # 处理所有缓存的事件订阅（插件加载完成后）
         event_manager.process_all_pending_subscriptions()
+        
+        # 初始化表情管理器
+        get_emoji_manager().initialize()
+        logger.info("表情包管理器初始化成功")
 
-        # 初始化MCP工具提供器
+        """
+        # 初始化回复后关系追踪系统
         try:
-            mcp_config = global_config.get("mcp_servers", [])
-            if mcp_config:
-                from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
+            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
+            from src.plugins.built_in.affinity_flow_chatter.relationship_tracker import ChatterRelationshipTracker
 
-                await mcp_tool_provider.initialize(mcp_config)
-                logger.info("MCP工具提供器初始化成功")
+            relationship_tracker = ChatterRelationshipTracker(interest_scoring_system=chatter_interest_scoring_system)
+            chatter_interest_scoring_system.relationship_tracker = relationship_tracker
+            logger.info("回复后关系追踪系统初始化成功")
         except Exception as e:
-            logger.info(f"MCP工具提供器未配置或初始化失败: {e}")
+            logger.error(f"回复后关系追踪系统初始化失败: {e}")
+            relationship_tracker = None
+        """
 
-        # 并行初始化其他管理器
-        manager_init_tasks = []
-
-        # 表情管理器
-        manager_init_tasks.append(self._safe_init("表情包管理器", get_emoji_manager().initialize)())
-
-        # 情绪管理器
-        manager_init_tasks.append(self._safe_init("情绪管理器", mood_manager.start)())
-
-        # 聊天管理器
-        manager_init_tasks.append(self._safe_init("聊天管理器", get_chat_manager()._initialize)())
-
-        # 等待所有管理器初始化完成
-        results = await asyncio.gather(*manager_init_tasks, return_exceptions=True)
-
-        # 检查初始化结果
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"组件初始化失败: {result}")
+        # 启动情绪管理器
+        await mood_manager.start()
+        logger.info("情绪管理器初始化成功")
 
         # 启动聊天管理器的自动保存任务
         asyncio.create_task(get_chat_manager()._auto_save_task())

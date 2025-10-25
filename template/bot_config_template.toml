@@ -581,27 +581,3 @@ enabled_group_chats = []
 enable_cold_start = true
 # 冷启动后，该私聊的下一次主动思考需要等待的最小时间（秒）
 cold_start_cooldown = 86400 # 默认24小时
-
-# ===== MCP (Model Context Protocol) 工具服务器配置 =====
-# MCP允许连接外部工具服务器，AI可以调用这些工具来执行各种任务
-# 例如：文件操作、Git操作、数据库查询等
-
-# 示例MCP服务器配置（需要取消注释才能启用）
-#[[mcp_servers]]
-#name = "filesystem"  # 服务器名称，工具将以此为前缀（如 filesystem_read_file）
-#url = "http://localhost:3000"  # MCP服务器地址
-#api_key = ""  # API密钥（如果服务器需要认证）
-#timeout = 30  # 超时时间（秒）
-#enabled = true  # 是否启用此服务器
-
-# 可以配置多个MCP服务器
-#[[mcp_servers]]
-#name = "git_tools"
-#url = "http://localhost:3001"
-#enabled = true
-
-# 详细说明:
-# 1. MCP服务器需要单独启动，Bot启动后会自动连接
-# 2. 每个服务器提供的工具会自动注册到Bot的工具系统
-# 3. AI会自动发现并在需要时调用这些工具
-# 4. 详细文档请参考: docs/MCP_TOOLS_INTEGRATION.md
