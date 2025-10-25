@@ -1273,7 +1273,7 @@ class DefaultReplyer:
             ),
             "cross_context": asyncio.create_task(
                 self._time_and_run_task(
-                    Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
+                    Prompt.build_cross_context(chat_id, "s4u", target_user_info),
                     "cross_context",
                 )
             ),
@@ -1493,11 +1493,7 @@ class DefaultReplyer:
         )
 
         # 使用新的统一Prompt系统 - 使用正确的模板名称
-        template_name = ""
-        if current_prompt_mode == "s4u":
-            template_name = "s4u_style_prompt"
-        elif current_prompt_mode == "minimal":
-            template_name = "default_expressor_prompt"
+        template_name = "s4u_style_prompt"
 
         # 获取模板内容
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)
