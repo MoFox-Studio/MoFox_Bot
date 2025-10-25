@@ -396,8 +396,6 @@ class Prompt:
         # 构建聊天历史
         if self.parameters.prompt_mode == "s4u":
             await self._build_s4u_chat_context(context_data)
-        else:
-            await self._build_normal_chat_context(context_data)
 
         # 补充基础信息
         context_data.update(
@@ -440,13 +438,6 @@ class Prompt:
         context_data["read_history_prompt"] = read_history_prompt
         context_data["unread_history_prompt"] = unread_history_prompt
 
-    async def _build_normal_chat_context(self, context_data: dict[str, Any]) -> None:
-        """构建normal模式的聊天上下文"""
-        if not self.parameters.chat_talking_prompt_short:
-            return
-
-        context_data["chat_info"] = f"""群里的聊天内容：
-{self.parameters.chat_talking_prompt_short}"""
 
     async def _build_s4u_chat_history_prompts(
         self, message_list_before_now: list[dict[str, Any]], target_user_id: str, sender: str, chat_id: str
@@ -786,8 +777,6 @@ class Prompt:
         """使用上下文数据格式化模板"""
         if self.parameters.prompt_mode == "s4u":
             params = self._prepare_s4u_params(context_data)
-        elif self.parameters.prompt_mode == "normal":
-            params = self._prepare_normal_params(context_data)
         else:
             params = self._prepare_default_params(context_data)
 
@@ -823,34 +812,6 @@ class Prompt:
             or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
         }
 
-    def _prepare_normal_params(self, context_data: dict[str, Any]) -> dict[str, Any]:
-        """准备Normal模式的参数"""
-        return {
-            **context_data,
-            "expression_habits_block": context_data.get("expression_habits_block", ""),
-            "tool_info_block": context_data.get("tool_info_block", ""),
-            "knowledge_prompt": context_data.get("knowledge_prompt", ""),
-            "memory_block": context_data.get("memory_block", ""),
-            "relation_info_block": context_data.get("relation_info_block", ""),
-            "extra_info_block": self.parameters.extra_info_block or context_data.get("extra_info_block", ""),
-            "cross_context_block": context_data.get("cross_context_block", ""),
-            "notice_block": self.parameters.notice_block or context_data.get("notice_block", ""),
-            "identity": self.parameters.identity_block or context_data.get("identity", ""),
-            "action_descriptions": self.parameters.action_descriptions or context_data.get("action_descriptions", ""),
-            "schedule_block": self.parameters.schedule_block or context_data.get("schedule_block", ""),
-            "time_block": context_data.get("time_block", ""),
-            "chat_info": context_data.get("chat_info", ""),
-            "reply_target_block": context_data.get("reply_target_block", ""),
-            "config_expression_style": global_config.personality.reply_style,
-            "mood_state": self.parameters.mood_prompt or context_data.get("mood_state", ""),
-            "keywords_reaction_prompt": self.parameters.keywords_reaction_prompt
-            or context_data.get("keywords_reaction_prompt", ""),
-            "moderation_prompt": self.parameters.moderation_prompt_block or context_data.get("moderation_prompt", ""),
-            "safety_guidelines_block": self.parameters.safety_guidelines_block
-            or context_data.get("safety_guidelines_block", ""),
-            "chat_scene": self.parameters.chat_scene
-            or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
-        }
 
     def _prepare_default_params(self, context_data: dict[str, Any]) -> dict[str, Any]:
         """准备默认模式的参数"""
@@ -1021,12 +982,7 @@ class Prompt:
         if not chat_stream:
             return ""
 
-        if prompt_mode == "normal":
-            context_group = await cross_context_api.get_context_group(chat_id)
-            if not context_group:
-                return ""
-            return await cross_context_api.build_cross_context_normal(chat_stream, context_group)
-        elif prompt_mode == "s4u":
+        if prompt_mode == "s4u":
             return await cross_context_api.build_cross_context_s4u(chat_stream, target_user_info)
 
         return ""
