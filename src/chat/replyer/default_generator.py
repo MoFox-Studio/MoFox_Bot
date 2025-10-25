@@ -43,6 +43,9 @@ from src.plugin_system.base.component_types import ActionInfo, EventType
 
 logger = get_logger("replyer")
 
+# 用于存储后台任务的集合，防止被垃圾回收
+_background_tasks: set[asyncio.Task] = set()
+
 
 def init_prompt():
     Prompt("你正在qq群里聊天，下面是群里在聊的内容：", "chat_target_group1")
@@ -252,41 +255,21 @@ class DefaultReplyer:
 
         self.tool_executor = ToolExecutor(chat_id=self.chat_stream.stream_id)
 
-    async def _build_auth_role_prompt(self, reply_message: dict[str, Any] | None) -> str:
+
+    async def _build_auth_role_prompt(self) -> str:
         """根据主人配置生成额外提示词"""
-        master_prompt_config = getattr(global_config.permission, "master_prompt", None)
-        if not master_prompt_config or not master_prompt_config.enable:
+        master_config = getattr(global_config.permission, "master_prompt", None)
+        if not master_config or not master_config.enable:
             return ""
 
-        target_platform: str | None = None
-        target_user_id: str | None = None
-
-        if reply_message:
-            target_platform = reply_message.get("user_platform") or reply_message.get("chat_info_platform")
-            user_id = reply_message.get("user_id")
-            if user_id is not None:
-                target_user_id = str(user_id)
-
-        if target_platform is None or target_user_id is None:
-            target_platform = self.chat_stream.platform
-            if getattr(self.chat_stream, "user_info", None):
-                target_user_id = getattr(self.chat_stream.user_info, "user_id", None)
-                if target_user_id is not None:
-                    target_user_id = str(target_user_id)
-
-        if target_platform is None or target_user_id is None:
-            return ""
-
-        target_platform = str(target_platform)
-
+        platform, user_id = self.chat_stream.platform, self.chat_stream.user_info.user_id
         try:
-            is_master = await permission_api.is_master(target_platform, target_user_id)
-        except Exception as error:  # 防御性: 避免影响主流程
-            logger.warning(f"检测主人身份失败，已跳过提示词注入: {error}")
+            is_master = await permission_api.is_master(platform, user_id)
+            hint = master_config.master_hint if is_master else master_config.non_master_hint
+            return hint.strip()
+        except Exception as e:
+            logger.warning(f"检测主人身份失败: {e}")
             return ""
-
-        hint = master_prompt_config.master_hint if is_master else master_prompt_config.non_master_hint
-        return hint if hint.strip() else ""
 
     async def generate_reply_with_context(
         self,
@@ -413,6 +396,7 @@ class DefaultReplyer:
         Returns:
             Tuple[bool, Optional[str]]: (是否成功, 重写后的回复内容)
         """
+        prompt = None
         try:
             with Timer("构建Prompt", {}):  # 内部计时器，可选保留
                 prompt = await self.build_prompt_rewrite_context(
@@ -977,29 +961,24 @@ class DefaultReplyer:
         unread_messages = []
         bot_id = str(global_config.bot.qq_account)
 
+        # 第一次遍历：按 is_read 字段分离
         for msg_dict in message_list_before_now:
-            try:
-                msg_user_id = str(msg_dict.get("user_id"))
-                if msg_dict.get("is_read", False):
-                    read_messages.append(msg_dict)
-                else:
-                    unread_messages.append(msg_dict)
-            except Exception as e:
-                logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
+            msg_user_id = str(msg_dict.get("user_id", ""))
+            if msg_dict.get("is_read", False):
+                read_messages.append(msg_dict)
+            else:
+                unread_messages.append(msg_dict)
 
         # 如果没有is_read字段，使用原有的逻辑
         if not read_messages and not unread_messages:
             # 使用原有的核心对话逻辑
             core_dialogue_list = []
             for msg_dict in message_list_before_now:
-                try:
-                    msg_user_id = str(msg_dict.get("user_id"))
-                    reply_to = msg_dict.get("reply_to", "")
-                    _platform, reply_to_user_id = self._parse_reply_target(reply_to)
-                    if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
-                        core_dialogue_list.append(msg_dict)
-                except Exception as e:
-                    logger.error(f"处理消息记录时出错: {msg_dict}, 错误: {e}")
+                msg_user_id = str(msg_dict.get("user_id", ""))
+                reply_to = msg_dict.get("reply_to", "")
+                _platform, reply_to_user_id = self._parse_reply_target(reply_to)
+                if (msg_user_id == bot_id and reply_to_user_id == target_user_id) or msg_user_id == target_user_id:
+                    core_dialogue_list.append(msg_dict)
 
             read_messages = [msg for msg in message_list_before_now if msg not in core_dialogue_list]
             unread_messages = core_dialogue_list
@@ -1460,7 +1439,7 @@ class DefaultReplyer:
         else:
             chat_scene_prompt = f"你正在和 {sender} 私下聊天，你需要理解你们的对话并做出自然的回应。"
 
-        auth_role_prompt_block = await self._build_auth_role_prompt(reply_message)
+        auth_role_prompt_block = await self._build_auth_role_prompt()
 
         # 使用新的统一Prompt系统 - 创建PromptParameters
         prompt_parameters = PromptParameters(
@@ -1637,7 +1616,7 @@ class DefaultReplyer:
             await global_prompt_manager.format_prompt("chat_target_private1", sender_name=chat_target_name)
             await global_prompt_manager.format_prompt("chat_target_private2", sender_name=chat_target_name)
 
-        auth_role_prompt_block = await self._build_auth_role_prompt(reply_message)
+        auth_role_prompt_block = await self._build_auth_role_prompt()
 
         # 使用新的统一Prompt系统 - Expressor模式，创建PromptParameters
         prompt_parameters = PromptParameters(
@@ -1945,7 +1924,7 @@ class DefaultReplyer:
 
             # 异步存储聊天历史（完全非阻塞）
             memory_system = get_memory_system()
-            asyncio.create_task(
+            task = asyncio.create_task(
                 memory_system.process_conversation_memory(
                     context={
                         "conversation_text": chat_history,
@@ -1955,6 +1934,9 @@ class DefaultReplyer:
                     }
                 )
             )
+            # 将任务添加到全局集合以防止被垃圾回收
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
 
             logger.debug(f"已启动记忆存储任务，用户: {memory_user_display or memory_user_id}")
 
