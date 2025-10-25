@@ -72,3 +72,6 @@ aiofiles
 inkfox
 soundfile
 pedalboard
+
+# For local speech-to-text functionality (stt_whisper_plugin)
+openai-whisper

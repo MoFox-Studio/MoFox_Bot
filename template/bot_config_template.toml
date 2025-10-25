@@ -1,5 +1,5 @@
 [inner]
-version = "7.4.8"
+version = "7.4.9"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -317,6 +317,9 @@ allow_reset = true # 允许重置
 
 [voice]
 enable_asr = true # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]
+# [语音识别提供商] 可选值: "api", "local". 默认使用 "api".
+# 注意: "local" 会消耗大量CPU资源, 可能导致低配服务器卡顿. 详情请见 stt_whisper_plugin 插件配置.
+asr_provider = "api"
 
 [lpmm_knowledge] # lpmm知识库配置
 enable = false # 是否启用lpmm知识库
