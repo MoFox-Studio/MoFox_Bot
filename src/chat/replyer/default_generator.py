@@ -259,15 +259,19 @@ class DefaultReplyer:
 
     async def _build_auth_role_prompt(self) -> str:
         """根据主人配置生成额外提示词"""
-        master_config = getattr(global_config.permission, "master_prompt", None)
+        master_config = global_config.permission.master_prompt
         if not master_config or not master_config.enable:
             return ""
 
         platform, user_id = self.chat_stream.platform, self.chat_stream.user_info.user_id
         try:
-            is_master = await permission_api.is_master(platform, user_id)
-            hint = master_config.master_hint if is_master else master_config.non_master_hint
-            return hint.strip()
+            if user_id:
+                is_master = await permission_api.is_master(platform, user_id)
+                hint = master_config.master_hint if is_master else master_config.non_master_hint
+                return hint.strip()
+            else:
+                logger.info("无法获得id")
+                return ""
         except Exception as e:
             logger.warning(f"检测主人身份失败: {e}")
             return ""
