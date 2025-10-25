@@ -25,6 +25,7 @@ from src.individuality.individuality import Individuality, get_individuality
 from src.manager.async_task_manager import async_task_manager
 from src.mood.mood_manager import mood_manager
 from src.plugin_system.base.component_types import EventType
+from src.plugin_system.base.base_interest_calculator import BaseInterestCalculator
 from src.plugin_system.core.event_manager import event_manager
 from src.plugin_system.core.plugin_manager import plugin_manager
 from src.schedule.monthly_plan_manager import monthly_plan_manager
@@ -173,6 +174,11 @@ class MainSystem:
 
                     logger.info(f"成功获取 {calc_name} 的组件类: {component_class.__name__}")
 
+                    # 确保组件是 BaseInterestCalculator 的子类
+                    if not issubclass(component_class, BaseInterestCalculator):
+                        logger.warning(f"{calc_name} 不是 BaseInterestCalculator 的有效子类")
+                        continue
+
                     # 创建组件实例
                     calculator_instance = component_class()
 
@@ -270,9 +276,7 @@ class MainSystem:
         # 停止应用
         try:
             if self.app:
-                if hasattr(self.app, "shutdown"):
-                    cleanup_tasks.append(("应用", self.app.shutdown()))
-                elif hasattr(self.app, "stop"):
+                if hasattr(self.app, "stop"):
                     cleanup_tasks.append(("应用", self.app.stop()))
         except Exception as e:
             logger.error(f"准备停止应用时出错: {e}")
