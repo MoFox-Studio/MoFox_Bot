@@ -592,9 +592,12 @@ class ChatterActionManager:
 
             # 发送第一段回复
             if not first_replied:
-                set_reply_flag = bool(message_data)
+                # 私聊场景不使用引用回复（因为只有两个人对话，引用是多余的）
+                # 群聊场景使用引用回复（帮助定位回复的目标消息）
+                is_private_chat = not bool(chat_stream.group_info)
+                set_reply_flag = bool(message_data) and not is_private_chat
                 logger.debug(
-                    f"📤 [ActionManager] 准备发送第一段回复。message_data: {message_data}, set_reply: {set_reply_flag}"
+                    f"📤 [ActionManager] 准备发送第一段回复。message_data: {message_data}, is_private: {is_private_chat}, set_reply: {set_reply_flag}"
                 )
                 await send_api.text_to_stream(
                     text=data,
