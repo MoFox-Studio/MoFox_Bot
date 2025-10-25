@@ -64,7 +64,6 @@ class PersonalityConfig(ValidatedConfigBase):
         default_factory=list, description="安全与互动底线，Bot在任何情况下都必须遵守的原则"
     )
     reply_style: str = Field(default="", description="表达风格")
-    prompt_mode: Literal["s4u", "normal"] = Field(default="s4u", description="Prompt模式")
     compress_personality: bool = Field(default=True, description="是否压缩人格")
     compress_identity: bool = Field(default=True, description="是否压缩身份")
 
@@ -632,7 +631,6 @@ class CrossContextConfig(ValidatedConfigBase):
 
     # --- Normal模式: 共享组配置 ---
     groups: list[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
-
     # --- S4U模式: 用户中心上下文检索 ---
     s4u_mode: Literal["whitelist", "blacklist"] = Field(
         default="whitelist",

@@ -213,8 +213,8 @@ class ChatStream:
             priority_info=json.dumps(getattr(message, "priority_info", None))
             if getattr(message, "priority_info", None)
             else None,
-            # 额外配置 - 需要将 format_info 嵌入到 additional_config 中
-            additional_config=self._prepare_additional_config(message_info),
+            # 额外配置
+            additional_config=getattr(message_info, "additional_config", None),
             # 用户信息
             user_id=str(getattr(user_info, "user_id", "")),
             user_nickname=getattr(user_info, "user_nickname", ""),
@@ -253,59 +253,8 @@ class ChatStream:
             f"interest_value: {db_message.interest_value}"
         )
 
-    def _prepare_additional_config(self, message_info) -> str | None:
-        """
-        准备 additional_config，将 format_info 嵌入其中
-        
-        这个方法模仿 storage.py 中的逻辑，确保 DatabaseMessages 中的 additional_config
-        包含 format_info，使得 action_modifier 能够正确获取适配器支持的消息类型
-        
-        Args:
-            message_info: BaseMessageInfo 对象
-            
-        Returns:
-            str | None: JSON 字符串格式的 additional_config，如果为空则返回 None
-        """
-        import orjson
-        
-        # 首先获取adapter传递的additional_config
-        additional_config_data = {}
-        if hasattr(message_info, 'additional_config') and message_info.additional_config:
-            if isinstance(message_info.additional_config, dict):
-                additional_config_data = message_info.additional_config.copy()
-            elif isinstance(message_info.additional_config, str):
-                # 如果是字符串，尝试解析
-                try:
-                    additional_config_data = orjson.loads(message_info.additional_config)
-                except Exception as e:
-                    logger.warning(f"无法解析 additional_config JSON: {e}")
-                    additional_config_data = {}
-        
-        # 然后添加format_info到additional_config中
-        if hasattr(message_info, 'format_info') and message_info.format_info:
-            try:
-                format_info_dict = message_info.format_info.to_dict()
-                additional_config_data["format_info"] = format_info_dict
-                logger.debug(f"嵌入 format_info 到 additional_config: {format_info_dict}")
-            except Exception as e:
-                logger.warning(f"将 format_info 转换为字典失败: {e}")
-        else:
-            logger.warning(f"[问题] 消息缺少 format_info: message_id={getattr(message_info, 'message_id', 'unknown')}")
-            logger.warning("[问题] 这可能导致 Action 无法正确检查适配器支持的类型")
-        
-        # 序列化为JSON字符串
-        if additional_config_data:
-            try:
-                return orjson.dumps(additional_config_data).decode("utf-8")
-            except Exception as e:
-                logger.error(f"序列化 additional_config 失败: {e}")
-                return None
-        return None
-
     def _safe_get_actions(self, message: "MessageRecv") -> list | None:
         """安全获取消息的actions字段"""
-        import json
-        
         try:
             actions = getattr(message, "actions", None)
             if actions is None:
@@ -314,6 +263,8 @@ class ChatStream:
             # 如果是字符串，尝试解析为JSON
             if isinstance(actions, str):
                 try:
+                    import json
+
                     actions = json.loads(actions)
                 except json.JSONDecodeError:
                     logger.warning(f"无法解析actions JSON字符串: {actions}")

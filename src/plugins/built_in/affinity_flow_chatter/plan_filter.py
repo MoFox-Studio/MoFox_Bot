@@ -60,7 +60,7 @@ class ChatterPlanFilter:
             prompt, used_message_id_list = await self._build_prompt(plan)
             plan.llm_prompt = prompt
             if global_config.debug.show_prompt:
-                logger.info(f"规划器原始提示词:{prompt}")  #叫你不要改你耳朵聋吗😡😡😡😡😡
+                logger.debug(f"规划器原始提示词:{prompt}")
 
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 

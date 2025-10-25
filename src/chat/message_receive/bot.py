@@ -659,41 +659,6 @@ class ChatBot:
                 group_name = getattr(group_info, "group_name", None)
                 group_platform = getattr(group_info, "platform", None)
 
-                # 准备 additional_config，将 format_info 嵌入其中
-                additional_config_str = None
-                try:
-                    import orjson
-                    
-                    additional_config_data = {}
-                    
-                    # 首先获取adapter传递的additional_config
-                    if hasattr(message_info, 'additional_config') and message_info.additional_config:
-                        if isinstance(message_info.additional_config, dict):
-                            additional_config_data = message_info.additional_config.copy()
-                        elif isinstance(message_info.additional_config, str):
-                            try:
-                                additional_config_data = orjson.loads(message_info.additional_config)
-                            except Exception as e:
-                                logger.warning(f"无法解析 additional_config JSON: {e}")
-                                additional_config_data = {}
-                    
-                    # 然后添加format_info到additional_config中
-                    if hasattr(message_info, 'format_info') and message_info.format_info:
-                        try:
-                            format_info_dict = message_info.format_info.to_dict()
-                            additional_config_data["format_info"] = format_info_dict
-                            logger.debug(f"[bot.py] 嵌入 format_info 到 additional_config: {format_info_dict}")
-                        except Exception as e:
-                            logger.warning(f"将 format_info 转换为字典失败: {e}")
-                    else:
-                        logger.warning(f"[bot.py] [问题] 消息缺少 format_info: message_id={message_id}")
-                    
-                    # 序列化为JSON字符串
-                    if additional_config_data:
-                        additional_config_str = orjson.dumps(additional_config_data).decode("utf-8")
-                except Exception as e:
-                    logger.error(f"准备 additional_config 失败: {e}")
-
                 # 创建数据库消息对象
                 db_message = DatabaseMessages(
                     message_id=message_id,
@@ -709,7 +674,6 @@ class ChatBot:
                     is_notify=bool(message.is_notify),
                     is_public_notice=bool(message.is_public_notice),
                     notice_type=message.notice_type,
-                    additional_config=additional_config_str,
                     user_id=user_id,
                     user_nickname=user_nickname,
                     user_cardname=user_cardname,

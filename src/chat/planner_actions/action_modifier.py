@@ -4,8 +4,6 @@ import random
 import time
 from typing import TYPE_CHECKING, Any
 
-import orjson
-
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.planner_actions.action_manager import ChatterActionManager
 from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
@@ -184,132 +182,12 @@ class ActionModifier:
     def _check_action_associated_types(self, all_actions: dict[str, ActionInfo], chat_context: StreamContext):
         type_mismatched_actions: list[tuple[str, str]] = []
         for action_name, action_info in all_actions.items():
-            if action_info.associated_types and not self._check_action_output_types(action_info.associated_types, chat_context):
+            if action_info.associated_types and not chat_context.check_types(action_info.associated_types):
                 associated_types_str = ", ".join(action_info.associated_types)
                 reason = f"适配器不支持（需要: {associated_types_str}）"
                 type_mismatched_actions.append((action_name, reason))
                 logger.debug(f"{self.log_prefix}决定移除动作: {action_name}，原因: {reason}")
         return type_mismatched_actions
-
-    def _check_action_output_types(self, output_types: list[str], chat_context: StreamContext) -> bool:
-        """
-        检查Action的输出类型是否被当前适配器支持
-
-        Args:
-            output_types: Action需要输出的消息类型列表
-            chat_context: 聊天上下文
-
-        Returns:
-            bool: 如果所有输出类型都支持则返回True
-        """
-        # 获取当前适配器支持的输出类型
-        adapter_supported_types = self._get_adapter_supported_output_types(chat_context)
-
-        # 检查所有需要的输出类型是否都被支持
-        for output_type in output_types:
-            if output_type not in adapter_supported_types:
-                logger.debug(f"适配器不支持输出类型 '{output_type}'，支持的类型: {adapter_supported_types}")
-                return False
-        return True
-
-    def _get_adapter_supported_output_types(self, chat_context: StreamContext) -> list[str]:
-        """
-        获取当前适配器支持的输出类型列表
-
-        Args:
-            chat_context: 聊天上下文
-
-        Returns:
-            list[str]: 支持的输出类型列表
-        """
-        # 检查additional_config是否存在且不为空
-        additional_config = None
-        has_additional_config = False
-
-        # 先检查 current_message 是否存在
-        if not chat_context.current_message:
-            logger.warning(f"{self.log_prefix} [问题] chat_context.current_message 为 None，无法获取适配器支持的类型")
-            return ["text", "emoji"]  # 返回基础类型
-              
-        if hasattr(chat_context.current_message, "additional_config"):
-            additional_config = chat_context.current_message.additional_config
-
-            # 更准确的非空判断
-            if additional_config is not None:
-                if isinstance(additional_config, str) and additional_config.strip():
-                    has_additional_config = True
-                elif isinstance(additional_config, dict):
-                    # 字典存在就可以，即使为空也可能有format_info字段
-                    has_additional_config = True
-        else:
-            logger.warning(f"{self.log_prefix} [问题] current_message 没有 additional_config 属性")
-
-        logger.debug(f"{self.log_prefix} [调试] has_additional_config: {has_additional_config}")
-
-        if has_additional_config:
-            try:
-                logger.debug(f"{self.log_prefix} [调试] 开始解析 additional_config")
-                format_info = None
-
-                # 处理additional_config可能是字符串或字典的情况
-                if isinstance(additional_config, str):
-                    # 如果是字符串，尝试解析为JSON
-                    try:
-                        config = orjson.loads(additional_config)
-                        format_info = config.get("format_info")
-                    except (orjson.JSONDecodeError, AttributeError, TypeError) as e:
-                        format_info = None
-
-                elif isinstance(additional_config, dict):
-                    # 如果是字典，直接获取format_info
-                    format_info = additional_config.get("format_info")
-
-                # 如果找到了format_info，从中提取支持的类型
-                if format_info:
-                    if "accept_format" in format_info:
-                        accept_format = format_info["accept_format"]
-                        if isinstance(accept_format, str):
-                            accept_format = [accept_format]
-                        elif isinstance(accept_format, list):
-                            pass
-                        else:
-                            accept_format = list(accept_format) if hasattr(accept_format, "__iter__") else []
-
-                        # 合并基础类型和适配器特定类型
-                        result = list(set(accept_format))
-                        return result
-
-                    # 备用检查content_format字段
-                    elif "content_format" in format_info:
-                        content_format = format_info["content_format"]
-                        logger.debug(f"{self.log_prefix} [调试] 找到 content_format: {content_format}")
-                        if isinstance(content_format, str):
-                            content_format = [content_format]
-                        elif isinstance(content_format, list):
-                            pass
-                        else:
-                            content_format = list(content_format) if hasattr(content_format, "__iter__") else []
-
-                        result = list(set(content_format))
-                        return result
-                else:
-                    logger.warning(f"{self.log_prefix} [问题] additional_config 中没有 format_info 字段")
-            except Exception as e:
-                logger.error(f"{self.log_prefix} [问题] 解析适配器格式信息失败: {e}", exc_info=True)
-        else:
-            logger.warning(f"{self.log_prefix} [问题] additional_config 不存在或为空")
-
-        # 如果无法获取格式信息，返回默认支持的基础类型
-        default_types = ["text", "emoji"]
-        logger.warning(
-            f"{self.log_prefix} [问题] 无法从适配器获取支持的消息类型，使用默认类型: {default_types}"
-        )
-        logger.warning(
-            f"{self.log_prefix} [问题] 这可能导致某些 Action 被错误地过滤。"
-            f"请检查适配器是否正确设置了 format_info。"
-        )
-        return default_types
-
 
     async def _get_deactivated_actions_by_type(
         self,

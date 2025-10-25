@@ -162,62 +162,6 @@ If you need to use the search tool, please directly call the function "lpmm_sear
         name="lpmm_get_knowledge_prompt",
     )
 
-    # normal 版 prompt 模板（0.9之前的简化模式）
-    logger.debug("[Prompt模式调试] 正在注册normal_style_prompt模板")
-    Prompt(
-        """
-{chat_scene}
-
-**重要：消息针对性判断**
-在回应之前，首先分析消息的针对性：
-1. **直接针对你**：@你、回复你、明确询问你 → 必须回应
-2. **间接相关**：涉及你感兴趣的话题但未直接问你 → 谨慎参与
-3. **他人对话**：与你无关的私人交流 → 通常不参与
-4. **重复内容**：他人已充分回答的问题 → 避免重复
-
-{expression_habits_block}
-{tool_info_block}
-{knowledge_prompt}
-{memory_block}
-{relation_info_block}
-{extra_info_block}
-
-{notice_block}
-
-{cross_context_block}
-{identity}
-如果有人说你是人机，你可以用一种阴阳怪气的口吻来回应
-{schedule_block}
-
-{action_descriptions}
-
-下面是群里最近的聊天内容：
---------------------------------
-{time_block}
-{chat_info}
---------------------------------
-
-{reply_target_block}
-
-你现在的心情是：{mood_state}
-{config_expression_style}
-注意不要复读你前面发过的内容，意思相近也不行。
-{keywords_reaction_prompt}
-请注意不要输出多余内容(包括前后缀，冒号和引号，at或 @等 )。只输出回复内容。
-{moderation_prompt}
-你的核心任务是针对 {reply_target_block} 中提到的内容，{relation_info_block}生成一段紧密相关且能推动对话的回复。你的回复应该：
-1.  明确回应目标消息，而不是宽泛地评论。
-2.  可以分享你的看法、提出相关问题，或者开个合适的玩笑。
-3.  目的是让对话更有趣、更深入。
-最终请输出一条简短、完整且口语化的回复。
-
-*你叫{bot_name}，也有人叫你{bot_nickname}*
-
-现在，你说：
-""",
-        "normal_style_prompt",
-    )
-    logger.debug("[Prompt模式调试] normal_style_prompt模板注册完成")
 
 
 class DefaultReplyer:
@@ -1329,7 +1273,7 @@ class DefaultReplyer:
             ),
             "cross_context": asyncio.create_task(
                 self._time_and_run_task(
-                    Prompt.build_cross_context(chat_id, global_config.personality.prompt_mode, target_user_info),
+                    Prompt.build_cross_context(chat_id, "s4u", target_user_info),
                     "cross_context",
                 )
             ),
@@ -1503,9 +1447,6 @@ class DefaultReplyer:
         else:
             reply_target_block = ""
 
-        # 根据配置选择模板
-        current_prompt_mode = global_config.personality.prompt_mode
-
         # 动态生成聊天场景提示
         if is_group_chat:
             chat_scene_prompt = "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。"
@@ -1524,7 +1465,7 @@ class DefaultReplyer:
             available_actions=available_actions,
             enable_tool=enable_tool,
             chat_target_info=self.chat_target_info,
-            prompt_mode=current_prompt_mode,
+            prompt_mode="s4u",
             message_list_before_now_long=message_list_before_now_long,
             message_list_before_short=message_list_before_short,
             chat_talking_prompt_short=chat_talking_prompt_short,
@@ -1552,13 +1493,7 @@ class DefaultReplyer:
         )
 
         # 使用新的统一Prompt系统 - 使用正确的模板名称
-        template_name = ""
-        if current_prompt_mode == "s4u":
-            template_name = "s4u_style_prompt"
-        elif current_prompt_mode == "normal":
-            template_name = "normal_style_prompt"
-        elif current_prompt_mode == "minimal":
-            template_name = "default_expressor_prompt"
+        template_name = "s4u_style_prompt"
 
         # 获取模板内容
         template_prompt = await global_prompt_manager.get_prompt_async(template_name)

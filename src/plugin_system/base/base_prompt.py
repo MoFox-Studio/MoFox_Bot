@@ -3,7 +3,7 @@ from typing import Any
 
 from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
-from src.plugin_system.base.component_types import ComponentType, InjectionRule, PromptInfo
+from src.plugin_system.base.component_types import ComponentType, PromptInfo
 
 logger = get_logger("base_prompt")
 
@@ -16,7 +16,7 @@ class BasePrompt(ABC):
 
     子类可以通过类属性定义其行为：
     - prompt_name: Prompt组件的唯一名称。
-    - injection_rules: 定义注入规则的列表。
+    - injection_point: 指定要注入的目标Prompt名称（或名称列表）。
     """
 
     prompt_name: str = ""
@@ -24,15 +24,11 @@ class BasePrompt(ABC):
     prompt_description: str = ""
     """Prompt组件的描述"""
 
-    # 定义此组件希望如何注入到核心Prompt中
-    # 这是一个 InjectionRule 对象的列表，可以实现复杂的注入逻辑
-    # 例如: [InjectionRule(target_prompt="planner_prompt", injection_type=InjectionType.APPEND, priority=50)]
-    injection_rules: list[InjectionRule] = []
-    """定义注入规则的列表"""
-
-    # 旧的注入点定义，用于向后兼容。如果定义了这个，它将被自动转换为 injection_rules。
-    injection_point: str | list[str] | None = None
-    """[已废弃] 要注入的目标Prompt名称或列表，请使用 injection_rules"""
+    # 定义此组件希望注入到哪个或哪些核心Prompt中
+    # 可以是一个字符串（单个目标）或字符串列表（多个目标）
+    # 例如: "planner_prompt" 或 ["s4u_style_prompt", "normal_style_prompt"]
+    injection_point: str | list[str] = ""
+    """要注入的目标Prompt名称或列表"""
 
     def __init__(self, params: PromptParameters, plugin_config: dict | None = None):
         """初始化Prompt组件
@@ -91,11 +87,9 @@ class BasePrompt(ABC):
         if not cls.prompt_name:
             raise ValueError("Prompt组件必须定义 'prompt_name' 类属性。")
 
-        # 同时传递新旧两种定义，PromptInfo的__post_init__将处理兼容性问题
         return PromptInfo(
             name=cls.prompt_name,
             component_type=ComponentType.PROMPT,
             description=cls.prompt_description,
-            injection_rules=cls.injection_rules,
             injection_point=cls.injection_point,
         )

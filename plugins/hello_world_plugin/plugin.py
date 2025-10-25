@@ -1,7 +1,9 @@
-import logging
 import random
 from typing import Any
 
+from src.common.logger import get_logger
+
+# 修正导入路径，让Pylance不再抱怨
 from src.plugin_system import (
     BaseAction,
     BaseEventHandler,
@@ -17,9 +19,9 @@ from src.plugin_system import (
     ToolParamType,
     register_plugin,
 )
-from src.plugin_system.base.component_types import InjectionRule,InjectionType
 from src.plugin_system.base.base_event import HandlerResult
 
+logger = get_logger("hello_world_plugin")
 
 class StartupMessageHandler(BaseEventHandler):
     """启动时打印消息的事件处理器。"""
@@ -29,7 +31,7 @@ class StartupMessageHandler(BaseEventHandler):
     init_subscribe = [EventType.ON_START]
 
     async def execute(self, params: dict) -> HandlerResult:
-        logging.info("🎉 Hello World 插件已启动，准备就绪！")
+        logger.info("🎉 Hello World 插件已启动，准备就绪！")
         return HandlerResult(success=True, continue_process=True)
 
 
@@ -186,7 +188,7 @@ class WeatherPrompt(BasePrompt):
 
     prompt_name = "weather_info_prompt"
     prompt_description = "向Planner注入当前天气信息，以丰富对话上下文。"
-    injection_rules = [InjectionRule(target_prompt="planner_prompt", injection_type=InjectionType.REPLACE, target_content="## 可用动作列表")]
+    injection_point = "planner_prompt"
 
     async def execute(self) -> str:
         # 在实际应用中，这里可以调用天气API
