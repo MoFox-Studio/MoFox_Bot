@@ -81,22 +81,22 @@ class MessageCollectionStorage:
             current_count = self.vector_db_service.count(self.collection_name)
             if current_count > self.config.instant_memory_max_collections:
                 num_to_delete = current_count - self.config.instant_memory_max_collections
-                
+
                 # 获取所有文档的元数据以进行排序
                 all_docs = self.vector_db_service.get(
                     collection_name=self.collection_name,
                     include=["metadatas"]
                 )
-                
+
                 if all_docs and all_docs.get("ids"):
                     # 在内存中排序找到最旧的文档
                     sorted_docs = sorted(
                         zip(all_docs["ids"], all_docs["metadatas"]),
                         key=lambda item: item[1].get("created_at", 0),
                     )
-                    
+
                     ids_to_delete = [doc[0] for doc in sorted_docs[:num_to_delete]]
-                    
+
                     if ids_to_delete:
                         self.vector_db_service.delete(collection_name=self.collection_name, ids=ids_to_delete)
                         logger.info(f"消息集合已满，删除最旧的 {len(ids_to_delete)} 个集合")
