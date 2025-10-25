@@ -317,8 +317,6 @@ class MemoryConfig(ValidatedConfigBase):
     enable_vector_instant_memory: bool = Field(default=True, description="启用基于向量的瞬时记忆")
 
     # Vector DB配置
-    vector_db_memory_collection: str = Field(default="unified_memory_v2", description="Vector DB记忆集合名称")
-    vector_db_metadata_collection: str = Field(default="memory_metadata_v2", description="Vector DB元数据集合名称")
     vector_db_similarity_threshold: float = Field(
         default=0.5, description="Vector DB相似度阈值（推荐0.5-0.6，过高会导致检索不到结果）"
     )

@@ -1,5 +1,5 @@
 [inner]
-version = "7.3.7"
+version = "7.4.7"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -291,8 +291,6 @@ enable_llm_instant_memory = true # 启用基于LLM的瞬时记忆
 enable_vector_instant_memory = true # 启用基于向量的瞬时记忆
 
 # Vector DB配置
-vector_db_memory_collection = "unified_memory_v2" # Vector DB主记忆集合名称
-vector_db_metadata_collection = "memory_metadata_v2" # Vector DB元数据集合名称
 vector_db_similarity_threshold = 0.5 # Vector DB相似度阈值 (推荐范围: 0.5-0.6, 过高会导致检索不到结果)
 vector_db_search_limit = 20 # Vector DB单次搜索返回的最大结果数
 vector_db_batch_size = 100 # 批处理大小 (批量存储记忆时每批处理的记忆条数)
@@ -314,11 +312,6 @@ path = "data/chroma_db" # Vector DB数据路径
 [vector_db.settings]
 anonymized_telemetry = false # 禁用匿名遥测
 allow_reset = true # 允许重置
-
-[vector_db.collections]
-unified_memory_v2 = { description = "统一记忆存储V2", hnsw_space = "cosine", version = "2.0" }
-memory_metadata_v2 = { description = "记忆元数据索引", hnsw_space = "cosine", version = "2.0" } 
-semantic_cache = { description = "语义缓存", hnsw_space = "cosine" }
 
 [voice]
 enable_asr = true # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]

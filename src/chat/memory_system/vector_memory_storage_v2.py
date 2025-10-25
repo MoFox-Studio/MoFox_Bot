@@ -113,8 +113,6 @@ class VectorStorageConfig:
         memory_cfg = global_config.memory
 
         return cls(
-            memory_collection=getattr(memory_cfg, "vector_db_memory_collection", "unified_memory_v2"),
-            metadata_collection=getattr(memory_cfg, "vector_db_metadata_collection", "memory_metadata_v2"),
             similarity_threshold=getattr(memory_cfg, "vector_db_similarity_threshold", 0.5),
             search_limit=getattr(memory_cfg, "vector_db_search_limit", 20),
             batch_size=getattr(memory_cfg, "vector_db_batch_size", 100),
