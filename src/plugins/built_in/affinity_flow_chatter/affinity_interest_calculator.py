@@ -223,39 +223,27 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         return global_config.affinity_flow.base_relationship_score
 
     def _calculate_mentioned_score(self, message: "DatabaseMessages", bot_nickname: str) -> float:
-        """计算提及分"""
+        """计算提及分 - 统一使用配置值，不区分提及方式"""
         is_mentioned = getattr(message, "is_mentioned", False)
-        is_at = getattr(message, "is_at", False)
         processed_plain_text = getattr(message, "processed_plain_text", "")
 
         # 判断是否为私聊
         chat_info_group_id = getattr(message, "chat_info_group_id", None)
         is_private_chat = not chat_info_group_id  # 如果没有group_id则是私聊
 
-        logger.debug(f"[提及分计算] is_mentioned={is_mentioned}, is_at={is_at}, is_private_chat={is_private_chat}")
+        logger.debug(f"[提及分计算] is_mentioned={is_mentioned}, is_private_chat={is_private_chat}")
 
-        if is_mentioned:
-            if is_at:
-                logger.debug("[提及分计算] 直接@机器人，返回1.0")
-                return 1.0  # 直接@机器人，最高分
-            else:
-                logger.debug("[提及分计算] 提及机器人，返回0.8")
-                return 0.8  # 提及机器人名字，高分
+        # 检查是否被提及（包括文本匹配）
+        bot_aliases = [bot_nickname, *global_config.bot.alias_names]
+        is_text_mentioned = any(alias in processed_plain_text for alias in bot_aliases if alias)
+
+        # 统一判断：只要提及了机器人（包括@、文本提及、私聊）都返回配置的分值
+        if is_mentioned or is_text_mentioned or is_private_chat:
+            logger.debug("[提及分计算] 检测到机器人提及，返回配置分值")
+            return global_config.affinity_flow.mention_bot_interest_score
         else:
-            # 检查是否被提及（文本匹配）
-            bot_aliases = [bot_nickname, *global_config.bot.alias_names]
-            is_text_mentioned = any(alias in processed_plain_text for alias in bot_aliases if alias)
-
-            # 如果被提及或是私聊，都视为提及了bot
-            if is_text_mentioned:
-                logger.debug("[提及分计算] 文本提及机器人，返回提及分")
-                return global_config.affinity_flow.mention_bot_interest_score
-            elif is_private_chat:
-                logger.debug("[提及分计算] 私聊消息，返回提及分")
-                return global_config.affinity_flow.mention_bot_interest_score
-            else:
-                logger.debug("[提及分计算] 未提及机器人，返回0.0")
-                return 0.0  # 未提及机器人
+            logger.debug("[提及分计算] 未提及机器人，返回0.0")
+            return 0.0  # 未提及机器人
 
     def _apply_no_reply_boost(self, base_score: float) -> float:
         """应用连续不回复的概率提升"""
