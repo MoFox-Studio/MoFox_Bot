@@ -46,6 +46,7 @@ class ChromaDBImpl(VectorDBBase):
                         logger.error(f"ChromaDB 初始化失败: {e}")
                         self.client = None
                         self._initialized = False
+                        raise ConnectionError(f"ChromaDB 初始化失败: {e}") from e
 
     def get_or_create_collection(self, name: str, **kwargs: Any) -> Any:
         if not self.client:

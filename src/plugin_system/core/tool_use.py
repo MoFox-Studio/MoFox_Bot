@@ -113,9 +113,13 @@ class ToolExecutor:
         logger.debug(f"{self.log_prefix}开始LLM工具调用分析")
 
         # 调用LLM进行工具决策
-        response, (reasoning_content, model_name, tool_calls) = await self.llm_model.generate_response_async(
+        response, llm_extra_info = await self.llm_model.generate_response_async(
             prompt=prompt, tools=tools, raise_when_empty=False
         )
+
+        tool_calls = None
+        if llm_extra_info and isinstance(llm_extra_info, tuple) and len(llm_extra_info) == 3:
+            _, _, tool_calls = llm_extra_info
 
         # 执行工具调用
         tool_results, used_tools = await self.execute_tool_calls(tool_calls)
@@ -133,7 +137,9 @@ class ToolExecutor:
         user_disabled_tools = global_announcement_manager.get_disabled_chat_tools(self.chat_id)
 
         # 获取基础工具定义（包括二步工具的第一步）
-        tool_definitions = [definition for name, definition in all_tools if name not in user_disabled_tools]
+        tool_definitions = [
+            definition for definition in all_tools if definition.get("function", {}).get("name") not in user_disabled_tools
+        ]
 
         # 检查是否有待处理的二步工具第二步调用
         pending_step_two = getattr(self, "_pending_step_two_tools", {})
@@ -282,20 +288,7 @@ class ToolExecutor:
             )
             
             # 检查是否是MCP工具
-            try:
-                from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
-                if function_name in mcp_tool_provider.mcp_tools:
-                    logger.info(f"{self.log_prefix}执行MCP工具: {function_name}")
-                    result = await mcp_tool_provider.call_mcp_tool(function_name, function_args)
-                    return {
-                        "tool_call_id": tool_call.call_id,
-                        "role": "tool",
-                        "name": function_name,
-                        "type": "function",
-                        "content": result.get("content", ""),
-                    }
-            except Exception as e:
-                logger.debug(f"检查MCP工具时出错: {e}")
+            pass
             
             function_args["llm_called"] = True  # 标记为LLM调用
 

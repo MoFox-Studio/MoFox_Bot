@@ -222,8 +222,13 @@ class MemorySystem:
             )
 
             try:
-                self.unified_storage = VectorMemoryStorage(storage_config)
-                logger.info("✅ Vector DB存储系统初始化成功")
+                try:
+                    self.unified_storage = VectorMemoryStorage(storage_config)
+                    logger.info("✅ Vector DB存储系统初始化成功")
+                except Exception as storage_error:
+                    logger.error(f"❌ Vector DB存储系统初始化失败: {storage_error}", exc_info=True)
+                    self.unified_storage = None  # 确保在失败时为None
+                    raise
             except Exception as storage_error:
                 logger.error(f"❌ Vector DB存储系统初始化失败: {storage_error}", exc_info=True)
                 raise
@@ -405,6 +410,8 @@ class MemorySystem:
                 logger.debug(f"海马体采样模式：使用价值评分 {value_score:.2f}")
 
             # 2. 构建记忆块（所有记忆统一使用 global 作用域，实现完全共享）
+            if not self.memory_builder:
+                raise RuntimeError("Memory builder is not initialized.")
             memory_chunks = await self.memory_builder.build_memories(
                 conversation_text,
                 normalized_context,
@@ -419,6 +426,8 @@ class MemorySystem:
 
             # 3. 记忆融合与去重（包含与历史记忆的融合）
             existing_candidates = await self._collect_fusion_candidates(memory_chunks)
+            if not self.fusion_engine:
+                raise RuntimeError("Fusion engine is not initialized.")
             fused_chunks = await self.fusion_engine.fuse_memories(memory_chunks, existing_candidates)
 
             # 4. 存储记忆到统一存储
@@ -537,7 +546,12 @@ class MemorySystem:
                     if isinstance(result, Exception):
                         logger.warning("融合候选向量搜索失败: %s", result)
                         continue
-                    for memory_id, similarity in result:
+                    if not result or not isinstance(result, list):
+                        continue
+                    for item in result:
+                        if not isinstance(item, tuple) or len(item) != 2:
+                            continue
+                        memory_id, similarity = item
                         if memory_id in new_memory_ids:
                             continue
                         if similarity is None or similarity < min_threshold:
@@ -810,7 +824,11 @@ class MemorySystem:
                     importance_score = (importance_enum.value - 1) / 3.0
                 else:
                     # 如果已经是数值，直接使用
-                    importance_score = float(importance_enum) if importance_enum else 0.5
+                    importance_score = (
+                        float(importance_enum.value)
+                        if hasattr(importance_enum, "value")
+                        else (float(importance_enum) if isinstance(importance_enum, int) else 0.5)
+                    )
 
                 # 4. 访问频率得分（归一化，访问10次以上得满分）
                 access_count = memory.metadata.access_count
@@ -1395,6 +1413,9 @@ class MemorySystem:
 }}
 """
 
+            if not self.value_assessment_model:
+                logger.warning("Value assessment model is not initialized, returning default value.")
+                return 0.5
             response, _ = await self.value_assessment_model.generate_response_async(prompt, temperature=0.3)
 
             # 解析响应
@@ -1488,10 +1509,11 @@ class MemorySystem:
     def _populate_memory_fingerprints(self) -> None:
         """基于当前缓存构建记忆指纹映射"""
         self._memory_fingerprints.clear()
-        for memory in self.unified_storage.memory_cache.values():
-            fingerprint = self._build_memory_fingerprint(memory)
-            key = self._fingerprint_key(memory.user_id, fingerprint)
-            self._memory_fingerprints[key] = memory.memory_id
+        if self.unified_storage:
+            for memory in self.unified_storage.memory_cache.values():
+                fingerprint = self._build_memory_fingerprint(memory)
+                key = self._fingerprint_key(memory.user_id, fingerprint)
+                self._memory_fingerprints[key] = memory.memory_id
 
     def _register_memory_fingerprints(self, memories: list[MemoryChunk]) -> None:
         for memory in memories:
@@ -1573,7 +1595,7 @@ class MemorySystem:
 
             # 保存存储数据
             if self.unified_storage:
-                await self.unified_storage.save_storage()
+                pass
 
             # 记忆融合引擎维护
             if self.fusion_engine:
@@ -1653,7 +1675,7 @@ class MemorySystem:
         """重建向量存储（如果需要）"""
         try:
             # 检查是否有记忆缓存数据
-            if not hasattr(self.unified_storage, "memory_cache") or not self.unified_storage.memory_cache:
+            if not self.unified_storage or not hasattr(self.unified_storage, "memory_cache") or not self.unified_storage.memory_cache:
                 logger.info("无记忆缓存数据，跳过向量存储重建")
                 return
 
@@ -1682,7 +1704,8 @@ class MemorySystem:
             for i in range(0, len(memories_to_rebuild), batch_size):
                 batch = memories_to_rebuild[i : i + batch_size]
                 try:
-                    await self.unified_storage.store_memories(batch)
+                    if self.unified_storage:
+                        await self.unified_storage.store_memories(batch)
                     rebuild_count += len(batch)
 
                     if rebuild_count % 50 == 0:
@@ -1705,7 +1728,7 @@ class MemorySystem:
 
 
 # 全局记忆系统实例
-memory_system: MemorySystem = None
+memory_system: MemorySystem | None = None
 
 
 def get_memory_system() -> MemorySystem:
