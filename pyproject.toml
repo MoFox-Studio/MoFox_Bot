@@ -74,8 +74,6 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "inkfox>=0.1.1",
     "rjieba>=0.1.13",
-    "mcp>=1.18.0",
-    "sse-starlette>=3.0.2",
 ]
 
 [[tool.uv.index]]

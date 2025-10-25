@@ -70,7 +70,5 @@ fuzzywuzzy
 python-multipart
 aiofiles
 inkfox
-mcp
-sse-starlette
 soundfile
 pedalboard
