@@ -446,7 +446,9 @@ MoFox_Bot(第三方修改版)
 
         # 初始化增强记忆系统
         if global_config.memory.enable_memory:
-            await self._safe_init("增强记忆系统", self.memory_manager.initialize)()
+            from src.chat.memory_system.memory_system import initialize_memory_system
+            await self._safe_init("增强记忆系统", initialize_memory_system)()
+            await self._safe_init("记忆管理器", self.memory_manager.initialize)()
         else:
             logger.info("记忆系统已禁用，跳过初始化")
 

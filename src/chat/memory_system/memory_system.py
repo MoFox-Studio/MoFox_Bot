@@ -138,6 +138,7 @@ class MemorySystem:
         self.config = config or MemorySystemConfig.from_global_config()
         self.llm_model = llm_model
         self.status = MemorySystemStatus.INITIALIZING
+        logger.info(f"MemorySystem __init__ called, id: {id(self)}")
 
         # 核心组件（简化版）
         self.memory_builder: MemoryBuilder | None = None
@@ -170,6 +171,7 @@ class MemorySystem:
 
     async def initialize(self):
         """异步初始化记忆系统"""
+        logger.info(f"MemorySystem initialize started, id: {id(self)}")
         try:
             # 初始化LLM模型
             fallback_task = getattr(self.llm_model, "model_for_task", None) if self.llm_model else None
@@ -287,7 +289,7 @@ class MemorySystem:
             # 统一存储已经自动加载数据，无需额外加载
 
             self.status = MemorySystemStatus.READY
-
+            logger.info(f"MemorySystem initialize finished, id: {id(self)}")
         except Exception as e:
             self.status = MemorySystemStatus.ERROR
             logger.error(f"❌ 记忆系统初始化失败: {e}", exc_info=True)
@@ -1735,15 +1737,21 @@ def get_memory_system() -> MemorySystem:
     """获取全局记忆系统实例"""
     global memory_system
     if memory_system is None:
+        logger.warning("Global memory_system is None. Creating new uninitialized instance. This might be a problem.")
         memory_system = MemorySystem()
+    logger.info(f"get_memory_system() called, returning instance with id: {id(memory_system)}")
     return memory_system
 
 
 async def initialize_memory_system(llm_model: LLMRequest | None = None):
     """初始化全局记忆系统"""
     global memory_system
+    logger.info("initialize_memory_system() called.")
     if memory_system is None:
+        logger.info("Global memory_system is None, creating new instance for initialization.")
         memory_system = MemorySystem(llm_model=llm_model)
+    else:
+        logger.info(f"Global memory_system already exists (id: {id(memory_system)}). Initializing it.")
     await memory_system.initialize()
 
     # 根据配置启动海马体采样
