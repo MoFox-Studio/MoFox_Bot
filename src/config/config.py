@@ -26,7 +26,7 @@ from src.config.official_configs import (
     EmojiConfig,
     ExperimentalConfig,
     ExpressionConfig,
-    KeywordReactionConfig,
+    ReactionConfig,
     LPMMKnowledgeConfig,
     MaimMessageConfig,
     MemoryConfig,
@@ -384,7 +384,7 @@ class Config(ValidatedConfigBase):
     expression: ExpressionConfig = Field(..., description="表达配置")
     memory: MemoryConfig = Field(..., description="记忆配置")
     mood: MoodConfig = Field(..., description="情绪配置")
-    keyword_reaction: KeywordReactionConfig = Field(..., description="关键词反应配置")
+    reaction: ReactionConfig = Field(default_factory=ReactionConfig, description="反应规则配置")
     chinese_typo: ChineseTypoConfig = Field(..., description="中文错别字配置")
     response_post_process: ResponsePostProcessConfig = Field(..., description="响应后处理配置")
     response_splitter: ResponseSplitterConfig = Field(..., description="响应分割配置")
