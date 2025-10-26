@@ -159,6 +159,11 @@ class NoticeHandler:
                         system_notice = True
                     case _:
                         logger.warning(f"不支持的group_ban类型: {notice_type}.{sub_type}")
+            case NoticeType.group_upload:
+                logger.info("群文件上传")
+                if not await message_handler.check_allow_to_chat(user_id, group_id, False, False):
+                    return None
+                handled_message, user_info = await self.handle_group_upload_notify(raw_message, group_id, user_id)
             case _:
                 logger.warning(f"不支持的notice类型: {notice_type}")
                 return None
@@ -211,6 +216,9 @@ class NoticeHandler:
         elif notice_type == NoticeType.group_msg_emoji_like:
             notice_config["notice_type"] = "emoji_like"
             notice_config["is_notice"] = True  # 表情回复也是notice
+        elif notice_type == NoticeType.group_upload:
+            notice_config["notice_type"] = "group_upload"
+            notice_config["is_notice"] = True  # 文件上传也是notice
         
         message_info: BaseMessageInfo = BaseMessageInfo(
             platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
@@ -372,6 +380,38 @@ class NoticeHandler:
                         emoji_id=like_emoji_id
                         )     
         seg_data = Seg(type="text",data=f"{user_name}使用Emoji表情{QQ_FACE.get(like_emoji_id,"")}回复了你的消息[{target_message_text}]")
+        return seg_data, user_info
+
+    async def handle_group_upload_notify(self, raw_message: dict, group_id: int, user_id: int):
+        if not group_id:
+            logger.error("群ID不能为空，无法处理群文件上传通知")
+            return None, None
+
+        user_qq_info: dict = await get_member_info(self.get_server_connection(), group_id, user_id)
+        if user_qq_info:
+            user_name = user_qq_info.get("nickname")
+            user_cardname = user_qq_info.get("card")
+        else:
+            user_name = "QQ用户"
+            user_cardname = "QQ用户"
+            logger.debug("无法获取上传文件的用户昵称")
+
+        file_info = raw_message.get("file")
+        if not file_info:
+            logger.error("群文件上传通知中缺少文件信息")
+            return None, None
+
+        user_info: UserInfo = UserInfo(
+            platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
+            user_id=user_id,
+            user_nickname=user_name,
+            user_cardname=user_cardname,
+        )
+
+        file_name = file_info.get("name", "未知文件")
+        file_size = file_info.get("size", 0)
+        
+        seg_data = Seg(type="text", data=f"{user_name} 上传了文件: {file_name} (大小: {file_size} 字节)")
         return seg_data, user_info
     
     async def handle_ban_notify(self, raw_message: dict, group_id: int) -> Tuple[Seg, UserInfo] | Tuple[None, None]:

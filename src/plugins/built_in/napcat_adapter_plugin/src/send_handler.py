@@ -411,6 +411,12 @@ class SendHandler:
 
     def handle_file_message(self, file_path: str) -> dict:
         """处理文件消息"""
+        # 临时的WSL路径转换方案
+        if file_path.startswith("E:"):
+            original_path = file_path
+            file_path = "/mnt/e/" + file_path[3:].replace("\\", "/")
+            logger.info(f"WSL路径转换: {original_path} -> {file_path}")
+
         return {
             "type": "file",
             "data": {"file": f"file://{file_path}"},

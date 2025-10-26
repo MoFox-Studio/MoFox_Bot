@@ -178,10 +178,6 @@ class MessageHandler:
         message_time: float = time.time()  # 应可乐要求，现在是float了
 
         template_info: TemplateInfo = None  # 模板信息，暂时为空，等待启用
-        format_info: FormatInfo = FormatInfo(
-            content_format=["text", "image", "emoji", "voice"],
-            accept_format=ACCEPT_FORMAT,
-        )  # 格式化信息
         if message_type == MessageType.private:
             sub_type = raw_message.get("sub_type")
             if sub_type == MessageType.Private.friend:
@@ -275,6 +271,25 @@ class MessageHandler:
                 logger.warning(f"群聊消息类型 {sub_type} 不支持")
                 return None
 
+        # 处理实际信息
+        if not raw_message.get("message"):
+            logger.warning("原始消息内容为空")
+            return None
+
+        # 获取Seg列表
+        seg_message: List[Seg] = await self.handle_real_message(raw_message)
+        if not seg_message:
+            logger.warning("处理后消息内容为空")
+            return None
+
+        # 动态生成 content_format
+        content_formats = sorted(list(set(seg.type for seg in seg_message)))
+        logger.debug(f"动态生成 content_format: {content_formats}")
+        format_info: FormatInfo = FormatInfo(
+            content_format=content_formats,
+            accept_format=ACCEPT_FORMAT,
+        )
+
         additional_config: dict = {}
         if config_api.get_plugin_config(self.plugin_config, "voice.use_tts"):
             additional_config["allow_tts"] = True
@@ -290,17 +305,6 @@ class MessageHandler:
             format_info=format_info,
             additional_config=additional_config,
         )
-
-        # 处理实际信息
-        if not raw_message.get("message"):
-            logger.warning("原始消息内容为空")
-            return None
-
-        # 获取Seg列表
-        seg_message: List[Seg] = await self.handle_real_message(raw_message)
-        if not seg_message:
-            logger.warning("处理后消息内容为空")
-            return None
 
         # 消息缓冲功能已移除，直接处理消息
 
@@ -482,6 +486,13 @@ class MessageHandler:
                         seg_message.append(ret_seg)
                     else:
                         logger.warning("json处理失败")
+                case RealMessageType.file:
+                    ret_seg = await self.handle_file_message(sub_message)
+                    if ret_seg:
+                        # NapcatEvent doesn't have a FILE event yet, so we won't trigger one for now.
+                        seg_message.append(ret_seg)
+                    else:
+                        logger.warning("file处理失败")
                 case _:
                     logger.warning(f"未知消息类型: {sub_message_type}")
 
@@ -773,7 +784,18 @@ class MessageHandler:
             return Seg(type="json", data=json.dumps(message_data))
 
         try:
+            # 尝试将json_data解析为Python对象
             nested_data = json.loads(json_data)
+
+            # 检查是否是机器人自己上传文件的回声
+            if self._is_file_upload_echo(nested_data):
+                logger.info("检测到机器人发送文件的回声消息，将作为文件消息处理")
+                # 从回声消息中提取文件信息
+                file_info = self._extract_file_info_from_echo(nested_data)
+                if file_info:
+                    # 构建一个与普通文件消息格式相同的字典
+                    file_message_dict = {"type": "file", "data": file_info}
+                    return await self.handle_file_message(file_message_dict)
 
             # 检查是否是QQ小程序分享消息
             if "app" in nested_data and "com.tencent.miniapp" in str(nested_data.get("app", "")):
@@ -888,13 +910,88 @@ class MessageHandler:
             # 如果没有提取到关键信息，返回None
             return None
 
-        except json.JSONDecodeError as e:
-            logger.error(f"解析JSON消息失败: {e}")
+        except json.JSONDecodeError:
+            # 如果解析失败，我们假设它不是我们关心的任何一种结构化JSON，
+            # 而是普通的文本或者无法解析的格式。
+            logger.debug(f"无法将data字段解析为JSON: {json_data}")
             return None
         except Exception as e:
-            logger.error(f"处理JSON消息时出错: {e}")
+            logger.error(f"处理JSON消息时发生未知错误: {e}")
             return None
 
+    async def handle_file_message(self, raw_message: dict) -> Seg | None:
+        """
+        处理文件消息
+        Parameters:
+            raw_message: dict: 原始消息
+        Returns:
+            seg_data: Seg: 处理后的消息段
+        """
+        message_data: dict = raw_message.get("data")
+        if not message_data:
+            logger.warning("文件消息缺少 data 字段")
+            return None
+
+        # 提取文件信息
+        file_name = message_data.get("file")
+        file_size = message_data.get("file_size")
+        file_id = message_data.get("file_id")
+
+        logger.info(f"收到文件消息: name={file_name}, size={file_size}, id={file_id}")
+
+        # 将文件信息打包成字典
+        file_data = {
+            "name": file_name,
+            "size": file_size,
+            "id": file_id,
+        }
+
+        return Seg(type="file", data=file_data)
+
+    def _is_file_upload_echo(self, nested_data: Any) -> bool:
+        """检查一个JSON对象是否是机器人自己上传文件的回声消息"""
+        if not isinstance(nested_data, dict):
+            return False
+
+        # 检查 'app' 和 'meta' 字段是否存在
+        if "app" not in nested_data or "meta" not in nested_data:
+            return False
+
+        # 检查 'app' 字段是否包含 'com.tencent.miniapp'
+        if "com.tencent.miniapp" not in str(nested_data.get("app", "")):
+            return False
+
+        # 检查 'meta' 内部的 'detail_1' 的 'busi_id' 是否为 '1014'
+        meta = nested_data.get("meta", {})
+        detail_1 = meta.get("detail_1", {})
+        if detail_1.get("busi_id") == "1014":
+            return True
+
+        return False
+
+    def _extract_file_info_from_echo(self, nested_data: dict) -> Optional[dict]:
+        """从文件上传的回声消息中提取文件信息"""
+        try:
+            meta = nested_data.get("meta", {})
+            detail_1 = meta.get("detail_1", {})
+            
+            # 文件名在 'desc' 字段
+            file_name = detail_1.get("desc")
+            
+            # 文件大小在 'summary' 字段，格式为 "大小：1.7MB"
+            summary = detail_1.get("summary", "")
+            file_size_str = summary.replace("大小：", "").strip() # 移除前缀和空格
+            
+            # QQ API有时返回的大小不标准，这里我们只提取它给的字符串
+            # 实际大小已经由Napcat在发送时记录，这里主要是为了保持格式一致
+            
+            if file_name and file_size_str:
+                return {"file": file_name, "file_size": file_size_str, "file_id": None} # file_id在回声中不可用
+        except Exception as e:
+            logger.error(f"从文件回声中提取信息失败: {e}")
+            
+        return None
+        
     async def handle_rps_message(self, raw_message: dict) -> Seg:
         message_data: dict = raw_message.get("data", {})
         res = message_data.get("result", "")

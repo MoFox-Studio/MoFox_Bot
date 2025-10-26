@@ -27,6 +27,67 @@
 
 
 """
+from pathlib import Path
+
+
+async def file_to_stream(
+   file_path: str,
+   stream_id: str,
+   file_name: str | None = None,
+   storage_message: bool = True,
+   set_reply: bool = True
+) -> bool:
+   """向指定流发送文件
+
+   Args:
+       file_path: 文件的本地路径
+       stream_id: 聊天流ID
+       file_name: 发送到对方时显示的文件名，如果为 None 则使用原始文件名
+       storage_message: 是否存储消息到数据库
+
+   Returns:
+       bool: 是否发送成功
+   """
+   target_stream = await get_chat_manager().get_stream(stream_id)
+   if not target_stream:
+       logger.error(f"[SendAPI] 未找到聊天流: {stream_id}")
+       return False
+
+   if not file_name:
+       file_name = Path(file_path).name
+   
+   # 临时的WSL路径转换方案
+   if file_path.startswith("E:"):
+       original_path = file_path
+       file_path = "/mnt/e/" + file_path[3:].replace("\\", "/")
+       logger.info(f"WSL路径转换: {original_path} -> {file_path}")
+
+   params = {
+       "file": file_path,
+       "name": file_name,
+   }
+
+   action = ""
+   if target_stream.group_info:
+       action = "upload_group_file"
+       params["group_id"] = target_stream.group_info.group_id
+   else:
+       action = "upload_private_file"
+       params["user_id"] = target_stream.user_info.user_id
+   
+   response = await adapter_command_to_stream(
+       action=action,
+       params=params,
+       stream_id=stream_id,
+       timeout=300.0  # 文件上传可能需要更长时间
+   )
+
+   if response.get("status") == "ok":
+       logger.info(f"文件 {file_name} 已成功发送到 {stream_id}")
+       return True
+   else:
+       logger.error(f"文件 {file_name} 发送到 {stream_id} 失败: {response.get('message')}")
+       return False
 
 import asyncio
 import time

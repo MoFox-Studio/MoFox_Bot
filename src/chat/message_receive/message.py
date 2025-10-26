@@ -239,6 +239,12 @@ class MessageRecv(Message):
                     }
                     """
                 return ""
+            elif segment.type == "file":
+                if isinstance(segment.data, dict):
+                    file_name = segment.data.get('name', '未知文件')
+                    file_size = segment.data.get('size', '未知大小')
+                    return f"[文件：{file_name} ({file_size}字节)]"
+                return "[收到一个文件]"
             elif segment.type == "video":
                 self.is_picid = False
                 self.is_emoji = False
@@ -296,8 +302,8 @@ class MessageRecv(Message):
                 else:
                     return ""
             else:
-                logger.info("未启用视频识别")
-                return "[视频]"
+                logger.warning(f"未知的消息段类型: {segment.type}")
+                return f"[{segment.type} 消息]"
         except Exception as e:
             logger.error(f"处理消息段失败: {e!s}, 类型: {segment.type}, 数据: {segment.data}")
             return f"[处理失败的{segment.type}消息]"
@@ -433,6 +439,12 @@ class MessageRecvS4U(MessageRecv):
                 self.is_screen = True
                 self.screen_info = segment.data
                 return "屏幕信息"
+            elif segment.type == "file":
+                if isinstance(segment.data, dict):
+                    file_name = segment.data.get('name', '未知文件')
+                    file_size = segment.data.get('size', '未知大小')
+                    return f"[文件：{file_name} ({file_size}字节)]"
+                return "[收到一个文件]"
             elif segment.type == "video":
                 self.is_voice = False
                 self.is_picid = False
@@ -490,8 +502,8 @@ class MessageRecvS4U(MessageRecv):
                 else:
                     return ""
             else:
-                logger.info("未启用视频识别")
-                return "[视频]"
+                logger.warning(f"未知的消息段类型: {segment.type}")
+                return f"[{segment.type} 消息]"
         except Exception as e:
             logger.error(f"处理消息段失败: {e!s}, 类型: {segment.type}, 数据: {segment.data}")
             return f"[处理失败的{segment.type}消息]"
