@@ -878,7 +878,7 @@ class MemorySystem:
 
             except Exception as e:
                 logger.warning(f"检索瞬时记忆失败: {e}", exc_info=True)
-            
+
             # 最终截断
             final_memories = final_memories[:effective_limit]
 

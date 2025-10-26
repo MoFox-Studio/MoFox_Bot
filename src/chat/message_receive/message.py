@@ -9,10 +9,10 @@ from maim_message import BaseMessageInfo, MessageBase, Seg, UserInfo
 from rich.traceback import install
 
 from src.chat.message_receive.chat_stream import ChatStream
+from src.chat.utils.self_voice_cache import consume_self_voice_text
 from src.chat.utils.utils_image import get_image_manager
 from src.chat.utils.utils_video import get_video_analyzer, is_video_analysis_available
 from src.chat.utils.utils_voice import get_voice_text
-from src.chat.utils.self_voice_cache import consume_self_voice_text
 from src.common.logger import get_logger
 from src.config.config import global_config
 
@@ -212,7 +212,7 @@ class MessageRecv(Message):
                             return f"[语音：{cached_text}]"
                         else:
                             logger.warning("机器人自身语音消息缓存未命中，将回退到标准语音识别。")
-                
+
                 # 标准语音识别流程 (也作为缓存未命中的后备方案)
                 if isinstance(segment.data, str):
                     return await get_voice_text(segment.data)
@@ -370,7 +370,7 @@ class MessageRecvS4U(MessageRecv):
                 self.is_picid = False
                 self.is_emoji = False
                 self.is_voice = True
-                
+
                 # 检查消息是否由机器人自己发送
                 # 检查消息是否由机器人自己发送
                 if self.message_info and self.message_info.user_info and str(self.message_info.user_info.user_id) == str(global_config.bot.qq_account):

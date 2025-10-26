@@ -796,44 +796,63 @@ class DefaultReplyer:
     async def build_keywords_reaction_prompt(self, target: str | None) -> str:
         """构建关键词反应提示
 
+        该方法根据配置的关键词和正则表达式规则，
+        检查目标消息内容是否触发了任何反应。
+        如果匹配成功，它会生成一个包含所有触发反应的提示字符串，
+        用于指导LLM的回复。
+
         Args:
             target: 目标消息内容
 
         Returns:
-            str: 关键词反应提示字符串
+            str: 关键词反应提示字符串，如果没有触发任何反应则为空字符串
         """
-        # 关键词检测与反应
-        keywords_reaction_prompt = ""
+        if target is None:
+            return ""
+
+        reaction_prompt = ""
         try:
-            # 添加None检查，防止NoneType错误
-            if target is None:
-                return keywords_reaction_prompt
+            current_chat_stream_id_str = self.chat_stream.get_raw_id()
+            # 2. 筛选适用的规则（全局规则 + 特定于当前聊天的规则）
+            applicable_rules = []
+            for rule in global_config.reaction.rules:
+                if rule.chat_stream_id == "" or rule.chat_stream_id == current_chat_stream_id_str:
+                    applicable_rules.append(rule)  # noqa: PERF401
 
-            # 处理关键词规则
-            for rule in global_config.keyword_reaction.keyword_rules:
-                if any(keyword in target for keyword in rule.keywords):
-                    logger.info(f"检测到关键词规则：{rule.keywords}，触发反应：{rule.reaction}")
-                    keywords_reaction_prompt += f"{rule.reaction}，"
+            # 3. 遍历适用规则并执行匹配
+            for rule in applicable_rules:
+                matched = False
+                if rule.rule_type == "keyword":
+                    if any(keyword in target for keyword in rule.patterns):
+                        logger.info(f"检测到关键词规则：{rule.patterns}，触发反应：{rule.reaction}")
+                        reaction_prompt += f"{rule.reaction}，"
+                        matched = True
 
-            # 处理正则表达式规则
-            for rule in global_config.keyword_reaction.regex_rules:
-                for pattern_str in rule.regex:
-                    try:
-                        pattern = re.compile(pattern_str)
-                        if result := pattern.search(target):
-                            reaction = rule.reaction
-                            for name, content in result.groupdict().items():
-                                reaction = reaction.replace(f"[{name}]", content)
-                            logger.info(f"匹配到正则表达式：{pattern_str}，触发反应：{reaction}")
-                            keywords_reaction_prompt += f"{reaction}，"
-                            break
-                    except re.error as e:
-                        logger.error(f"正则表达式编译错误: {pattern_str}, 错误信息: {e!s}")
-                        continue
+                elif rule.rule_type == "regex":
+                    for pattern_str in rule.patterns:
+                        try:
+                            pattern = re.compile(pattern_str)
+                            if result := pattern.search(target):
+                                reaction = rule.reaction
+                                # 替换命名捕获组
+                                for name, content in result.groupdict().items():
+                                    reaction = reaction.replace(f"[{name}]", content)
+                                logger.info(f"匹配到正则表达式：{pattern_str}，触发反应：{reaction}")
+                                reaction_prompt += f"{reaction}，"
+                                matched = True
+                                break  # 一个正则规则里只要有一个 pattern 匹配成功即可
+                        except re.error as e:
+                            logger.error(f"正则表达式编译错误: {pattern_str}, 错误信息: {e!s}")
+                            continue
+
+                if matched:
+                    # 如果需要每条消息只触发一个反应规则，可以在这里 break
+                    pass
+
         except Exception as e:
             logger.error(f"关键词检测与反应时发生异常: {e!s}", exc_info=True)
 
-        return keywords_reaction_prompt
+        return reaction_prompt
 
     async def build_notice_block(self, chat_id: str) -> str:
         """构建notice信息块

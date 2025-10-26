@@ -87,6 +87,10 @@ class ComponentRegistry:
         self._tool_registry: dict[str, type["BaseTool"]] = {}  # 工具名 -> 工具类
         self._llm_available_tools: dict[str, type["BaseTool"]] = {}  # llm可用的工具名 -> 工具类
 
+        # MCP 工具注册表（运行时动态加载）
+        self._mcp_tools: list["BaseTool"] = []  # MCP 工具适配器实例列表
+        self._mcp_tools_loaded = False  # MCP 工具是否已加载
+
         # EventHandler特定注册表
         self._event_handler_registry: dict[str, type["BaseEventHandler"]] = {}
         """event_handler名 -> event_handler类"""
@@ -891,6 +895,7 @@ class ComponentRegistry:
             "action_components": action_components,
             "command_components": command_components,
             "tool_components": tool_components,
+            "mcp_tools": len(self._mcp_tools),
             "event_handlers": events_handlers,
             "plus_command_components": plus_command_components,
             "chatter_components": chatter_components,
@@ -903,6 +908,34 @@ class ComponentRegistry:
             "enabled_components": len([c for c in self._components.values() if c.enabled]),
             "enabled_plugins": len([p for p in self._plugins.values() if p.enabled]),
         }
+
+    # === MCP 工具相关方法 ===
+
+    async def load_mcp_tools(self) -> None:
+        """加载 MCP 工具（异步方法）"""
+        if self._mcp_tools_loaded:
+            logger.debug("MCP 工具已加载，跳过")
+            return
+
+        try:
+            from .mcp_tool_adapter import load_mcp_tools_as_adapters
+
+            logger.info("开始加载 MCP 工具...")
+            self._mcp_tools = await load_mcp_tools_as_adapters()
+            self._mcp_tools_loaded = True
+            logger.info(f"MCP 工具加载完成，共 {len(self._mcp_tools)} 个工具")
+        except Exception as e:
+            logger.error(f"加载 MCP 工具失败: {e}")
+            self._mcp_tools = []
+            self._mcp_tools_loaded = True  # 标记为已尝试加载，避免重复尝试
+
+    def get_mcp_tools(self) -> list["BaseTool"]:
+        """获取所有 MCP 工具适配器实例"""
+        return self._mcp_tools.copy()
+
+    def is_mcp_tool(self, tool_name: str) -> bool:
+        """检查工具名是否为 MCP 工具"""
+        return tool_name.startswith("mcp_")
 
     # === 组件移除相关 ===
 

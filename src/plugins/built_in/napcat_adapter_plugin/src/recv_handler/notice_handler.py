@@ -175,10 +175,10 @@ class NoticeHandler:
             logger.warning("notice处理失败或不支持")
             return None
 
-        group_info: GroupInfo = None
+        group_info: GroupInfo | None = None
         if group_id:
             fetched_group_info = await get_group_info(self.get_server_connection(), group_id)
-            group_name: str = None
+            group_name: str | None = None
             if fetched_group_info:
                 group_name = fetched_group_info.get("group_name")
             else:

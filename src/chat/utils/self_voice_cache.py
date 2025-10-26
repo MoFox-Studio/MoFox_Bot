@@ -6,15 +6,14 @@
 避免不必要的自我语音识别。
 """
 import hashlib
-from typing import Dict
 
 # 一个简单的内存缓存，用于将机器人自己发送的语音消息映射到其原始文本。
 # 键是语音base64内容的SHA256哈希值。
-_self_voice_cache: Dict[str, str] = {}
+_self_voice_cache: dict[str, str] = {}
 
 def get_voice_key(base64_content: str) -> str:
     """为语音内容生成一个一致的键。"""
-    return hashlib.sha256(base64_content.encode('utf-8')).hexdigest()
+    return hashlib.sha256(base64_content.encode("utf-8")).hexdigest()
 
 def register_self_voice(base64_content: str, text: str):
     """
