@@ -100,6 +100,7 @@ class NoticeHandler:
         # message_time: int = raw_message.get("time")
         message_time: float = time.time()  # 应可乐要求，现在是float了
 
+        self_id = raw_message.get("self_id")
         group_id = raw_message.get("group_id")
         user_id = raw_message.get("user_id")
         target_id = raw_message.get("target_id")
@@ -161,9 +162,12 @@ class NoticeHandler:
                         logger.warning(f"不支持的group_ban类型: {notice_type}.{sub_type}")
             case NoticeType.group_upload:
                 logger.info("群文件上传")
+                if user_id == self_id:
+                    logger.info("检测到机器人自己上传文件，忽略此通知")
+                    return None
                 if not await message_handler.check_allow_to_chat(user_id, group_id, False, False):
                     return None
-                handled_message, user_info = await self.handle_group_upload_notify(raw_message, group_id, user_id)
+                handled_message, user_info = await self.handle_group_upload_notify(raw_message, group_id, user_id, self_id)
             case _:
                 logger.warning(f"不支持的notice类型: {notice_type}")
                 return None
@@ -382,7 +386,7 @@ class NoticeHandler:
         seg_data = Seg(type="text",data=f"{user_name}使用Emoji表情{QQ_FACE.get(like_emoji_id,"")}回复了你的消息[{target_message_text}]")
         return seg_data, user_info
 
-    async def handle_group_upload_notify(self, raw_message: dict, group_id: int, user_id: int):
+    async def handle_group_upload_notify(self, raw_message: dict, group_id: int, user_id: int, self_id: int):
         if not group_id:
             logger.error("群ID不能为空，无法处理群文件上传通知")
             return None, None
