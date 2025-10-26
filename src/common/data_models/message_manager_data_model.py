@@ -208,22 +208,28 @@ class StreamContext(BaseDataModel):
             bool: 如果消息支持所有指定的类型则返回True，否则返回False
         """
         if not self.current_message:
+            logger.warning("[问题] StreamContext.check_types: current_message 为 None")
             return False
 
         if not types:
             # 如果没有指定类型要求，默认为支持
             return True
 
+        logger.debug(f"[check_types] 检查消息是否支持类型: {types}")
+
         # 优先从additional_config中获取format_info
         if hasattr(self.current_message, "additional_config") and self.current_message.additional_config:
             try:
                 import orjson
 
+                logger.debug(f"[check_types] additional_config 类型: {type(self.current_message.additional_config)}")
                 config = orjson.loads(self.current_message.additional_config)
+                logger.debug(f"[check_types] 解析后的 config 键: {config.keys() if isinstance(config, dict) else 'N/A'}")
 
                 # 检查format_info结构
                 if "format_info" in config:
                     format_info = config["format_info"]
+                    logger.debug(f"[check_types] 找到 format_info: {format_info}")
 
                     # 方法1: 直接检查accept_format字段
                     if "accept_format" in format_info:
@@ -240,8 +246,9 @@ class StreamContext(BaseDataModel):
                         # 检查所有请求的类型是否都被支持
                         for requested_type in types:
                             if requested_type not in accept_format:
-                                logger.debug(f"消息不支持类型 '{requested_type}'，支持的类型: {accept_format}")
+                                logger.debug(f"[check_types] 消息不支持类型 '{requested_type}'，支持的类型: {accept_format}")
                                 return False
+                        logger.debug(f"[check_types] ✅ 消息支持所有请求的类型 (来自 accept_format)")
                         return True
 
                     # 方法2: 检查content_format字段（向后兼容）
@@ -258,22 +265,30 @@ class StreamContext(BaseDataModel):
                         # 检查所有请求的类型是否都被支持
                         for requested_type in types:
                             if requested_type not in content_format:
-                                logger.debug(f"消息不支持类型 '{requested_type}'，支持的内容格式: {content_format}")
+                                logger.debug(f"[check_types] 消息不支持类型 '{requested_type}'，支持的内容格式: {content_format}")
                                 return False
+                        logger.debug(f"[check_types] ✅ 消息支持所有请求的类型 (来自 content_format)")
                         return True
+                else:
+                    logger.warning("[check_types] [问题] additional_config 中没有 format_info 字段")
 
             except (orjson.JSONDecodeError, AttributeError, TypeError) as e:
-                logger.debug(f"解析消息格式信息失败: {e}")
+                logger.warning(f"[check_types] [问题] 解析消息格式信息失败: {e}")
+        else:
+            logger.warning("[check_types] [问题] current_message 没有 additional_config 或为空")
 
         # 备用方案：如果无法从additional_config获取格式信息，使用默认支持的类型
         # 大多数消息至少支持text类型
+        logger.debug("[check_types] 使用备用方案：默认支持类型检查")
         default_supported_types = ["text", "emoji"]
         for requested_type in types:
             if requested_type not in default_supported_types:
-                logger.debug(f"使用默认类型检查，消息可能不支持类型 '{requested_type}'")
+                logger.debug(f"[check_types] 使用默认类型检查，消息可能不支持类型 '{requested_type}'")
                 # 对于非基础类型，返回False以避免错误
                 if requested_type not in ["text", "emoji", "reply"]:
+                    logger.warning(f"[check_types] ❌ 备用方案拒绝类型 '{requested_type}'")
                     return False
+        logger.debug("[check_types] ✅ 备用方案通过所有类型检查")
         return True
 
     def get_priority_mode(self) -> str | None:

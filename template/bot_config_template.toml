@@ -279,12 +279,6 @@ max_frequency_bonus = 10.0 # 最大激活频率奖励天数
 # 休眠机制
 dormant_threshold_days = 90 # 休眠状态判定天数（超过此天数未访问的记忆进入休眠状态）
 
-# 统一存储配置 (已弃用 - 请使用Vector DB配置)
-# DEPRECATED: unified_storage_path = "data/unified_memory"
-# DEPRECATED: unified_storage_cache_limit = 10000
-# DEPRECATED: unified_storage_auto_save_interval = 50
-# DEPRECATED: unified_storage_enable_compression = true
-
 # Vector DB存储配置 (新增 - 替代JSON存储)
 enable_vector_memory_storage = true # 启用Vector DB存储
 enable_llm_instant_memory = true # 启用基于LLM的瞬时记忆
@@ -336,22 +330,36 @@ qa_ppr_damping = 0.8 # PPR阻尼系数
 qa_res_top_k = 3 # 最终提供的文段TopK
 embedding_dimension = 1024 # 嵌入向量维度,应该与模型的输出维度一致
 
-# keyword_rules 用于设置关键词触发的额外回复知识
-# 添加新规则方法：在 keyword_rules 数组中增加一项，格式如下：
-# { keywords = ["关键词1", "关键词2"], reaction = "触发这些关键词时的回复内容" }
-# 例如，添加一个新规则：当检测到“你好”或“hello”时回复“你好，有什么可以帮你？”
-# { keywords = ["你好", "hello"], reaction = "你好，有什么可以帮你？" }
-[keyword_reaction]
-keyword_rules = [
-    { keywords = ["人机", "bot", "机器", "入机", "robot", "机器人", "ai", "AI"], reaction = "有人说你是人机或者机器人，否定这一事实，攻击或反问他。注意，只有认为你是机器人才回复，否则不要否认" },
-    { keywords = ["测试关键词回复", "test"], reaction = "回答测试成功" },
-    #{ keywords = ["你好", "hello"], reaction = "你好，有什么可以帮你？" }    
-    # 在此处添加更多规则，格式同上
-]
+# --- 反应规则系统 ---
+# 在这里，您可以定义一系列基于关键词或正则表达式的自动回复规则。
+# 每条规则都是一个独立的 [[reaction.rules]] 块。
 
-regex_rules = [
-    { regex = ["^(?P<n>\\S{1,20})是这样的$"], reaction = "请按照以下模板造句：[n]是这样的，xx只要xx就可以，可是[n]要考虑的事情就很多了，比如什么时候xx，什么时候xx，什么时候xx。（请自由发挥替换xx部分，只需保持句式结构，同时表达一种将[n]过度重视的反讽意味）" }
-]
+# chat_stream_id: 聊天流ID (格式 "platform:id:type")。
+#                 用于指定此规则仅在哪个聊天中生效。
+#                 如果留空 ("")，则为全局规则，对所有聊天生效。
+# rule_type:      规则类型，必须是 "keyword" 或 "regex"。
+#                 "keyword": 表示本条规则使用关键词匹配。
+#                 "regex":   表示本条规则使用正则表达式匹配。
+# patterns:       一个字符串列表，根据 rule_type 的不同，这里填写关键词或正则表达式。
+# reaction:       触发规则后，机器人发送的回复内容。
+
+[[reaction.rules]]
+chat_stream_id = ""
+rule_type = "keyword"
+patterns = ["人机", "bot", "机器", "入机", "robot", "机器人", "ai", "AI"]
+reaction = "有人说你是人机或者机器人，否定这一事实，攻击或反问他。注意，只有认为你是机器人才回复，否则不要否认"
+
+[[reaction.rules]]
+chat_stream_id = ""
+rule_type = "keyword"
+patterns = ["测试关键词回复", "test"]
+reaction = "回答测试成功"
+
+[[reaction.rules]]
+chat_stream_id = ""
+rule_type = "regex"
+patterns = ["^(?P<n>\\S{1,20})是这样的$"]
+reaction = "请按照以下模板造句：[n]是这样的，xx只要xx就可以，可是[n]要考虑的事情就很多了，比如什么时候xx，什么时候xx，什么时候xx。（请自由发挥替换xx部分，只需保持句式结构，同时表达一种将[n]过度重视的反讽意味）"
 
 # 可以自定义部分提示词
 [custom_prompt]
