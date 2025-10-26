@@ -303,7 +303,7 @@ class Prompt:
 
     @staticmethod
     def _process_escaped_braces(template) -> str:
-        """预处理模板，将 `\{` 和 `\}` 替换为临时标记."""
+        r"""预处理模板，将 `\{` 和 `\}` 替换为临时标记."""
         if isinstance(template, list):
             template = "\n".join(str(item) for item in template)
         elif not isinstance(template, str):

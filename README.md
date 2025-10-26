@@ -85,6 +85,7 @@
 - 🧠 **拓展记忆系统** - 支持瞬时记忆等多种记忆
 - 🎪 **完善的 Event** - 支持动态事件注册和处理器订阅，并实现了聚合结果管理
 - 🔍 **内嵌魔改插件** - 内置联网搜索等诸多功能，等你来探索
+- 🔌 **MCP 协议支持** - 集成 Model Context Protocol，支持外部工具服务器连接（仅 Streamable HTTP）
 - 🌟 **还有更多** - 请参阅详细修改 [commits](https://github.com/MoFox-Studio/MoFox_Bot/commits)
  
 </td>

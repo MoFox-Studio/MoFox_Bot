@@ -6,9 +6,9 @@ from pathlib import Path
 
 import toml
 
+from src.chat.utils.self_voice_cache import register_self_voice
 from src.common.logger import get_logger
 from src.plugin_system.base.base_action import BaseAction, ChatMode
-from src.chat.utils.self_voice_cache import register_self_voice
 
 from ..services.manager import get_service
 

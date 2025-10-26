@@ -1,9 +1,4 @@
 import asyncio
-import os
-import tempfile
-from typing import Any
-from pathlib import Path
-import toml
 
 import whisper
 
@@ -40,7 +35,7 @@ class LocalASRTool(BaseTool):
                 model_size = plugin_config.get("whisper", {}).get("model_size", "tiny")
                 device = plugin_config.get("whisper", {}).get("device", "cpu")
                 logger.info(f"正在预加载 Whisper ASR 模型: {model_size} ({device})")
-                
+
                 loop = asyncio.get_running_loop()
                 _whisper_model = await loop.run_in_executor(
                     None, whisper.load_model, model_size, device
@@ -61,10 +56,10 @@ class LocalASRTool(BaseTool):
         # 增强的等待逻辑：只要模型还没准备好，就一直等待后台加载任务完成
         while _is_loading:
             await asyncio.sleep(0.2)
-        
+
         if _whisper_model is None:
             return "Whisper 模型加载失败，无法识别语音。"
-        
+
         try:
             logger.info(f"开始使用 Whisper 识别音频: {audio_path}")
             loop = asyncio.get_running_loop()
@@ -110,6 +105,6 @@ class STTWhisperPlugin(BasePlugin):
                 ), LocalASRTool)]
         except Exception as e:
             logger.error(f"检查 ASR provider 配置时出错: {e}")
-        
+
         logger.debug("ASR provider is not 'local', whisper plugin's tool is disabled.")
         return []

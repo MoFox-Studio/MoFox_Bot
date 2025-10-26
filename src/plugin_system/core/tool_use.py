@@ -145,8 +145,7 @@ class ToolExecutor:
         pending_step_two = getattr(self, "_pending_step_two_tools", {})
         if pending_step_two:
             # 添加第二步工具定义
-            for step_two_def in pending_step_two.values():
-                tool_definitions.append(step_two_def)
+            tool_definitions.extend(list(pending_step_two.values()))
 
         return tool_definitions
 
@@ -286,10 +285,33 @@ class ToolExecutor:
             logger.info(
                 f"{self.log_prefix} 正在执行工具: [bold green]{function_name}[/bold green] | 参数: {function_args}"
             )
-            
+
             # 检查是否是MCP工具
-            pass
-            
+            from src.plugin_system.core import component_registry
+
+            if component_registry.is_mcp_tool(function_name):
+                logger.debug(f"{self.log_prefix}识别到 MCP 工具: {function_name}")
+                # 找到对应的 MCP 工具实例
+                mcp_tools = component_registry.get_mcp_tools()
+                mcp_tool = next((t for t in mcp_tools if t.name == function_name), None)
+
+                if mcp_tool:
+                    logger.debug(f"{self.log_prefix}执行 MCP 工具 {function_name}")
+                    result = await mcp_tool.execute(function_args)
+
+                    if result:
+                        logger.debug(f"{self.log_prefix}MCP 工具 {function_name} 执行成功")
+                        return {
+                            "tool_call_id": tool_call.call_id,
+                            "role": "tool",
+                            "name": function_name,
+                            "type": "function",
+                            "content": result.get("content", ""),
+                        }
+                else:
+                    logger.warning(f"{self.log_prefix}未找到 MCP 工具: {function_name}")
+                    return None
+
             function_args["llm_called"] = True  # 标记为LLM调用
 
             # 检查是否是二步工具的第二步调用

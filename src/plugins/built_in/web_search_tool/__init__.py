@@ -15,7 +15,7 @@ __plugin_meta__ = PluginMetadata(
         "is_built_in": True,
     },
     # Python包依赖列表
-    python_dependencies = [  # noqa: RUF012
+    python_dependencies = [
         PythonDependency(package_name="asyncddgs", description="异步DuckDuckGo搜索库", optional=False),
         PythonDependency(
             package_name="exa_py",
