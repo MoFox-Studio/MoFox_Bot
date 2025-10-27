@@ -14,11 +14,11 @@ from .payload_content.message import Message, MessageBuilder
 logger = get_logger("消息压缩工具")
 
 
-def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 * 1024) -> list[Message]:
+def compress_messages(messages: list[Message], img_target_size: int = 2 * 1024 * 1024) -> list[Message]:
     """
     压缩消息列表中的图片
     :param messages: 消息列表
-    :param img_target_size: 图片目标大小，默认1MB
+    :param img_target_size: 图片目标大小，默认2MB
     :return: 压缩后的消息列表
     """
 
@@ -29,7 +29,7 @@ def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 *
         :return: 转换后的图片数据
         """
         try:
-            image = Image.open(image_data)
+            image = Image.open(io.BytesIO(image_data))
 
             if image.format and (image.format.upper() in ["JPEG", "JPG", "PNG", "WEBP"]):
                 # 静态图像，转换为JPEG格式
@@ -50,7 +50,7 @@ def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 *
         :return: 缩放后的图片数据
         """
         try:
-            image = Image.open(image_data)
+            image = Image.open(io.BytesIO(image_data))
 
             # 原始尺寸
             original_size = (image.width, image.height)
