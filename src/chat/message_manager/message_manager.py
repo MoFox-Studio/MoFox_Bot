@@ -374,8 +374,15 @@ class MessageManager:
             logger.info(f"消息 {message.message_id} 是表情包或Emoji，跳过打断检查")
             return
 
-        # 检查是否有 stream_loop_task 在运行
+        # 检查上下文
         context = chat_stream.context_manager.context
+        
+        # 只有当 Chatter 真正在处理时才检查打断
+        if not context.is_chatter_processing:
+            logger.debug(f"聊天流 {chat_stream.stream_id} Chatter 未在处理，跳过打断检查")
+            return
+
+        # 检查是否有 stream_loop_task 在运行
         stream_loop_task = context.stream_loop_task
         
         if stream_loop_task and not stream_loop_task.done():

@@ -391,6 +391,10 @@ class StreamLoopManager:
             child_tasks.add(energy_task)
             energy_task.add_done_callback(lambda t: child_tasks.discard(t))
 
+            # 设置 Chatter 正在处理的标志
+            context.is_chatter_processing = True
+            logger.debug(f"设置 Chatter 处理标志: {stream_id}")
+
             # 直接调用chatter_manager处理流上下文
             results = await self.chatter_manager.process_stream_context(stream_id, context)
             success = results.get("success", False)
@@ -423,6 +427,10 @@ class StreamLoopManager:
                     child_task.cancel()
             return False
         finally:
+            # 清除 Chatter 处理标志
+            context.is_chatter_processing = False
+            logger.debug(f"清除 Chatter 处理标志: {stream_id}")
+            
             # 无论成功或失败，都要设置处理状态为未处理
             self._set_stream_processing_status(stream_id, False)
 

@@ -41,6 +41,7 @@ class StreamContext(BaseDataModel):
     is_active: bool = True
     processing_task: asyncio.Task | None = None
     stream_loop_task: asyncio.Task | None = None  # 流循环任务
+    is_chatter_processing: bool = False  # Chatter 是否正在处理
     interruption_count: int = 0  # 打断计数器
     last_interruption_time: float = 0.0  # 上次打断时间
 
