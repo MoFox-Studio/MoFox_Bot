@@ -360,7 +360,7 @@ class MessageManager:
             logger.error(f"清理不活跃聊天流时发生错误: {e}")
 
     async def _check_and_handle_interruption(self, chat_stream: ChatStream | None = None, message: DatabaseMessages | None = None):
-        """检查并处理消息打断 - 支持多重回复任务取消"""
+        """检查并处理消息打断 - 通过取消 stream_loop_task 实现"""
         if not global_config.chat.interruption_enabled or not chat_stream or not message:
             return
 
@@ -374,70 +374,64 @@ class MessageManager:
             logger.info(f"消息 {message.message_id} 是表情包或Emoji，跳过打断检查")
             return
 
-        # 修复：获取所有处理任务（包括多重回复）
-        all_processing_tasks = self.chatter_manager.get_all_processing_tasks(chat_stream.stream_id)
-
-        if all_processing_tasks:
+        # 检查是否有 stream_loop_task 在运行
+        context = chat_stream.context_manager.context
+        stream_loop_task = context.stream_loop_task
+        
+        if stream_loop_task and not stream_loop_task.done():
             # 检查触发用户ID
-            triggering_user_id = chat_stream.context_manager.context.triggering_user_id
+            triggering_user_id = context.triggering_user_id
             if triggering_user_id and message.user_info.user_id != triggering_user_id:
                 logger.info(f"消息来自非触发用户 {message.user_info.user_id}，实际触发用户为 {triggering_user_id}，跳过打断检查")
                 return
 
-            # 计算打断概率 - 使用新的线性概率模型
-            interruption_probability = chat_stream.context_manager.context.calculate_interruption_probability(
+            # 计算打断概率
+            interruption_probability = context.calculate_interruption_probability(
                 global_config.chat.interruption_max_limit
             )
 
             # 检查是否已达到最大打断次数
-            if chat_stream.context_manager.context.interruption_count >= global_config.chat.interruption_max_limit:
+            if context.interruption_count >= global_config.chat.interruption_max_limit:
                 logger.debug(
-                    f"聊天流 {chat_stream.stream_id} 已达到最大打断次数 {chat_stream.context_manager.context.interruption_count}/{global_config.chat.interruption_max_limit}，跳过打断检查"
+                    f"聊天流 {chat_stream.stream_id} 已达到最大打断次数 {context.interruption_count}/{global_config.chat.interruption_max_limit}，跳过打断检查"
                 )
                 return
 
             # 根据概率决定是否打断
             if random.random() < interruption_probability:
-                logger.info(f"聊天流 {chat_stream.stream_id} 触发消息打断，打断概率: {interruption_probability:.2f}，检测到 {len(all_processing_tasks)} 个任务")
+                logger.info(f"聊天流 {chat_stream.stream_id} 触发消息打断，打断概率: {interruption_probability:.2f}")
 
-                # 修复：取消所有任务（包括多重回复）
-                cancelled_count = self.chatter_manager.cancel_all_stream_tasks(chat_stream.stream_id)
-
-                if cancelled_count > 0:
-                    logger.info(f"消息打断成功取消 {cancelled_count} 个任务: {chat_stream.stream_id}")
-                else:
-                    logger.warning(f"消息打断未能取消任何任务: {chat_stream.stream_id}")
+                # 取消 stream_loop_task，子任务会通过 try-catch 自动取消
+                try:
+                    stream_loop_task.cancel()
+                    logger.info(f"已取消流循环任务: {chat_stream.stream_id}")
+                except Exception as e:
+                    logger.warning(f"取消流循环任务失败: {chat_stream.stream_id} - {e}")
 
                 # 增加打断计数
-                await chat_stream.context_manager.context.increment_interruption_count()
+                await context.increment_interruption_count()
 
-                # 新增：打断后立即重新进入聊天流程
-                # 新增：打断后延迟重新进入聊天流程，以合并短时间内的多条消息
-                asyncio.create_task(self._trigger_delayed_reprocess(chat_stream, delay=0.5))
+                # 打断后重新创建 stream_loop 任务
+                await self._trigger_reprocess(chat_stream)
 
                 # 检查是否已达到最大次数
-                if chat_stream.context_manager.context.interruption_count >= global_config.chat.interruption_max_limit:
+                if context.interruption_count >= global_config.chat.interruption_max_limit:
                     logger.warning(
-                        f"聊天流 {chat_stream.stream_id} 已达到最大打断次数 {chat_stream.context_manager.context.interruption_count}/{global_config.chat.interruption_max_limit}，后续消息将不再打断"
+                        f"聊天流 {chat_stream.stream_id} 已达到最大打断次数 {context.interruption_count}/{global_config.chat.interruption_max_limit}，后续消息将不再打断"
                     )
                 else:
                     logger.info(
-                        f"聊天流 {chat_stream.stream_id} 已打断并重新进入处理流程，当前打断次数: {chat_stream.context_manager.context.interruption_count}/{global_config.chat.interruption_max_limit}"
+                        f"聊天流 {chat_stream.stream_id} 已打断并重新进入处理流程，当前打断次数: {context.interruption_count}/{global_config.chat.interruption_max_limit}"
                     )
             else:
-                logger.debug(f"聊天流 {chat_stream.stream_id} 未触发打断，打断概率: {interruption_probability:.2f}，检测到 {len(all_processing_tasks)} 个任务")
-
-    async def _trigger_delayed_reprocess(self, chat_stream: ChatStream, delay: float):
-        """打断后延迟重新进入聊天流程，以合并短时间内的多条消息"""
-        await asyncio.sleep(delay)
-        await self._trigger_reprocess(chat_stream)
+                logger.debug(f"聊天流 {chat_stream.stream_id} 未触发打断，打断概率: {interruption_probability:.2f}")
 
     async def _trigger_reprocess(self, chat_stream: ChatStream):
-        """重新处理聊天流的核心逻辑 - 支持子任务管理"""
+        """重新处理聊天流的核心逻辑 - 重新创建 stream_loop 任务"""
         try:
             stream_id = chat_stream.stream_id
 
-            logger.info(f"🚀 打断后立即重新处理聊天流: {stream_id}")
+            logger.info(f"🚀 打断后重新创建流循环任务: {stream_id}")
 
             # 等待一小段时间确保当前消息已经添加到未读消息中
             await asyncio.sleep(0.1)
@@ -451,46 +445,18 @@ class MessageManager:
                 logger.debug(f"💭 聊天流 {stream_id} 没有未读消息，跳过重新处理")
                 return
 
-            logger.info(f"💬 开始重新处理 {len(unread_messages)} 条未读消息: {stream_id}")
+            logger.info(f"💬 准备重新处理 {len(unread_messages)} 条未读消息: {stream_id}")
 
-            # 创建处理任务并使用try-catch实现子任务管理
-            task = asyncio.create_task(
-                self._managed_reprocess_with_cleanup(stream_id, context),
-                name=f"reprocess_{stream_id}_{int(time.time())}"
-            )
-
-            # 设置处理任务
-            self.chatter_manager.set_processing_task(stream_id, task)
-
-            # 不等待完成，让它异步执行
-            # 如果需要等待，调用者会等待 chatter_manager.process_stream_context
+            # 重新创建 stream_loop 任务
+            success = await stream_loop_manager.start_stream_loop(stream_id, force=True)
+            
+            if success:
+                logger.info(f"✅ 成功重新创建流循环任务: {stream_id}")
+            else:
+                logger.warning(f"⚠️ 重新创建流循环任务失败: {stream_id}")
 
         except Exception as e:
             logger.error(f"🚨 触发重新处理时出错: {e}")
-
-    async def _managed_reprocess_with_cleanup(self, stream_id: str, context):
-        """带清理功能的重新处理"""
-        child_tasks = set()  # 跟踪子任务
-
-        try:
-            # 处理流上下文
-            result = await self.chatter_manager.process_stream_context(stream_id, context)
-            return result
-
-        except asyncio.CancelledError:
-            logger.info(f"重新处理任务被取消: {stream_id}")
-            # 取消所有子任务
-            for child_task in child_tasks:
-                if not child_task.done():
-                    child_task.cancel()
-            raise
-        except Exception as e:
-            logger.error(f"重新处理任务执行出错: {stream_id} - {e}")
-            # 清理子任务
-            for child_task in child_tasks:
-                if not child_task.done():
-                    child_task.cancel()
-            raise
 
     async def clear_all_unread_messages(self, stream_id: str):
         """清除指定上下文中的所有未读消息，在消息处理完成后调用"""

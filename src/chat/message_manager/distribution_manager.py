@@ -22,9 +22,6 @@ class StreamLoopManager:
     """流循环管理器 - 每个流一个独立的无限循环任务"""
 
     def __init__(self, max_concurrent_streams: int | None = None):
-        # 流循环任务管理
-        self.stream_loops: dict[str, asyncio.Task] = {}
-
         # 统计信息
         self.stats: dict[str, Any] = {
             "active_streams": 0,
@@ -68,12 +65,19 @@ class StreamLoopManager:
 
         # 取消所有流循环
         try:
+            # 获取所有活跃的流
+            from src.plugin_system.apis.chat_api import get_chat_manager
+            
+            chat_manager = get_chat_manager()
+            all_streams = await chat_manager.get_all_streams()
+            
             # 创建任务列表以便并发取消
             cancel_tasks = []
-            for stream_id, task in list(self.stream_loops.items()):
-                if not task.done():
-                    task.cancel()
-                    cancel_tasks.append((stream_id, task))
+            for chat_stream in all_streams:
+                context = chat_stream.context_manager.context
+                if context.stream_loop_task and not context.stream_loop_task.done():
+                    context.stream_loop_task.cancel()
+                    cancel_tasks.append((chat_stream.stream_id, context.stream_loop_task))
 
             # 并发等待所有任务取消
             if cancel_tasks:
@@ -83,15 +87,6 @@ class StreamLoopManager:
                     return_exceptions=True,
                 )
 
-            # 取消所有活跃的 chatter 处理任务
-            if self.chatter_manager:
-                try:
-                    cancelled_count = await self.chatter_manager.cancel_all_processing_tasks()
-                    logger.info(f"已取消 {cancelled_count} 个活跃的 chatter 处理任务")
-                except Exception as e:
-                    logger.error(f"取消 chatter 处理任务时出错: {e}")
-
-            self.stream_loops.clear()
             logger.info("所有流循环已清理")
         except Exception as e:
             logger.error(f"停止管理器时出错: {e}")
@@ -108,8 +103,14 @@ class StreamLoopManager:
         Returns:
             bool: 是否成功启动
         """
+        # 获取流上下文
+        context = await self._get_stream_context(stream_id)
+        if not context:
+            logger.warning(f"无法获取流上下文: {stream_id}")
+            return False
+
         # 快速路径：如果流已存在，无需处理
-        if stream_id in self.stream_loops:
+        if context.stream_loop_task and not context.stream_loop_task.done():
             logger.debug(f"流 {stream_id} 循环已在运行")
             return True
 
@@ -141,7 +142,10 @@ class StreamLoopManager:
         # 创建流循环任务
         try:
             loop_task = asyncio.create_task(self._stream_loop_worker(stream_id), name=f"stream_loop_{stream_id}")
-            self.stream_loops[stream_id] = loop_task
+            
+            # 将任务记录到 StreamContext 中
+            context.stream_loop_task = loop_task
+            
             # 更新统计信息
             self.stats["active_streams"] += 1
             self.stats["total_loops"] += 1
@@ -189,12 +193,18 @@ class StreamLoopManager:
         Returns:
             bool: 是否成功停止
         """
-        # 快速路径：如果流不存在，无需处理
-        if stream_id not in self.stream_loops:
-            logger.debug(f"流 {stream_id} 循环不存在，无需停止")
+        # 获取流上下文
+        context = await self._get_stream_context(stream_id)
+        if not context:
+            logger.debug(f"流 {stream_id} 上下文不存在，无需停止")
             return False
 
-        task = self.stream_loops[stream_id]
+        # 检查是否有 stream_loop_task
+        if not context.stream_loop_task or context.stream_loop_task.done():
+            logger.debug(f"流 {stream_id} 循环不存在或已结束，无需停止")
+            return False
+
+        task = context.stream_loop_task
         if not task.done():
             task.cancel()
             try:
@@ -207,14 +217,10 @@ class StreamLoopManager:
             except Exception as e:
                 logger.error(f"等待流循环任务结束时出错: {stream_id} - {e}")
 
-        # 取消关联的 chatter 处理任务
-        if self.chatter_manager:
-            cancelled = self.chatter_manager.cancel_processing_task(stream_id)
-            if cancelled:
-                logger.info(f"已取消关联的 chatter 处理任务: {stream_id}")
-
-        del self.stream_loops[stream_id]
-        logger.info(f"停止流循环: {stream_id} (剩余: {len(self.stream_loops)})")
+        # 清空 StreamContext 中的任务记录
+        context.stream_loop_task = None
+            
+        logger.info(f"停止流循环: {stream_id}")
         return True
 
     async def _stream_loop_worker(self, stream_id: str) -> None:
@@ -277,13 +283,6 @@ class StreamLoopManager:
 
                 except asyncio.CancelledError:
                     logger.info(f"流循环被取消: {stream_id}")
-                    if self.chatter_manager:
-                        # 使用 ChatterManager 的新方法取消处理任务
-                        cancelled = self.chatter_manager.cancel_processing_task(stream_id)
-                        if cancelled:
-                            logger.info(f"成功取消 chatter 处理任务: {stream_id}")
-                        else:
-                            logger.debug(f"没有需要取消的 chatter 处理任务: {stream_id}")
                     break
                 except Exception as e:
                     logger.error(f"流循环出错 {stream_id}: {e}", exc_info=True)
@@ -291,10 +290,14 @@ class StreamLoopManager:
                     await asyncio.sleep(5.0)  # 错误时等待5秒再重试
 
         finally:
-            # 清理循环标记
-            if stream_id in self.stream_loops:
-                del self.stream_loops[stream_id]
-                logger.debug(f"清理流循环标记: {stream_id}")
+            # 清理 StreamContext 中的任务记录
+            try:
+                context = await self._get_stream_context(stream_id)
+                if context and context.stream_loop_task:
+                    context.stream_loop_task = None
+                    logger.debug(f"清理 StreamContext 中的流循环任务: {stream_id}")
+            except Exception as e:
+                logger.debug(f"清理 StreamContext 任务记录失败: {e}")
 
             # 释放自适应管理器的槽位
             try:
@@ -384,9 +387,7 @@ class StreamLoopManager:
             energy_task.add_done_callback(lambda t: child_tasks.discard(t))
 
             # 直接调用chatter_manager处理流上下文
-            task = asyncio.create_task(self.chatter_manager.process_stream_context(stream_id, context))
-            self.chatter_manager.set_processing_task(stream_id, task)
-            results = await task
+            results = await self.chatter_manager.process_stream_context(stream_id, context)
             success = results.get("success", False)
 
             if success:
@@ -509,8 +510,11 @@ class StreamLoopManager:
         current_time = time.time()
         uptime = current_time - self.stats["start_time"] if self.is_running else 0
 
+        # 从统计信息中获取活跃流数量
+        active_streams = self.stats.get("active_streams", 0)
+
         return {
-            "active_streams": len(self.stream_loops),
+            "active_streams": active_streams,
             "total_loops": self.stats["total_loops"],
             "max_concurrent": self.max_concurrent_streams,
             "is_running": self.is_running,
@@ -573,9 +577,12 @@ class StreamLoopManager:
         # 计算吞吐量
         throughput = self.stats["total_process_cycles"] / max(1, uptime / 3600)  # 每小时处理次数
 
+        # 从统计信息中获取活跃流数量
+        active_streams = self.stats.get("active_streams", 0)
+
         return {
             "uptime_hours": uptime / 3600,
-            "active_streams": len(self.stream_loops),
+            "active_streams": active_streams,
             "total_process_cycles": self.stats["total_process_cycles"],
             "total_failures": self.stats["total_failures"],
             "throughput_per_hour": throughput,
@@ -627,48 +634,39 @@ class StreamLoopManager:
         logger.info(f"强制分发流处理: {stream_id}")
 
         try:
-            # 检查是否有现有的分发循环
-            if stream_id in self.stream_loops:
-                logger.info(f"发现现有流循环 {stream_id}，将先移除再重新创建")
-                existing_task = self.stream_loops[stream_id]
-                if not existing_task.done():
-                    existing_task.cancel()
-                    # 创建异步任务来等待取消完成，并添加异常处理
-                    cancel_task = asyncio.create_task(
-                        self._wait_for_task_cancel(stream_id, existing_task), name=f"cancel_existing_loop_{stream_id}"
-                    )
-                    # 为取消任务添加异常处理，避免孤儿任务
-                    cancel_task.add_done_callback(
-                        lambda task: logger.debug(f"取消任务完成: {stream_id}")
-                        if not task.exception()
-                        else logger.error(f"取消任务异常: {stream_id} - {task.exception()}")
-                    )
-                # 从字典中移除
-                del self.stream_loops[stream_id]
-
-            # 获取聊天管理器和流
-            chat_manager = get_chat_manager()
-            chat_stream = await chat_manager.get_stream(stream_id)
-            if not chat_stream:
-                logger.warning(f"强制分发时未找到流: {stream_id}")
-                return
-
             # 获取流上下文
-            context = chat_stream.context_manager.context
+            context = await self._get_stream_context(stream_id)
             if not context:
                 logger.warning(f"强制分发时未找到流上下文: {stream_id}")
                 return
+
+            # 检查是否有现有的 stream_loop_task
+            if context.stream_loop_task and not context.stream_loop_task.done():
+                logger.info(f"发现现有流循环 {stream_id}，将先取消再重新创建")
+                existing_task = context.stream_loop_task
+                existing_task.cancel()
+                # 创建异步任务来等待取消完成，并添加异常处理
+                cancel_task = asyncio.create_task(
+                    self._wait_for_task_cancel(stream_id, existing_task), name=f"cancel_existing_loop_{stream_id}"
+                )
+                # 为取消任务添加异常处理，避免孤儿任务
+                cancel_task.add_done_callback(
+                    lambda task: logger.debug(f"取消任务完成: {stream_id}")
+                    if not task.exception()
+                    else logger.error(f"取消任务异常: {stream_id} - {task.exception()}")
+                )
 
             # 检查未读消息数量
             unread_count = self._get_unread_count(context)
             logger.info(f"流 {stream_id} 当前未读消息数: {unread_count}")
 
-            # 创建新的流循环任务
-            new_task = asyncio.create_task(self._stream_loop(stream_id), name=f"force_stream_loop_{stream_id}")
-            self.stream_loops[stream_id] = new_task
-            self.stats["total_loops"] += 1
-
-            logger.info(f"已创建强制分发流循环: {stream_id} (当前总数: {len(self.stream_loops)})")
+            # 使用 start_stream_loop 重新创建流循环任务
+            success = await self.start_stream_loop(stream_id, force=True)
+            
+            if success:
+                logger.info(f"已创建强制分发流循环: {stream_id}")
+            else:
+                logger.warning(f"创建强制分发流循环失败: {stream_id}")
 
         except Exception as e:
             logger.error(f"强制分发流处理失败 {stream_id}: {e}", exc_info=True)
