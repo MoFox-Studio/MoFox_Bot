@@ -19,8 +19,8 @@ from src.plugin_system import (
     ToolParamType,
     register_plugin,
 )
-from src.plugin_system.base.component_types import InjectionRule,InjectionType
 from src.plugin_system.base.base_event import HandlerResult
+from src.plugin_system.base.component_types import InjectionRule, InjectionType
 
 logger = get_logger("hello_world_plugin")
 

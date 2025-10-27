@@ -4,9 +4,10 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import Callable, Coroutine
 from functools import partial
 from random import choices
-from typing import Any, Callable, Coroutine
+from typing import Any
 
 from maim_message import MessageServer
 from rich.traceback import install
@@ -24,8 +25,8 @@ from src.config.config import global_config
 from src.individuality.individuality import Individuality, get_individuality
 from src.manager.async_task_manager import async_task_manager
 from src.mood.mood_manager import mood_manager
-from src.plugin_system.base.component_types import EventType
 from src.plugin_system.base.base_interest_calculator import BaseInterestCalculator
+from src.plugin_system.base.component_types import EventType
 from src.plugin_system.core.event_manager import event_manager
 from src.plugin_system.core.plugin_manager import plugin_manager
 from src.schedule.monthly_plan_manager import monthly_plan_manager
@@ -418,7 +419,7 @@ MoFox_Bot(第三方修改版)
 
         # 处理所有缓存的事件订阅（插件加载完成后）
         event_manager.process_all_pending_subscriptions()
-        
+
         # 初始化表情管理器
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")

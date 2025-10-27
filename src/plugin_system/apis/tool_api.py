@@ -1,4 +1,5 @@
 from typing import Any
+
 from src.common.logger import get_logger
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.base.component_types import ComponentType
@@ -22,7 +23,7 @@ def get_tool_instance(tool_name: str) -> BaseTool | None:
 
 
 def get_llm_available_tool_definitions() -> list[dict[str, Any]]:
-    """获取LLM可用的工具定义列表
+    """获取LLM可用的工具定义列表（包括 MCP 工具）
 
     Returns:
         list[dict[str, Any]]: 工具定义列表
@@ -31,6 +32,8 @@ def get_llm_available_tool_definitions() -> list[dict[str, Any]]:
 
     llm_available_tools = component_registry.get_llm_available_tools()
     tool_definitions = []
+
+    # 获取常规工具定义
     for tool_name, tool_class in llm_available_tools.items():
         try:
             # 调用类方法 get_tool_definition 获取定义
@@ -38,5 +41,18 @@ def get_llm_available_tool_definitions() -> list[dict[str, Any]]:
             tool_definitions.append(definition)
         except Exception as e:
             logger.error(f"获取工具 {tool_name} 的定义失败: {e}")
+
+    # 获取 MCP 工具定义
+    try:
+        mcp_tools = component_registry.get_mcp_tools()
+        for mcp_tool in mcp_tools:
+            try:
+                definition = mcp_tool.get_tool_definition()
+                tool_definitions.append(definition)
+            except Exception as e:
+                logger.error(f"获取 MCP 工具 {mcp_tool.name} 的定义失败: {e}")
+    except Exception as e:
+        logger.debug(f"获取 MCP 工具列表失败（可能未启用）: {e}")
+
     return tool_definitions
 

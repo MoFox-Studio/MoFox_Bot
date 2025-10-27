@@ -19,10 +19,11 @@ async def get_voice_text(voice_base64: str) -> str:
 
     # 如果选择本地识别
     if asr_provider == "local":
-        from src.plugin_system.apis import tool_api
-        import tempfile
         import base64
         import os
+        import tempfile
+
+        from src.plugin_system.apis import tool_api
 
         local_asr_tool = tool_api.get_tool_instance("local_asr")
         if not local_asr_tool:
@@ -39,8 +40,8 @@ async def get_voice_text(voice_base64: str) -> str:
             text = await local_asr_tool.execute(function_args={"audio_path": audio_path})
             if "失败" in text or "出错" in text or "错误" in text:
                 logger.warning(f"本地语音识别失败: {text}")
-                return f"[语音(本地识别失败)]"
-            
+                return "[语音(本地识别失败)]"
+
             logger.info(f"本地语音识别成功: {text}")
             return f"[语音] {text}"
 

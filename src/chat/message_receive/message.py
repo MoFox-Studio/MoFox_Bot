@@ -9,10 +9,10 @@ from maim_message import BaseMessageInfo, MessageBase, Seg, UserInfo
 from rich.traceback import install
 
 from src.chat.message_receive.chat_stream import ChatStream
+from src.chat.utils.self_voice_cache import consume_self_voice_text
 from src.chat.utils.utils_image import get_image_manager
 from src.chat.utils.utils_video import get_video_analyzer, is_video_analysis_available
 from src.chat.utils.utils_voice import get_voice_text
-from src.chat.utils.self_voice_cache import consume_self_voice_text
 from src.common.logger import get_logger
 from src.config.config import global_config
 
@@ -212,7 +212,7 @@ class MessageRecv(Message):
                             return f"[语音：{cached_text}]"
                         else:
                             logger.warning("机器人自身语音消息缓存未命中，将回退到标准语音识别。")
-                
+
                 # 标准语音识别流程 (也作为缓存未命中的后备方案)
                 if isinstance(segment.data, str):
                     return await get_voice_text(segment.data)
@@ -239,6 +239,12 @@ class MessageRecv(Message):
                     }
                     """
                 return ""
+            elif segment.type == "file":
+                if isinstance(segment.data, dict):
+                    file_name = segment.data.get('name', '未知文件')
+                    file_size = segment.data.get('size', '未知大小')
+                    return f"[文件：{file_name} ({file_size}字节)]"
+                return "[收到一个文件]"
             elif segment.type == "video":
                 self.is_picid = False
                 self.is_emoji = False
@@ -296,8 +302,8 @@ class MessageRecv(Message):
                 else:
                     return ""
             else:
-                logger.info("未启用视频识别")
-                return "[视频]"
+                logger.warning(f"未知的消息段类型: {segment.type}")
+                return f"[{segment.type} 消息]"
         except Exception as e:
             logger.error(f"处理消息段失败: {e!s}, 类型: {segment.type}, 数据: {segment.data}")
             return f"[处理失败的{segment.type}消息]"
@@ -364,7 +370,7 @@ class MessageRecvS4U(MessageRecv):
                 self.is_picid = False
                 self.is_emoji = False
                 self.is_voice = True
-                
+
                 # 检查消息是否由机器人自己发送
                 # 检查消息是否由机器人自己发送
                 if self.message_info and self.message_info.user_info and str(self.message_info.user_info.user_id) == str(global_config.bot.qq_account):
@@ -433,6 +439,12 @@ class MessageRecvS4U(MessageRecv):
                 self.is_screen = True
                 self.screen_info = segment.data
                 return "屏幕信息"
+            elif segment.type == "file":
+                if isinstance(segment.data, dict):
+                    file_name = segment.data.get('name', '未知文件')
+                    file_size = segment.data.get('size', '未知大小')
+                    return f"[文件：{file_name} ({file_size}字节)]"
+                return "[收到一个文件]"
             elif segment.type == "video":
                 self.is_voice = False
                 self.is_picid = False
@@ -490,8 +502,8 @@ class MessageRecvS4U(MessageRecv):
                 else:
                     return ""
             else:
-                logger.info("未启用视频识别")
-                return "[视频]"
+                logger.warning(f"未知的消息段类型: {segment.type}")
+                return f"[{segment.type} 消息]"
         except Exception as e:
             logger.error(f"处理消息段失败: {e!s}, 类型: {segment.type}, 数据: {segment.data}")
             return f"[处理失败的{segment.type}消息]"

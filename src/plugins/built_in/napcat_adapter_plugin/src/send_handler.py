@@ -274,6 +274,9 @@ class SendHandler:
             new_payload = self.build_payload(payload, self.handle_videourl_message(video_url), False)
         elif seg.type == "file":
             file_path = seg.data
+            file_path = seg.data
+            if isinstance(file_path, dict):
+                file_path = file_path.get("file", "")
             new_payload = self.build_payload(payload, self.handle_file_message(file_path), False)
         return new_payload
 
@@ -411,6 +414,10 @@ class SendHandler:
 
     def handle_file_message(self, file_path: str) -> dict:
         """处理文件消息"""
+        if not file_path:
+            logger.error("文件路径为空")
+            return {}
+
         return {
             "type": "file",
             "data": {"file": f"file://{file_path}"},

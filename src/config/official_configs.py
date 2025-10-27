@@ -401,32 +401,31 @@ class MoodConfig(ValidatedConfigBase):
     mood_update_threshold: float = Field(default=1.0, description="情绪更新阈值")
 
 
-class KeywordRuleConfig(ValidatedConfigBase):
-    """关键词规则配置类"""
+class ReactionRuleConfig(ValidatedConfigBase):
+    """反应规则配置类"""
 
-    keywords: list[str] = Field(default_factory=lambda: [], description="关键词列表")
-    regex: list[str] = Field(default_factory=lambda: [], description="正则表达式列表")
-    reaction: str = Field(default="", description="反应内容")
+    chat_stream_id: str = Field(default="", description='聊天流ID，格式为 "platform:id:type"，空字符串表示全局')
+    rule_type: Literal["keyword", "regex"] = Field(..., description='规则类型，必须是 "keyword" 或 "regex"')
+    patterns: list[str] = Field(..., description="关键词或正则表达式列表")
+    reaction: str = Field(..., description="触发后的回复内容")
 
     def __post_init__(self):
         import re
 
-        if not self.keywords and not self.regex:
-            raise ValueError("关键词规则必须至少包含keywords或regex中的一个")
-        if not self.reaction:
-            raise ValueError("关键词规则必须包含reaction")
-        for pattern in self.regex:
-            try:
-                re.compile(pattern)
-            except re.error as e:
-                raise ValueError(f"无效的正则表达式 '{pattern}': {e!s}") from e
+        if not self.patterns:
+            raise ValueError("patterns 列表不能为空")
+        if self.rule_type == "regex":
+            for pattern in self.patterns:
+                try:
+                    re.compile(pattern)
+                except re.error as e:
+                    raise ValueError(f"无效的正则表达式 '{pattern}': {e!s}") from e
 
 
-class KeywordReactionConfig(ValidatedConfigBase):
-    """关键词配置类"""
+class ReactionConfig(ValidatedConfigBase):
+    """反应规则系统配置"""
 
-    keyword_rules: list[KeywordRuleConfig] = Field(default_factory=lambda: [], description="关键词规则列表")
-    regex_rules: list[KeywordRuleConfig] = Field(default_factory=lambda: [], description="正则表达式规则列表")
+    rules: list[ReactionRuleConfig] = Field(default_factory=list, description="反应规则列表")
 
 
 class CustomPromptConfig(ValidatedConfigBase):

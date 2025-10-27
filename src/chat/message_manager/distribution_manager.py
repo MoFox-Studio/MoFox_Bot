@@ -381,6 +381,11 @@ class StreamLoopManager:
             if cached_messages:
                 logger.info(f"处理开始前刷新缓存消息: stream={stream_id}, 数量={len(cached_messages)}")
 
+            # 设置触发用户ID，以实现回复保护
+            last_message = context.get_last_message()
+            if last_message:
+                context.triggering_user_id = last_message.user_info.user_id
+
             # 创建子任务用于刷新能量（不阻塞主流程）
             energy_task = asyncio.create_task(self._refresh_focus_energy(stream_id))
             child_tasks.add(energy_task)

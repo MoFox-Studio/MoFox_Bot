@@ -3,7 +3,6 @@
 专用于存储和检索消息集合，以提供即时上下文。
 """
 
-import asyncio
 import time
 from typing import Any
 
@@ -125,7 +124,7 @@ class MessageCollectionStorage:
             if results and results.get("ids") and results["ids"][0]:
                 for metadata in results["metadatas"][0]:
                     collections.append(MessageCollection.from_dict(metadata))
-            
+
             return collections
         except Exception as e:
             logger.error(f"检索相关消息集合失败: {e}", exc_info=True)
@@ -163,7 +162,7 @@ class MessageCollectionStorage:
 
             # 格式化消息集合为 prompt 上下文
             final_context = "\n\n---\n\n".join(context_parts) + "\n\n---"
-            
+
             logger.info(f"🔗 为查询 '{query_text[:50]}...' 在聊天 '{chat_id}' 中找到 {len(collections)} 个相关消息集合上下文")
             return f"\n{final_context}\n"
 

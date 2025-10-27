@@ -33,7 +33,8 @@ class NoticeType:  # 通知事件
     notify = "notify"
     group_ban = "group_ban"  # 群禁言
     group_msg_emoji_like = "group_msg_emoji_like"  # 群聊表情回复
-
+    group_upload = "group_upload"  # 群文件上传
+ 
     class Notify:
         poke = "poke"  # 戳一戳
         input_status = "input_status"  # 正在输入
@@ -59,6 +60,7 @@ class RealMessageType:  # 实际消息分类
     forward = "forward"  # 转发消息
     node = "node"  # 转发消息节点
     json = "json"  # json消息
+    file = "file"  # 文件
 
 
 class MessageSentType:

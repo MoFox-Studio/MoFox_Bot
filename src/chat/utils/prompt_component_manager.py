@@ -1,6 +1,5 @@
 import asyncio
 import re
-from typing import Type
 
 from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
@@ -21,7 +20,7 @@ class PromptComponentManager:
     3. 提供一个接口，以便在构建核心Prompt时，能够获取并执行所有相关的组件。
     """
 
-    def _get_rules_for(self, target_prompt_name: str) -> list[tuple[InjectionRule, Type[BasePrompt]]]:
+    def _get_rules_for(self, target_prompt_name: str) -> list[tuple[InjectionRule, type[BasePrompt]]]:
         """
         获取指定目标Prompt的所有注入规则及其关联的组件类。
 

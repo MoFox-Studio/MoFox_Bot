@@ -9,6 +9,7 @@ customtkinter
 dotenv
 faiss-cpu
 fastapi
+fastmcp
 rjieba
 jsonlines
 maim_message

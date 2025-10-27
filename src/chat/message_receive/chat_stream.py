@@ -156,6 +156,13 @@ class ChatStream:
 
         return instance
 
+    def get_raw_id(self) -> str:
+        """获取原始的、未哈希的聊天流ID字符串"""
+        if self.group_info:
+            return f"{self.platform}:{self.group_info.group_id}:group"
+        else:
+            return f"{self.platform}:{self.user_info.user_id}:private"
+
     def update_active_time(self):
         """更新最后活跃时间"""
         self.last_active_time = time.time()
@@ -256,18 +263,18 @@ class ChatStream:
     def _prepare_additional_config(self, message_info) -> str | None:
         """
         准备 additional_config，将 format_info 嵌入其中
-        
+
         这个方法模仿 storage.py 中的逻辑，确保 DatabaseMessages 中的 additional_config
         包含 format_info，使得 action_modifier 能够正确获取适配器支持的消息类型
-        
+
         Args:
             message_info: BaseMessageInfo 对象
-            
+
         Returns:
             str | None: JSON 字符串格式的 additional_config，如果为空则返回 None
         """
         import orjson
-        
+
         # 首先获取adapter传递的additional_config
         additional_config_data = {}
         if hasattr(message_info, 'additional_config') and message_info.additional_config:

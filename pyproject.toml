@@ -74,6 +74,7 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "inkfox>=0.1.1",
     "rjieba>=0.1.13",
+    "fastmcp>=2.13.0",
 ]
 
 [[tool.uv.index]]
@@ -110,6 +111,7 @@ ignore = [
     "RUF001", # ambiguous-unicode-character-string
     "RUF002", # ambiguous-unicode-character-docstring
     "RUF003", # ambiguous-unicode-character-comment
+    "PERF203", # try-except-in-loop (我们需要单独处理每个项的错误)
 ]
 
 
