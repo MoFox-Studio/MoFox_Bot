@@ -405,6 +405,9 @@ class MessageManager:
 
                 if cancelled_count > 0:
                     logger.info(f"消息打断成功取消 {cancelled_count} 个任务: {chat_stream.stream_id}")
+
+                    # 修复：打断后，将被打断的消息标记为已读，防止重复处理
+                    await self.clear_all_unread_messages(chat_stream.stream_id)
                 else:
                     logger.warning(f"消息打断未能取消任何任务: {chat_stream.stream_id}")
 
