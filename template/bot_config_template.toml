@@ -1,5 +1,5 @@
 [inner]
-version = "7.4.9"
+version = "7.5.0"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -126,6 +126,7 @@ thinking_timeout = 40 # MoFox-Bot一次回复最长思考规划时间，超过�
 
 # 消息打断系统配置 - 反比例函数概率模型
 interruption_enabled = true # 是否启用消息打断系统
+allow_reply_interruption = false # 是否允许在正在生成回复时打断（true=允许打断回复，false=回复期间不允许打断）
 interruption_max_limit = 5 # 每个聊天流的最大打断次数
 interruption_min_probability = 0.05 # 最低打断概率（反比例函数趋近的下限值）
 

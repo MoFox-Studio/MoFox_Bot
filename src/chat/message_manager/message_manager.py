@@ -364,10 +364,13 @@ class MessageManager:
         if not global_config.chat.interruption_enabled or not chat_stream or not message:
             return
 
-        # 检查是否正在回复
+        # 检查是否正在回复，以及是否允许在回复时打断
         if chat_stream.context_manager.context.is_replying:
-            logger.info(f"聊天流 {chat_stream.stream_id} 正在回复中，跳过打断检查")
-            return
+            if not global_config.chat.allow_reply_interruption:
+                logger.debug(f"聊天流 {chat_stream.stream_id} 正在回复中，且配置不允许回复时打断，跳过打断检查")
+                return
+            else:
+                logger.debug(f"聊天流 {chat_stream.stream_id} 正在回复中，但配置允许回复时打断")
 
         # 检查是否为表情包消息
         if message.is_picid or message.is_emoji:

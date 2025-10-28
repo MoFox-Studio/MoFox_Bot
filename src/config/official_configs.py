@@ -121,6 +121,9 @@ class ChatConfig(ValidatedConfigBase):
     )
     # 消息打断系统配置 - 线性概率模型
     interruption_enabled: bool = Field(default=True, description="是否启用消息打断系统")
+    allow_reply_interruption: bool = Field(
+        default=False, description="是否允许在正在生成回复时打断（True=允许打断回复，False=回复期间不允许打断）"
+    )
     interruption_max_limit: int = Field(default=10, ge=0, description="每个聊天流的最大打断次数")
     interruption_min_probability: float = Field(
         default=0.1, ge=0.0, le=1.0, description="最低打断概率（即使达到较高打断次数，也保证有此概率的打断机会）"

@@ -263,7 +263,14 @@ class StreamLoopManager:
                     if has_messages:
                         if force_dispatch:
                             logger.info("流 %s 未读消息 %d 条，触发强制分发", stream_id, unread_count)
-                        # 3. 激活chatter处理
+                        
+                        # 3. 在处理前更新能量值（用于下次间隔计算）
+                        try:
+                            await self._update_stream_energy(stream_id, context)
+                        except Exception as e:
+                            logger.debug(f"更新流能量失败 {stream_id}: {e}")
+                        
+                        # 4. 激活chatter处理
                         success = await self._process_stream_messages(stream_id, context)
 
                         # 更新统计
@@ -274,10 +281,10 @@ class StreamLoopManager:
                             self.stats["total_failures"] += 1
                             logger.warning(f"流处理失败: {stream_id}")
 
-                    # 4. 计算下次检查间隔
+                    # 5. 计算下次检查间隔
                     interval = await self._calculate_interval(stream_id, has_messages)
 
-                    # 5. sleep等待下次检查
+                    # 6. sleep等待下次检查
                     logger.info(f"流 {stream_id} 等待 {interval:.2f}s")
                     await asyncio.sleep(interval)
 
@@ -481,6 +488,60 @@ class StreamLoopManager:
         except Exception as e:
             logger.warning(f"刷新缓存消息失败: stream={stream_id}, error={e}")
             return []
+
+    async def _update_stream_energy(self, stream_id: str, context: Any) -> None:
+        """更新流的能量值
+        
+        Args:
+            stream_id: 流ID
+            context: 流上下文 (StreamContext)
+        """
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+            
+            # 获取聊天流
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(stream_id)
+            
+            if not chat_stream:
+                logger.debug(f"无法找到聊天流 {stream_id}，跳过能量更新")
+                return
+            
+            # 从 context_manager 获取消息（包括未读和历史消息）
+            # 合并未读消息和历史消息
+            all_messages = []
+            
+            # 添加历史消息
+            history_messages = context.get_history_messages(limit=global_config.chat.max_context_size)
+            all_messages.extend(history_messages)
+            
+            # 添加未读消息
+            unread_messages = context.get_unread_messages()
+            all_messages.extend(unread_messages)
+            
+            # 按时间排序并限制数量
+            all_messages.sort(key=lambda m: m.time)
+            messages = all_messages[-global_config.chat.max_context_size:]
+            
+            # 获取用户ID
+            user_id = None
+            if context.triggering_user_id:
+                user_id = context.triggering_user_id
+            
+            # 使用能量管理器计算并缓存能量值
+            energy = await energy_manager.calculate_focus_energy(
+                stream_id=stream_id,
+                messages=messages,
+                user_id=user_id
+            )
+            
+            # 同步更新到 ChatStream
+            chat_stream._focus_energy = energy
+            
+            logger.debug(f"已更新流 {stream_id} 的能量值: {energy:.3f}")
+            
+        except Exception as e:
+            logger.warning(f"更新流能量失败 {stream_id}: {e}", exc_info=False)
 
     async def _calculate_interval(self, stream_id: str, has_messages: bool) -> float:
         """计算下次检查间隔
