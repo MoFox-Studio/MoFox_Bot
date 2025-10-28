@@ -50,9 +50,12 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         # 连续不回复概率提升
         self.no_reply_count = 0
         self.max_no_reply_count = affinity_config.max_no_reply_count
-        self.probability_boost_per_no_reply = (
-            affinity_config.no_reply_threshold_adjustment / affinity_config.max_no_reply_count
-        )  # 每次不回复增加的概率
+        if self.max_no_reply_count > 0:
+            self.probability_boost_per_no_reply = (
+                affinity_config.no_reply_threshold_adjustment / self.max_no_reply_count
+            )
+        else:
+            self.probability_boost_per_no_reply = 0.0  # 避免除以零的错误
 
         # 用户关系数据缓存
         self.user_relationships: dict[str, float] = {}  # user_id -> relationship_score
