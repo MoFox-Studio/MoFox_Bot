@@ -40,6 +40,7 @@ class EventManager:
         self._events: dict[str, BaseEvent] = {}
         self._event_handlers: dict[str, type[BaseEventHandler]] = {}
         self._pending_subscriptions: dict[str, list[str]] = {}  # 缓存失败的订阅
+        self._scheduler_callback: Optional[Any] = None  # scheduler 回调函数
         self._initialized = True
         logger.info("EventManager 单例初始化完成")
 
@@ -317,7 +318,28 @@ class EventManager:
             logger.warning(f"插件 {permission_group} 没有权限触发事件 {event_name}，已拒绝触发！")
             return None
 
+        # 通知 scheduler（如果已注册）
+        if hasattr(self, "_scheduler_callback") and self._scheduler_callback:
+            try:
+                await self._scheduler_callback(event_name, params)
+            except Exception as e:
+                logger.error(f"调用 scheduler 回调时出错: {e}", exc_info=True)
+
         return await event.activate(params)
+
+    def register_scheduler_callback(self, callback) -> None:
+        """注册 scheduler 回调函数
+
+        Args:
+            callback: async callable，接收 (event_name, params) 参数
+        """
+        self._scheduler_callback = callback
+        logger.info("Scheduler 回调已注册")
+
+    def unregister_scheduler_callback(self) -> None:
+        """取消注册 scheduler 回调"""
+        self._scheduler_callback = None
+        logger.info("Scheduler 回调已取消注册")
 
     def init_default_events(self) -> None:
         """初始化默认事件"""

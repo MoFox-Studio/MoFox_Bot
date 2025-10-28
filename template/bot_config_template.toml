@@ -527,8 +527,8 @@ chat_ids = [
 
 [affinity_flow]
 # 兴趣评分系统参数
-reply_action_interest_threshold = 1.1 # 回复动作兴趣阈值
-non_reply_action_interest_threshold = 0.9 # 非回复动作兴趣阈值
+reply_action_interest_threshold = 0.9 # 回复动作兴趣阈值
+non_reply_action_interest_threshold = 0.8 # 非回复动作兴趣阈值
 high_match_interest_threshold = 0.7 # 高匹配兴趣阈值
 medium_match_interest_threshold = 0.4 # 中匹配兴趣阈值
 low_match_interest_threshold = 0.2 # 低匹配兴趣阈值

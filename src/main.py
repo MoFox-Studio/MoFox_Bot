@@ -249,6 +249,14 @@ class MainSystem:
         except Exception as e:
             logger.error(f"准备停止增强记忆系统时出错: {e}")
 
+        # 停止统一调度器
+        try:
+            from src.schedule.unified_scheduler import shutdown_scheduler
+
+            cleanup_tasks.append(("统一调度器", shutdown_scheduler()))
+        except Exception as e:
+            logger.error(f"准备停止统一调度器时出错: {e}")
+
         # 触发停止事件
         try:
             from src.plugin_system.core.event_manager import event_manager
@@ -491,6 +499,14 @@ MoFox_Bot(第三方修改版)
 
         # 初始化计划相关组件
         await self._init_planning_components()
+
+        # 初始化统一调度器
+        try:
+            from src.schedule.unified_scheduler import initialize_scheduler
+
+            await initialize_scheduler()
+        except Exception as e:
+            logger.error(f"统一调度器初始化失败: {e}")
 
         # 触发启动事件
         try:
