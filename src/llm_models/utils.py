@@ -155,8 +155,12 @@ class LLMUsageRecorder:
         endpoint: str,
         time_cost: float = 0.0,
     ):
-        input_cost = (model_usage.prompt_tokens / 1000000) * model_info.price_in
-        output_cost = (model_usage.completion_tokens / 1000000) * model_info.price_out
+        prompt_tokens = getattr(model_usage, "prompt_tokens", 0)
+        completion_tokens = getattr(model_usage, "completion_tokens", 0)
+        total_tokens = getattr(model_usage, "total_tokens", 0)
+
+        input_cost = (prompt_tokens / 1000000) * model_info.price_in
+        output_cost = (completion_tokens / 1000000) * model_info.price_out
         round(input_cost + output_cost, 6)
 
         session = None
@@ -170,9 +174,9 @@ class LLMUsageRecorder:
                     user_id=user_id,
                     request_type=request_type,
                     endpoint=endpoint,
-                    prompt_tokens=model_usage.prompt_tokens or 0,
-                    completion_tokens=model_usage.completion_tokens or 0,
-                    total_tokens=model_usage.total_tokens or 0,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=total_tokens,
                     cost=1.0,
                     time_cost=round(time_cost or 0.0, 3),
                     status="success",
@@ -185,8 +189,8 @@ class LLMUsageRecorder:
             logger.debug(
                 f"Token使用情况 - 模型: {model_usage.model_name}, "
                 f"用户: {user_id}, 类型: {request_type}, "
-                f"提示词: {model_usage.prompt_tokens}, 完成: {model_usage.completion_tokens}, "
-                f"总计: {model_usage.total_tokens}"
+                f"提示词: {prompt_tokens}, 完成: {completion_tokens}, "
+                f"总计: {total_tokens}"
             )
         except Exception as e:
             logger.error(f"记录token使用情况失败: {e!s}")

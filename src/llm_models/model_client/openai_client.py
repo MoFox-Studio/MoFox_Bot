@@ -290,9 +290,9 @@ async def _default_stream_response_handler(
         if event.usage:
             # 如果有使用情况，则将其存储在APIResponse对象中
             _usage_record = (
-                event.usage.prompt_tokens or 0,
-                event.usage.completion_tokens or 0,
-                event.usage.total_tokens or 0,
+                getattr(event.usage, "prompt_tokens", 0) or 0,
+                getattr(event.usage, "completion_tokens", 0) or 0,
+                getattr(event.usage, "total_tokens", 0) or 0,
             )
 
     try:
@@ -360,9 +360,9 @@ def _default_normal_response_parser(
     # 提取Usage信息
     if resp.usage:
         _usage_record = (
-            resp.usage.prompt_tokens or 0,
-            resp.usage.completion_tokens or 0,
-            resp.usage.total_tokens or 0,
+            getattr(resp.usage, "prompt_tokens", 0) or 0,
+            getattr(resp.usage, "completion_tokens", 0) or 0,
+            getattr(resp.usage, "total_tokens", 0) or 0,
         )
     else:
         _usage_record = None
@@ -591,7 +591,7 @@ class OpenaiClient(BaseClient):
                 model_name=model_info.name,
                 provider_name=model_info.api_provider,
                 prompt_tokens=raw_response.usage.prompt_tokens or 0,
-                completion_tokens=raw_response.usage.completion_tokens or 0,  # type: ignore
+                completion_tokens=getattr(raw_response.usage, "completion_tokens", 0) or 0,
                 total_tokens=raw_response.usage.total_tokens or 0,
             )
 

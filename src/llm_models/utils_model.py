@@ -1009,12 +1009,15 @@ class LLMRequest:
             # 步骤1: 更新内存中的统计数据，用于负载均衡
             stats = self.model_usage[model_info.name]
 
+            # 安全地获取 token 使用量, embedding 模型可能不返回 completion_tokens
+            total_tokens = getattr(usage, "total_tokens", 0)
+
             # 计算新的平均延迟
             new_request_count = stats.request_count + 1
             new_avg_latency = (stats.avg_latency * stats.request_count + time_cost) / new_request_count
 
             self.model_usage[model_info.name] = stats._replace(
-                total_tokens=stats.total_tokens + usage.total_tokens,
+                total_tokens=stats.total_tokens + total_tokens,
                 avg_latency=new_avg_latency,
                 request_count=new_request_count,
             )
