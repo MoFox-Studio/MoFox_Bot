@@ -92,12 +92,12 @@ def init_prompt():
 - {schedule_block}
 
 ## 历史记录
-### 📜 已读历史消息（仅供参考）
+### 📜 已读历史消息
 {read_history_prompt}
 
 {cross_context_block}
 
-### 📬 未读历史消息（动作执行对象）
+### 📬 未读历史消息
 {unread_history_prompt}
 
 {notice_block}
@@ -129,13 +129,10 @@ def init_prompt():
 ### 核心任务
 - 你现在的主要任务是和 {sender_name} 聊天。同时，也有其他用户会参与聊天，你可以参考他们的回复内容，但是你现在想回复{sender_name}的发言。
 
--  {reply_target_block} 你需要生成一段紧密相关的回复。
+-  {reply_target_block} 你需要生成一段紧密相关且与历史消息相关的回复。
 
 ## 规则
 {safety_guidelines_block}
-**重要提醒：**
-- **已读历史消息仅作为当前聊天情景的参考**
-- **未读历史消息是你需要回应的对象**
 
 你的回复应该是一条简短、完整且口语化的回复。
 
@@ -986,14 +983,9 @@ class DefaultReplyer:
                     else:
                         read_history_prompt = "暂无已读历史消息"
 
-                # 构建未读历史消息 prompt（包含兴趣度）
+                # 构建未读历史消息 prompt
                 unread_history_prompt = ""
                 if unread_messages:
-                    # 尝试获取兴趣度评分
-                    interest_scores = await self._get_interest_scores_for_messages(
-                        [msg.flatten() for msg in unread_messages]
-                    )
-
                     unread_lines = []
                     for msg in unread_messages:
                         msg_id = msg.message_id
@@ -1029,14 +1021,11 @@ class DefaultReplyer:
                                 replace_bot_name=True
                             )
 
-                        # 添加兴趣度信息
-                        interest_score = interest_scores.get(msg_id, 0.0)
-                        interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
-
-                        unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
+                        # 不显示兴趣度，replyer只需要关注消息内容本身
+                        unread_lines.append(f"{msg_time} {sender_name}: {msg_content}")
 
                     unread_history_prompt_str = "\n".join(unread_lines)
-                    unread_history_prompt = f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+                    unread_history_prompt = f"这是未读历史消息：\n{unread_history_prompt_str}"
                 else:
                     unread_history_prompt = "暂无未读历史消息"
 
@@ -1098,9 +1087,6 @@ class DefaultReplyer:
         # 构建未读历史消息 prompt
         unread_history_prompt = ""
         if unread_messages:
-            # 尝试获取兴趣度评分
-            interest_scores = await self._get_interest_scores_for_messages(unread_messages)
-
             unread_lines = []
             for msg in unread_messages:
                 msg_id = msg.get("message_id", "")
@@ -1135,15 +1121,12 @@ class DefaultReplyer:
                     replace_bot_name=True
                 )
 
-                # 添加兴趣度信息
-                interest_score = interest_scores.get(msg_id, 0.0)
-                interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
-
-                unread_lines.append(f"{msg_time} {sender_name}: {msg_content}{interest_text}")
+                # 不显示兴趣度，replyer只需要关注消息内容本身
+                unread_lines.append(f"{msg_time} {sender_name}: {msg_content}")
 
             unread_history_prompt_str = "\n".join(unread_lines)
             unread_history_prompt = (
-                f"这是未读历史消息，包含兴趣度评分，请优先对兴趣值高的消息做出动作：\n{unread_history_prompt_str}"
+                f"这是未读历史消息：\n{unread_history_prompt_str}"
             )
         else:
             unread_history_prompt = "暂无未读历史消息"

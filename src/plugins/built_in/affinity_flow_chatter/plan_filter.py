@@ -310,7 +310,7 @@ class ChatterPlanFilter:
                 flattened_unread = [msg.flatten() for msg in unread_messages]
 
                 # 尝试获取兴趣度评分（返回以真实 message_id 为键的字典）
-                await self._get_interest_scores_for_messages(flattened_unread)
+                interest_scores = await self._get_interest_scores_for_messages(flattened_unread)
 
                 # 为未读消息分配短 id（保持与 build_readable_messages_with_id 的一致结构）
                 message_id_list = assign_message_ids(flattened_unread)
@@ -319,14 +319,17 @@ class ChatterPlanFilter:
                 for idx, msg in enumerate(flattened_unread):
                     mapped = message_id_list[idx]
                     synthetic_id = mapped.get("id")
-                    msg.get("message_id") or msg.get("id")
+                    real_msg_id = msg.get("message_id") or msg.get("id")
                     msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
                     user_nickname = msg.get("user_nickname", "未知用户")
                     msg_content = msg.get("processed_plain_text", "")
 
-                    # 不再显示兴趣度，但保留合成ID供模型内部使用
-                    # 同时，为了让模型更好地理解上下文，我们显示用户名
-                    unread_lines.append(f"<{synthetic_id}> {msg_time} {user_nickname}: {msg_content}")
+                    # 获取兴趣度信息并显示在提示词中
+                    interest_score = interest_scores.get(real_msg_id, 0.0)
+                    interest_text = f" [兴趣度: {interest_score:.3f}]" if interest_score > 0 else ""
+
+                    # 在未读消息中显示兴趣度，让planner优先选择兴趣度高的消息
+                    unread_lines.append(f"<{synthetic_id}> {msg_time} {user_nickname}: {msg_content}{interest_text}")
 
                 unread_history_block = "\n".join(unread_lines)
             else:

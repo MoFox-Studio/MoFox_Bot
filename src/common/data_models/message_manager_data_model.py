@@ -55,6 +55,7 @@ class StreamContext(BaseDataModel):
     priority_info: dict | None = None
     triggering_user_id: str | None = None  # 触发当前聊天流的用户ID
     is_replying: bool = False  # 是否正在生成回复
+    processing_message_id: str | None = None  # 当前正在规划/处理的目标消息ID，用于防止重复回复
 
     def add_action_to_message(self, message_id: str, action: str):
         """
