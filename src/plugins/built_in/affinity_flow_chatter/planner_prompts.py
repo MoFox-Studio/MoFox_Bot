@@ -30,6 +30,9 @@ def init_prompts():
 
 {actions_before_now_block}
 
+## 🤔 最近的决策历史 (回顾你之前的思考与动作，可以帮助你避免重复，并做出更有趣的连贯回应)
+{decision_history_block}
+
 ## 📜 已读历史（仅供理解，不可作为动作对象）
 {read_history_block}
 

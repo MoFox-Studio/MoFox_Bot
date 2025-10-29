@@ -143,6 +143,10 @@ class ChatConfig(ValidatedConfigBase):
     dynamic_distribution_max_interval: float = Field(default=30.0, ge=5.0, le=300.0, description="最大分发间隔（秒）")
     dynamic_distribution_jitter_factor: float = Field(default=0.2, ge=0.0, le=0.5, description="分发间隔随机扰动因子")
     max_concurrent_distributions: int = Field(default=10, ge=1, le=100, description="最大并发处理的消息流数量")
+    enable_decision_history: bool = Field(default=True, description="是否启用决策历史功能")
+    decision_history_length: int = Field(
+        default=3, ge=1, le=10, description="决策历史记录的长度，用于增强语言模型的上下文连续性"
+    )
 
 
 class MessageReceiveConfig(ValidatedConfigBase):

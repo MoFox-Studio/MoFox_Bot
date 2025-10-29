@@ -104,6 +104,23 @@ class ChatterPlanFilter:
                         # 预解析 action_type 来进行判断
                         thinking = item.get("thinking", "未提供思考过程")
                         actions_obj = item.get("actions", {})
+                        
+                        # 记录决策历史
+                        if hasattr(global_config.chat, "enable_decision_history") and global_config.chat.enable_decision_history:
+                            action_types_to_log = []
+                            actions_to_process_for_log = []
+                            if isinstance(actions_obj, dict):
+                                actions_to_process_for_log.append(actions_obj)
+                            elif isinstance(actions_obj, list):
+                                actions_to_process_for_log.extend(actions_obj)
+                            
+                            for single_action in actions_to_process_for_log:
+                                if isinstance(single_action, dict):
+                                    action_types_to_log.append(single_action.get("action_type", "no_action"))
+                            
+                            if thinking != "未提供思考过程" and action_types_to_log:
+                                await self._add_decision_to_history(plan, thinking, ", ".join(action_types_to_log))
+
 
                         # 处理actions字段可能是字典或列表的情况
                         if isinstance(actions_obj, dict):
@@ -141,6 +158,65 @@ class ChatterPlanFilter:
 
         return plan
 
+    async def _add_decision_to_history(self, plan: Plan, thought: str, action: str):
+        """添加决策记录到历史中"""
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+            from src.common.data_models.message_manager_data_model import DecisionRecord
+
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(plan.chat_id)
+            if not chat_stream:
+                return
+
+            if not thought or not action:
+                logger.debug("尝试添加空的决策历史，已跳过")
+                return
+
+            context = chat_stream.context_manager.context
+            new_record = DecisionRecord(thought=thought, action=action)
+
+            # 添加新记录
+            context.decision_history.append(new_record)
+
+            # 获取历史长度限制
+            max_history_length = getattr(global_config.chat, "decision_history_length", 3)
+
+            # 如果历史记录超过长度，则移除最旧的记录
+            if len(context.decision_history) > max_history_length:
+                context.decision_history.pop(0)
+
+            logger.debug(f"已添加决策历史，当前长度: {len(context.decision_history)}")
+
+        except Exception as e:
+            logger.warning(f"记录决策历史失败: {e}")
+
+    async def _build_decision_history_block(self, plan: Plan) -> str:
+        """构建决策历史块"""
+        if not hasattr(global_config.chat, "enable_decision_history") or not global_config.chat.enable_decision_history:
+            return ""
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(plan.chat_id)
+            if not chat_stream:
+                return ""
+
+            context = chat_stream.context_manager.context
+            if not context.decision_history:
+                return ""
+
+            history_records = []
+            for i, record in enumerate(context.decision_history):
+                history_records.append(f"- 思考: {record.thought}\n  - 动作: {record.action}")
+
+            history_str = "\n".join(history_records)
+            return f"{history_str}"
+        except Exception as e:
+            logger.warning(f"构建决策历史块失败: {e}")
+            return ""
+
     async def _build_prompt(self, plan: Plan) -> tuple[str, list]:
         """
         根据 Plan 对象构建提示词。
@@ -165,6 +241,9 @@ class ChatterPlanFilter:
             if global_config.mood.enable_mood:
                 chat_mood = mood_manager.get_mood_by_chat_id(plan.chat_id)
                 mood_block = f"你现在的心情是：{chat_mood.mood_state}"
+
+            # 构建决策历史
+            decision_history_block = await self._build_decision_history_block(plan)
 
             # 构建已读/未读历史消息
             read_history_block, unread_history_block, message_id_list = await self._build_read_unread_history_blocks(
@@ -239,6 +318,7 @@ class ChatterPlanFilter:
                 mood_block=mood_block,
                 time_block=time_block,
                 chat_context_description=chat_context_description,
+                decision_history_block=decision_history_block,
                 read_history_block=read_history_block,
                 unread_history_block=unread_history_block,
                 actions_before_now_block=actions_before_now_block,
