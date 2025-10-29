@@ -1794,6 +1794,19 @@ class DefaultReplyer:
                 prompt
             )
 
+            if content:
+                # 循环移除，防止模型生成多个回复头
+                cleaned_content = content
+                while True:
+                    new_content = re.sub(r"^\s*\[回复<[^>]+>\s*的消息：[^\]]+\]\s*", "", cleaned_content).lstrip()
+                    if new_content == cleaned_content:
+                        break
+                    cleaned_content = new_content
+
+                if cleaned_content != content:
+                    logger.debug(f"移除了模型自行生成的回复头，原始内容: '{content}', 清理后: '{cleaned_content}'")
+                    content = cleaned_content
+
             logger.debug(f"replyer生成内容: {content}")
         return content, reasoning_content, model_name, tool_calls
 
