@@ -1,5 +1,5 @@
 [inner]
-version = "7.5.0"
+version = "7.5.1"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -527,6 +527,7 @@ chat_ids = [
 ]
 
 [affinity_flow]
+enable_normal_mode = true # 是否启用 Normal 聊天模式。启用后，在专注模式回复后会自动切换，并根据兴趣度决定是否回复，以实现更快速的回复。
 # 兴趣评分系统参数
 reply_action_interest_threshold = 0.9 # 回复动作兴趣阈值
 non_reply_action_interest_threshold = 0.8 # 非回复动作兴趣阈值

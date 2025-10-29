@@ -685,6 +685,9 @@ class PermissionConfig(ValidatedConfigBase):
 class AffinityFlowConfig(ValidatedConfigBase):
     """亲和流配置类（兴趣度评分和人物关系系统）"""
 
+    # Normal模式开关
+    enable_normal_mode: bool = Field(default=True, description="是否启用自动Normal模式切换")
+
     # 兴趣评分系统参数
     reply_action_interest_threshold: float = Field(default=0.4, description="回复动作兴趣阈值")
     non_reply_action_interest_threshold: float = Field(default=0.2, description="非回复动作兴趣阈值")

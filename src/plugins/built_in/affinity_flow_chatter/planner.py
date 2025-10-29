@@ -17,6 +17,7 @@ from src.plugins.built_in.affinity_flow_chatter.plan_generator import ChatterPla
 
 if TYPE_CHECKING:
     from src.chat.planner_actions.action_manager import ChatterActionManager
+    from src.common.data_models.database_data_model import DatabaseMessages
     from src.common.data_models.info_data_model import Plan
     from src.common.data_models.message_manager_data_model import StreamContext
 
@@ -100,10 +101,18 @@ class ChatterActionPlanner:
 
 
             # 1. 生成初始 Plan
-            chat_mode = context.chat_mode if context else ChatMode.NORMAL
+            chat_mode = context.chat_mode if context else ChatMode.FOCUS
+
+            # 如果禁用了Normal模式，则强制将任何处于Normal模式的会话切换回Focus模式。
+            if not global_config.affinity_flow.enable_normal_mode and chat_mode == ChatMode.NORMAL:
+                logger.info("Normal模式已禁用，强制切换回Focus模式")
+                chat_mode = ChatMode.FOCUS
+                if context:
+                    context.chat_mode = ChatMode.FOCUS
+                    await self._sync_chat_mode_to_stream(context)
             
             # Normal模式下使用简化流程
-            if chat_mode == ChatMode.NORMAL:  
+            if chat_mode == ChatMode.NORMAL:
                 return await self._normal_mode_flow(context)
             
             # 在规划前，先进行动作修改
@@ -188,12 +197,15 @@ class ChatterActionPlanner:
             
             # 7. Focus模式下如果执行了reply动作，切换到Normal模式
             if chat_mode == ChatMode.FOCUS and context:
-                has_reply = any(
-                    action.action_type in ["reply", "proactive_reply"] 
-                    for action in filtered_plan.decided_actions
-                )
-                if has_reply:
-                    logger.info("Focus模式: 执行了reply动作，切换到Normal模式")
+                if filtered_plan.decided_actions:
+                    has_reply = any(
+                        action.action_type in ["reply", "proactive_reply"]
+                        for action in filtered_plan.decided_actions
+                    )
+                else:
+                    has_reply = False
+                if has_reply and global_config.affinity_flow.enable_normal_mode:
+                    logger.info("Focus模式: 执行了reply动作，自动切换到Normal模式")
                     context.chat_mode = ChatMode.NORMAL
                     await self._sync_chat_mode_to_stream(context)
 
@@ -211,6 +223,14 @@ class ChatterActionPlanner:
         只计算兴趣值并判断是否达到reply阈值，不执行完整的plan流程。
         根据focus_energy决定退出normal模式回到focus模式的概率。
         """
+        # 最后的保障措施，以防意外进入此流程
+        if not global_config.affinity_flow.enable_normal_mode:
+            logger.warning("意外进入了Normal模式流程，但该模式已被禁用！将强制切换回Focus模式进行完整规划。")
+            if context:
+                context.chat_mode = ChatMode.FOCUS
+                await self._sync_chat_mode_to_stream(context)
+            # 重新运行主规划流程，这次将正确使用Focus模式
+            return await self._enhanced_plan_flow(context)
         try:
             unread_messages = context.get_unread_messages() if context else []
             
@@ -249,7 +269,7 @@ class ChatterActionPlanner:
                     action_type="reply",
                     reasoning="Normal模式: 兴趣度达到阈值，直接回复",
                     action_data={"target_message_id": target_message.message_id},
-                    action_message=target_message_dict,
+                    action_message=target_message,
                 )
                 
                 # Normal模式下直接构建最小化的Plan，跳过generator和action_modifier
