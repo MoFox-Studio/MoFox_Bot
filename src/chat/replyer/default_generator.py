@@ -947,41 +947,43 @@ class DefaultReplyer:
 
                 # 构建已读历史消息 prompt
                 read_history_prompt = ""
-                if read_messages:
+                # 总是从数据库加载历史记录，并与会话历史合并
+                logger.info("正在从数据库加载上下文并与会话历史合并...")
+                db_messages_raw = await get_raw_msg_before_timestamp_with_chat(
+                    chat_id=chat_id,
+                    timestamp=time.time(),
+                    limit=global_config.chat.max_context_size,
+                )
+
+                # 合并和去重
+                combined_messages = {}
+                # 首先添加数据库消息
+                for msg in db_messages_raw:
+                    if msg.get("message_id"):
+                        combined_messages[msg["message_id"]] = msg
+                
+                # 然后用会话消息覆盖/添加，以确保它们是最新的
+                for msg_obj in read_messages:
+                    msg_dict = msg_obj.flatten()
+                    if msg_dict.get("message_id"):
+                        combined_messages[msg_dict["message_id"]] = msg_dict
+                
+                # 按时间排序
+                sorted_messages = sorted(combined_messages.values(), key=lambda x: x.get("time", 0))
+
+                read_history_prompt = ""
+                if sorted_messages:
+                    # 限制最终用于prompt的历史消息数量
+                    final_history = sorted_messages[-50:]
                     read_content = await build_readable_messages(
-                        [msg.flatten() for msg in read_messages[-50:]],  # 限制数量
+                        final_history,
                         replace_bot_name=True,
                         timestamp_mode="normal_no_YMD",
                         truncate=True,
                     )
                     read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
                 else:
-                    # 如果没有已读消息，则从数据库加载最近的上下文
-                    logger.info("暂无已读历史消息，正在从数据库加载上下文...")
-                    fallback_messages = await get_raw_msg_before_timestamp_with_chat(
-                        chat_id=chat_id,
-                        timestamp=time.time(),
-                        limit=global_config.chat.max_context_size,
-                    )
-                    if fallback_messages:
-                        # 从 unread_messages 获取 message_id 列表，用于去重
-                        unread_message_ids = {msg.message_id for msg in unread_messages}
-                        filtered_fallback_messages = [
-                            msg for msg in fallback_messages if msg.get("message_id") not in unread_message_ids
-                        ]
-
-                        if filtered_fallback_messages:
-                            read_content = await build_readable_messages(
-                                filtered_fallback_messages,
-                                replace_bot_name=True,
-                                timestamp_mode="normal_no_YMD",
-                                truncate=True,
-                            )
-                            read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
-                        else:
-                            read_history_prompt = "暂无已读历史消息"
-                    else:
-                        read_history_prompt = "暂无已读历史消息"
+                    read_history_prompt = "暂无已读历史消息"
 
                 # 构建未读历史消息 prompt
                 unread_history_prompt = ""
