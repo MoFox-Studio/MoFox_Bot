@@ -606,11 +606,11 @@ class Prompt:
                     recent_messages, replace_bot_name=True, timestamp_mode="normal", truncate=True
                 )
 
-            # 使用LLM选择与当前情景匹配的表达习惯
+            # 使用统一的表达方式选择入口（支持classic和exp_model模式）
             expression_selector = ExpressionSelector(self.parameters.chat_id)
-            selected_expressions = await expression_selector.select_suitable_expressions_llm(
+            selected_expressions = await expression_selector.select_suitable_expressions(
                 chat_id=self.parameters.chat_id,
-                chat_info=chat_history,
+                chat_history=chat_history,
                 target_message=self.parameters.target,
             )
 

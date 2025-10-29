@@ -5,6 +5,7 @@ from typing import Any
 
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.utils.timer_calculator import Timer
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.person_info.person_info import get_person_info_manager
@@ -142,7 +143,7 @@ class ChatterActionManager:
         self,
         action_name: str,
         chat_id: str,
-        target_message: dict | None = None,
+        target_message: dict | DatabaseMessages | None = None,
         reasoning: str = "",
         action_data: dict | None = None,
         thinking_id: str | None = None,
@@ -262,9 +263,15 @@ class ChatterActionManager:
                         from_plugin=False,
                     )
                     if not success or not response_set:
-                        logger.info(
-                            f"对 {target_message.get('processed_plain_text') if target_message else '未知消息'} 的回复生成失败"
-                        )
+                        # 安全地获取 processed_plain_text
+                        if isinstance(target_message, DatabaseMessages):
+                            msg_text = target_message.processed_plain_text or "未知消息"
+                        elif target_message:
+                            msg_text = target_message.get("processed_plain_text", "未知消息")
+                        else:
+                            msg_text = "未知消息"
+                        
+                        logger.info(f"对 {msg_text} 的回复生成失败")
                         return {"action_type": "reply", "success": False, "reply_text": "", "loop_info": None}
                 except asyncio.CancelledError:
                     logger.debug(f"{log_prefix} 并行执行：回复生成任务已被取消")
@@ -322,8 +329,11 @@ class ChatterActionManager:
 
             # 获取目标消息ID
             target_message_id = None
-            if target_message and isinstance(target_message, dict):
-                target_message_id = target_message.get("message_id")
+            if target_message:
+                if isinstance(target_message, DatabaseMessages):
+                    target_message_id = target_message.message_id
+                elif isinstance(target_message, dict):
+                    target_message_id = target_message.get("message_id")
             elif action_data and isinstance(action_data, dict):
                 target_message_id = action_data.get("target_message_id")
 
@@ -488,14 +498,19 @@ class ChatterActionManager:
         person_info_manager = get_person_info_manager()
 
         # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
-        platform = action_message.get("chat_info_platform")
-        if platform is None:
-            platform = getattr(chat_stream, "platform", "unknown")
+        if isinstance(action_message, DatabaseMessages):
+            platform = action_message.chat_info.platform
+            user_id = action_message.user_info.user_id
+        else:
+            platform = action_message.get("chat_info_platform")
+            if platform is None:
+                platform = getattr(chat_stream, "platform", "unknown")
+            user_id = action_message.get("user_id", "")
 
         # 获取用户信息并生成回复提示
         person_id = person_info_manager.get_person_id(
             platform,
-            action_message.get("user_id", ""),
+            user_id,
         )
         person_name = await person_info_manager.get_value(person_id, "person_name")
         action_prompt_display = f"你对{person_name}进行了回复：{reply_text}"
@@ -565,7 +580,14 @@ class ChatterActionManager:
 
         # 根据新消息数量决定是否需要引用回复
         reply_text = ""
-        is_proactive_thinking = (message_data.get("message_type") == "proactive_thinking") if message_data else True
+        # 检查是否为主动思考消息
+        if isinstance(message_data, DatabaseMessages):
+            # DatabaseMessages 对象没有 message_type 字段，默认为 False
+            is_proactive_thinking = False
+        elif message_data:
+            is_proactive_thinking = message_data.get("message_type") == "proactive_thinking"
+        else:
+            is_proactive_thinking = True
 
         logger.debug(f"[send_response] message_data: {message_data}")
 

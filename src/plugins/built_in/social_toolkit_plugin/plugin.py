@@ -6,6 +6,7 @@ from typing import ClassVar
 from dateutil.parser import parse as parse_datetime
 
 from src.chat.message_receive.chat_stream import ChatStream
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.manager.async_task_manager import AsyncTask, async_task_manager
 from src.person_info.person_info import get_person_info_manager
@@ -253,18 +254,18 @@ class SetEmojiLikeAction(BaseAction):
         message_id = None
         set_like = self.action_data.get("set", True)
 
-        if self.has_action_message and isinstance(self.action_message, dict):
-            message_id = self.action_message.get("message_id")
-            logger.info(f"获取到的消息ID: {message_id}")
-        else:
+        if self.has_action_message:
+            if isinstance(self.action_message, DatabaseMessages):
+                message_id = self.action_message.message_id
+                logger.info(f"获取到的消息ID: {message_id}")
+            elif isinstance(self.action_message, dict):
+                message_id = self.action_message.get("message_id")
+                logger.info(f"获取到的消息ID: {message_id}")
+        
+        if not message_id:
             logger.error("未提供有效的消息或消息ID")
             await self.store_action_info(action_prompt_display="贴表情失败: 未提供消息ID", action_done=False)
             return False, "未提供消息ID"
-
-        if not message_id:
-            logger.error("消息ID为空")
-            await self.store_action_info(action_prompt_display="贴表情失败: 消息ID为空", action_done=False)
-            return False, "消息ID为空"
 
         available_models = llm_api.get_available_models()
         if "utils_small" not in available_models:
@@ -273,7 +274,12 @@ class SetEmojiLikeAction(BaseAction):
 
         model_to_use = available_models["utils_small"]
 
-        context_text = self.action_message.get("processed_plain_text", "")
+        # 统一处理 DatabaseMessages 和字典
+        if isinstance(self.action_message, DatabaseMessages):
+            context_text = self.action_message.processed_plain_text or ""
+        else:
+            context_text = self.action_message.get("processed_plain_text", "")
+        
         if not context_text:
             logger.error("无法找到动作选择的原始消息文本")
             return False, "无法找到动作选择的原始消息文本"

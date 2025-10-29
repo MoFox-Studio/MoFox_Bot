@@ -16,6 +16,9 @@ from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
 
+# 导入 StyleLearner 管理器
+from .style_learner import style_learner_manager
+
 MAX_EXPRESSION_COUNT = 300
 DECAY_DAYS = 30  # 30天衰减到0.01
 DECAY_MIN = 0.01  # 最小衰减值
@@ -405,6 +408,29 @@ class ExpressionLearner:
                     for expr in exprs[: len(exprs) - MAX_EXPRESSION_COUNT]:
                         await session.delete(expr)
 
+            # 🔥 新增：训练 StyleLearner
+            # 只对 style 类型的表达方式进行训练（grammar 不需要训练到模型）
+            if type == "style":
+                try:
+                    # 获取 StyleLearner 实例
+                    learner = style_learner_manager.get_learner(chat_id)
+                    
+                    # 为每个学习到的表达方式训练模型
+                    # 这里使用 situation 作为前置内容（context），style 作为目标风格
+                    for expr in expr_list:
+                        situation = expr["situation"]
+                        style = expr["style"]
+                        
+                        # 训练映射关系: situation -> style
+                        learner.learn_mapping(situation, style)
+                    
+                    logger.debug(f"已将 {len(expr_list)} 个表达方式训练到 StyleLearner")
+                    
+                    # 保存模型
+                    learner.save(style_learner_manager.model_save_path)
+                except Exception as e:
+                    logger.error(f"训练 StyleLearner 失败: {e}")
+
             return learnt_expressions
         return None
 
@@ -522,12 +548,12 @@ class ExpressionLearnerManager:
             os.path.join(base_dir, "learnt_grammar"),
         ]
 
-        try:
-            for directory in directories_to_create:
+        for directory in directories_to_create:
+            try:
                 os.makedirs(directory, exist_ok=True)
-            logger.debug(f"确保目录存在: {directory}")
-        except Exception as e:
-            logger.error(f"创建目录失败 {directory}: {e}")
+                logger.debug(f"确保目录存在: {directory}")
+            except Exception as e:
+                logger.error(f"创建目录失败 {directory}: {e}")
 
     @staticmethod
     async def _auto_migrate_json_to_db():
