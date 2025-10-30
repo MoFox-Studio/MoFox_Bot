@@ -590,7 +590,7 @@ class MessageProcessBase(Message):
                 if self.reply and hasattr(self.reply, "processed_plain_text"):
                     # print(f"self.reply.processed_plain_text: {self.reply.processed_plain_text}")
                     # print(f"reply: {self.reply}")
-                    return f"[回复<{self.reply.message_info.user_info.user_nickname}> 的消息：{self.reply.processed_plain_text}]"  # type: ignore
+                    return f"[回复<{self.reply.message_info.user_info.user_nickname}({self.reply.message_info.user_info.user_id})> 的消息：{self.reply.processed_plain_text}]"  # type: ignore
                 return None
             else:
                 return f"[{seg.type}:{seg.data!s}]"

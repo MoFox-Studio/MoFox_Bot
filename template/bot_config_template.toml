@@ -142,7 +142,8 @@ dynamic_distribution_min_interval = 1.0 # 最小分发间隔（秒）
 dynamic_distribution_max_interval = 30.0 # 最大分发间隔（秒）
 dynamic_distribution_jitter_factor = 0.2 # 分发间隔随机扰动因子
 max_concurrent_distributions = 10 # 最大并发处理的消息流数量，可以根据API性能和服务器负载调整
-
+enable_decision_history = true # 是否启用决策历史功能
+decision_history_length = 3 # 决策历史记录的长度，用于增强语言模型的上下文连续性
 
 
 [message_receive]

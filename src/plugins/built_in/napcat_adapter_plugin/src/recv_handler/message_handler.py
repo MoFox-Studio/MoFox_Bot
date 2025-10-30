@@ -719,12 +719,16 @@ class MessageHandler:
             reply_message = [Seg(type="text", data="(获取发言内容失败)")]
         sender_info: dict = message_detail.get("sender")
         sender_nickname: str = sender_info.get("nickname")
+        sender_id = sender_info.get("user_id")
         seg_message: List[Seg] = []
         if not sender_nickname:
             logger.warning("无法获取被引用的人的昵称，返回默认值")
             seg_message.append(Seg(type="text", data="[回复 未知用户："))
         else:
-            seg_message.append(Seg(type="text", data=f"[回复<{sender_nickname}>："))
+            if sender_id:
+                seg_message.append(Seg(type="text", data=f"[回复<{sender_nickname}({sender_id})>："))
+            else:
+                seg_message.append(Seg(type="text", data=f"[回复<{sender_nickname}>："))
         seg_message += reply_message
         seg_message.append(Seg(type="text", data="]，说："))
         return seg_message

@@ -271,12 +271,34 @@ async def _send_to_target(
         message_segment = Seg(type=message_type, data=content)  # type: ignore
 
         # 处理回复消息
-        if reply_to_message:
+        if reply_to:
+            # 优先使用 reply_to 字符串构建 anchor_message
+            # 解析 "发送者(ID)" 格式
+            import re
+            match = re.match(r"(.+)\((\d+)\)", reply_to)
+            if match:
+                sender_name, sender_id = match.groups()
+                temp_message_dict = {
+                    "user_nickname": sender_name,
+                    "user_id": sender_id,
+                    "chat_info_platform": target_stream.platform,
+                    "message_id": "temp_reply_id", # 临时ID
+                    "time": time.time()
+                }
+                anchor_message = message_dict_to_message_recv(message_dict=temp_message_dict)
+            else:
+                 anchor_message = None
+            reply_to_platform_id = f"{target_stream.platform}:{sender_id}" if anchor_message else None
+
+        elif reply_to_message:
             anchor_message = message_dict_to_message_recv(message_dict=reply_to_message)
-            anchor_message.update_chat_stream(target_stream)
-            reply_to_platform_id = (
-                f"{anchor_message.message_info.platform}:{anchor_message.message_info.user_info.user_id}"
-            )
+            if anchor_message:
+                anchor_message.update_chat_stream(target_stream)
+                reply_to_platform_id = (
+                    f"{anchor_message.message_info.platform}:{anchor_message.message_info.user_info.user_id}"
+                )
+            else:
+                reply_to_platform_id = None
         else:
             anchor_message = None
             reply_to_platform_id = None

@@ -26,13 +26,13 @@ class UsageRecord:
     provider_name: str
     """提供商名称"""
 
-    prompt_tokens: int
+    prompt_tokens: int = 0
     """提示token数"""
 
-    completion_tokens: int
+    completion_tokens: int = 0
     """完成token数"""
 
-    total_tokens: int
+    total_tokens: int = 0
     """总token数"""
 
 
