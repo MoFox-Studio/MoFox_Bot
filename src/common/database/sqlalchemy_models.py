@@ -140,6 +140,11 @@ class ChatStreams(Base):
     consecutive_no_reply: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
     # 消息打断系统字段
     interruption_count: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    # 聊天流印象字段
+    stream_impression_text: Mapped[str | None] = mapped_column(Text, nullable=True)  # 对聊天流的主观印象描述
+    stream_chat_style: Mapped[str | None] = mapped_column(Text, nullable=True)  # 聊天流的总体风格
+    stream_topic_keywords: Mapped[str | None] = mapped_column(Text, nullable=True)  # 话题关键词，逗号分隔
+    stream_interest_score: Mapped[float | None] = mapped_column(Float, nullable=True, default=0.5)  # 对聊天流的兴趣程度(0-1)
 
     __table_args__ = (
         Index("idx_chatstreams_stream_id", "stream_id"),
@@ -877,7 +882,9 @@ class UserRelationships(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(get_string_field(100), nullable=False, unique=True, index=True)
     user_name: Mapped[str | None] = mapped_column(get_string_field(100), nullable=True)
+    user_aliases: Mapped[str | None] = mapped_column(Text, nullable=True)  # 用户别名，逗号分隔
     relationship_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preference_keywords: Mapped[str | None] = mapped_column(Text, nullable=True)  # 用户偏好关键词，逗号分隔
     relationship_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.3)  # 关系分数(0-1)
     last_updated: Mapped[float] = mapped_column(Float, nullable=False, default=time.time)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime, default=datetime.datetime.utcnow, nullable=False)

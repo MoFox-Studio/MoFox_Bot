@@ -47,8 +47,9 @@ class BaseTool(ABC):
     sub_tools: list[tuple[str, str, list[tuple[str, ToolParamType, str, bool, list[str] | None]]]] = []
     """子工具列表，格式为[(子工具名, 子工具描述, 子工具参数)]。仅在二步工具中使用"""
 
-    def __init__(self, plugin_config: dict | None = None):
+    def __init__(self, plugin_config: dict | None = None, chat_stream: Any = None):
         self.plugin_config = plugin_config or {}  # 直接存储插件配置字典
+        self.chat_stream = chat_stream  # 存储聊天流信息，可用于获取上下文
 
     @classmethod
     def get_tool_definition(cls) -> dict[str, Any]:

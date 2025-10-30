@@ -209,13 +209,13 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             relationship_value = self.user_relationships[user_id]
             return min(relationship_value, 1.0)
 
-        # 如果内存中没有，尝试从关系追踪器获取
+        # 如果内存中没有，尝试从统一的评分API获取
         try:
-            from .relationship_tracker import ChatterRelationshipTracker
+            from src.plugin_system.apis.scoring_api import scoring_api
 
-            global_tracker = ChatterRelationshipTracker()
-            if global_tracker:
-                relationship_score = await global_tracker.get_user_relationship_score(user_id)
+            relationship_data = await scoring_api.get_user_relationship_data(user_id)
+            if relationship_data:
+                relationship_score = relationship_data.get("relationship_score", global_config.affinity_flow.base_relationship_score)
                 # 同时更新内存缓存
                 self.user_relationships[user_id] = relationship_score
                 return relationship_score

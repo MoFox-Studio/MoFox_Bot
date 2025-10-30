@@ -432,20 +432,6 @@ MoFox_Bot(第三方修改版)
         get_emoji_manager().initialize()
         logger.info("表情包管理器初始化成功")
 
-        """
-        # 初始化回复后关系追踪系统
-        try:
-            from src.plugins.built_in.affinity_flow_chatter.interest_scoring import chatter_interest_scoring_system
-            from src.plugins.built_in.affinity_flow_chatter.relationship_tracker import ChatterRelationshipTracker
-
-            relationship_tracker = ChatterRelationshipTracker(interest_scoring_system=chatter_interest_scoring_system)
-            chatter_interest_scoring_system.relationship_tracker = relationship_tracker
-            logger.info("回复后关系追踪系统初始化成功")
-        except Exception as e:
-            logger.error(f"回复后关系追踪系统初始化失败: {e}")
-            relationship_tracker = None
-        """
-
         # 启动情绪管理器
         await mood_manager.start()
         logger.info("情绪管理器初始化成功")

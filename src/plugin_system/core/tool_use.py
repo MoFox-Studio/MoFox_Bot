@@ -226,7 +226,7 @@ class ToolExecutor:
         """执行单个工具调用，并处理缓存"""
 
         function_args = tool_call.args or {}
-        tool_instance = tool_instance or get_tool_instance(tool_call.func_name)
+        tool_instance = tool_instance or get_tool_instance(tool_call.func_name, self.chat_stream)
 
         # 如果工具不存在或未启用缓存，则直接执行
         if not tool_instance or not tool_instance.enable_cache:
@@ -320,7 +320,7 @@ class ToolExecutor:
                 parts = function_name.split("_", 1)
                 if len(parts) == 2:
                     base_tool_name, sub_tool_name = parts
-                    base_tool_instance = get_tool_instance(base_tool_name)
+                    base_tool_instance = get_tool_instance(base_tool_name, self.chat_stream)
 
                     if base_tool_instance and base_tool_instance.is_two_step_tool:
                         logger.info(f"{self.log_prefix}执行二步工具第二步: {base_tool_name}.{sub_tool_name}")
@@ -340,7 +340,7 @@ class ToolExecutor:
                             }
 
             # 获取对应工具实例
-            tool_instance = tool_instance or get_tool_instance(function_name)
+            tool_instance = tool_instance or get_tool_instance(function_name, self.chat_stream)
             if not tool_instance:
                 logger.warning(f"未知工具名称: {function_name}")
                 return None

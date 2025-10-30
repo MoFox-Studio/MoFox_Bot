@@ -1882,42 +1882,64 @@ class DefaultReplyer:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"
 
-        # 使用统一评分API获取关系信息
+        # 使用 RelationshipFetcher 获取完整关系信息（包含新字段）
         try:
-            from src.plugin_system.apis.scoring_api import scoring_api
+            from src.person_info.relationship_fetcher import relationship_fetcher_manager
 
-            # 获取用户信息以获取真实的user_id
-            user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
-            user_id = user_info.get("user_id", "unknown")
+            # 获取 chat_id
+            chat_id = self.chat_stream.stream_id
 
-            # 从统一API获取关系数据
-            relationship_data = await scoring_api.get_user_relationship_data(user_id)
-            if relationship_data:
-                relationship_text = relationship_data.get("relationship_text", "")
-                relationship_score = relationship_data.get("relationship_score", 0.3)
+            # 获取 RelationshipFetcher 实例
+            relationship_fetcher = relationship_fetcher_manager.get_fetcher(chat_id)
 
-                # 构建丰富的关系信息描述
-                if relationship_text:
-                    # 转换关系分数为描述性文本
-                    if relationship_score >= 0.8:
-                        relationship_level = "非常亲密的朋友"
-                    elif relationship_score >= 0.6:
-                        relationship_level = "好朋友"
-                    elif relationship_score >= 0.4:
-                        relationship_level = "普通朋友"
-                    elif relationship_score >= 0.2:
-                        relationship_level = "认识的人"
-                    else:
-                        relationship_level = "陌生人"
+            # 构建用户关系信息（包含别名、偏好关键词等新字段）
+            user_relation_info = await relationship_fetcher.build_relation_info(person_id, points_num=5)
 
-                    return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
-                else:
-                    return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
+            # 构建聊天流印象信息
+            stream_impression = await relationship_fetcher.build_chat_stream_impression(chat_id)
+
+            # 组合两部分信息
+            if user_relation_info and stream_impression:
+                return "\n\n".join([user_relation_info, stream_impression])
+            elif user_relation_info:
+                return user_relation_info
+            elif stream_impression:
+                return stream_impression
             else:
                 return f"你完全不认识{sender}，这是第一次互动。"
 
         except Exception as e:
             logger.error(f"获取关系信息失败: {e}")
+            # 降级到基本信息
+            try:
+                from src.plugin_system.apis.scoring_api import scoring_api
+
+                user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
+                user_id = user_info.get("user_id", "unknown")
+
+                relationship_data = await scoring_api.get_user_relationship_data(user_id)
+                if relationship_data:
+                    relationship_text = relationship_data.get("relationship_text", "")
+                    relationship_score = relationship_data.get("relationship_score", 0.3)
+
+                    if relationship_text:
+                        if relationship_score >= 0.8:
+                            relationship_level = "非常亲密的朋友"
+                        elif relationship_score >= 0.6:
+                            relationship_level = "好朋友"
+                        elif relationship_score >= 0.4:
+                            relationship_level = "普通朋友"
+                        elif relationship_score >= 0.2:
+                            relationship_level = "认识的人"
+                        else:
+                            relationship_level = "陌生人"
+
+                        return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
+                    else:
+                        return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
+            except Exception:
+                pass
+
             return f"你与{sender}是普通朋友关系。"
 
     async def _store_chat_memory_async(self, reply_to: str, reply_message: dict[str, Any] | None = None):
