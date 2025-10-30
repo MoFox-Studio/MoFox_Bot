@@ -27,6 +27,7 @@ from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.chat.utils.prompt_params import PromptParameters
 from src.chat.utils.timer_calculator import Timer
 from src.chat.utils.utils import get_chat_type_and_target_info
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.individuality.individuality import get_individuality
@@ -474,10 +475,13 @@ class DefaultReplyer:
         style_habits = []
         grammar_habits = []
 
-        # 使用从处理器传来的选中表达方式
-        # LLM模式：调用LLM选择5-10个，然后随机选5个
-        selected_expressions = await expression_selector.select_suitable_expressions_llm(
-            self.chat_stream.stream_id, chat_history, max_num=8, min_num=2, target_message=target
+        # 使用统一的表达方式选择入口（支持classic和exp_model模式）
+        selected_expressions = await expression_selector.select_suitable_expressions(
+            chat_id=self.chat_stream.stream_id,
+            chat_history=chat_history,
+            target_message=target,
+            max_num=8,
+            min_num=2
         )
 
         if selected_expressions:
@@ -1208,7 +1212,7 @@ class DefaultReplyer:
         extra_info: str = "",
         available_actions: dict[str, ActionInfo] | None = None,
         enable_tool: bool = True,
-        reply_message: dict[str, Any] | None = None,
+        reply_message: dict[str, Any] | DatabaseMessages | None = None,
     ) -> str:
         """
         构建回复器上下文
@@ -1250,10 +1254,24 @@ class DefaultReplyer:
             if reply_message is None:
                 logger.warning("reply_message 为 None，无法构建prompt")
                 return ""
-            platform = reply_message.get("chat_info_platform")
+            
+            # 统一处理 DatabaseMessages 对象和字典
+            if isinstance(reply_message, DatabaseMessages):
+                platform = reply_message.chat_info.platform
+                user_id = reply_message.user_info.user_id
+                user_nickname = reply_message.user_info.user_nickname
+                user_cardname = reply_message.user_info.user_cardname
+                processed_plain_text = reply_message.processed_plain_text
+            else:
+                platform = reply_message.get("chat_info_platform")
+                user_id = reply_message.get("user_id")
+                user_nickname = reply_message.get("user_nickname")
+                user_cardname = reply_message.get("user_cardname")
+                processed_plain_text = reply_message.get("processed_plain_text")
+            
             person_id = person_info_manager.get_person_id(
                 platform,  # type: ignore
-                reply_message.get("user_id"),  # type: ignore
+                user_id,  # type: ignore
             )
             person_name = await person_info_manager.get_value(person_id, "person_name")
 
@@ -1262,22 +1280,22 @@ class DefaultReplyer:
                 # 尝试从reply_message获取用户名
                 await person_info_manager.first_knowing_some_one(
                     platform,  # type: ignore
-                    reply_message.get("user_id"),  # type: ignore
-                    reply_message.get("user_nickname") or "",
-                    reply_message.get("user_cardname") or "",
+                    user_id,  # type: ignore
+                    user_nickname or "",
+                    user_cardname or "",
                 )
 
             # 检查是否是bot自己的名字，如果是则替换为"(你)"
             bot_user_id = str(global_config.bot.qq_account)
             current_user_id = await person_info_manager.get_value(person_id, "user_id")
-            current_platform = reply_message.get("chat_info_platform")
+            current_platform = platform
 
             if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
                 sender = f"{person_name}(你)"
             else:
                 # 如果不是bot自己，直接使用person_name
                 sender = person_name
-            target = reply_message.get("processed_plain_text")
+            target = processed_plain_text
 
         # 最终的空值检查，确保sender和target不为None
         if sender is None:
@@ -1611,15 +1629,22 @@ class DefaultReplyer:
         raw_reply: str,
         reason: str,
         reply_to: str,
-        reply_message: dict[str, Any] | None = None,
+        reply_message: dict[str, Any] | DatabaseMessages | None = None,
     ) -> str:  # sourcery skip: merge-else-if-into-elif, remove-redundant-if
         chat_stream = self.chat_stream
         chat_id = chat_stream.stream_id
         is_group_chat = bool(chat_stream.group_info)
 
         if reply_message:
-            sender = reply_message.get("sender")
-            target = reply_message.get("target")
+            if isinstance(reply_message, DatabaseMessages):
+                # 从 DatabaseMessages 对象获取 sender 和 target
+                # 注意: DatabaseMessages 没有直接的 sender/target 字段
+                # 需要根据实际情况构造
+                sender = reply_message.user_info.user_nickname or reply_message.user_info.user_id
+                target = reply_message.processed_plain_text or ""
+            else:
+                sender = reply_message.get("sender")
+                target = reply_message.get("target")
         else:
             sender, target = self._parse_reply_target(reply_to)
 
@@ -1891,42 +1916,64 @@ class DefaultReplyer:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"
 
-        # 使用统一评分API获取关系信息
+        # 使用 RelationshipFetcher 获取完整关系信息（包含新字段）
         try:
-            from src.plugin_system.apis.scoring_api import scoring_api
+            from src.person_info.relationship_fetcher import relationship_fetcher_manager
 
-            # 获取用户信息以获取真实的user_id
-            user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
-            user_id = user_info.get("user_id", "unknown")
+            # 获取 chat_id
+            chat_id = self.chat_stream.stream_id
 
-            # 从统一API获取关系数据
-            relationship_data = await scoring_api.get_user_relationship_data(user_id)
-            if relationship_data:
-                relationship_text = relationship_data.get("relationship_text", "")
-                relationship_score = relationship_data.get("relationship_score", 0.3)
+            # 获取 RelationshipFetcher 实例
+            relationship_fetcher = relationship_fetcher_manager.get_fetcher(chat_id)
 
-                # 构建丰富的关系信息描述
-                if relationship_text:
-                    # 转换关系分数为描述性文本
-                    if relationship_score >= 0.8:
-                        relationship_level = "非常亲密的朋友"
-                    elif relationship_score >= 0.6:
-                        relationship_level = "好朋友"
-                    elif relationship_score >= 0.4:
-                        relationship_level = "普通朋友"
-                    elif relationship_score >= 0.2:
-                        relationship_level = "认识的人"
-                    else:
-                        relationship_level = "陌生人"
+            # 构建用户关系信息（包含别名、偏好关键词等新字段）
+            user_relation_info = await relationship_fetcher.build_relation_info(person_id, points_num=5)
 
-                    return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
-                else:
-                    return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
+            # 构建聊天流印象信息
+            stream_impression = await relationship_fetcher.build_chat_stream_impression(chat_id)
+
+            # 组合两部分信息
+            if user_relation_info and stream_impression:
+                return "\n\n".join([user_relation_info, stream_impression])
+            elif user_relation_info:
+                return user_relation_info
+            elif stream_impression:
+                return stream_impression
             else:
                 return f"你完全不认识{sender}，这是第一次互动。"
 
         except Exception as e:
             logger.error(f"获取关系信息失败: {e}")
+            # 降级到基本信息
+            try:
+                from src.plugin_system.apis.scoring_api import scoring_api
+
+                user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
+                user_id = user_info.get("user_id", "unknown")
+
+                relationship_data = await scoring_api.get_user_relationship_data(user_id)
+                if relationship_data:
+                    relationship_text = relationship_data.get("relationship_text", "")
+                    relationship_score = relationship_data.get("relationship_score", 0.3)
+
+                    if relationship_text:
+                        if relationship_score >= 0.8:
+                            relationship_level = "非常亲密的朋友"
+                        elif relationship_score >= 0.6:
+                            relationship_level = "好朋友"
+                        elif relationship_score >= 0.4:
+                            relationship_level = "普通朋友"
+                        elif relationship_score >= 0.2:
+                            relationship_level = "认识的人"
+                        else:
+                            relationship_level = "陌生人"
+
+                        return f"你与{sender}的关系：{relationship_level}（关系分：{relationship_score:.2f}/1.0）。{relationship_text}"
+                    else:
+                        return f"你与{sender}是初次见面，关系分：{relationship_score:.2f}/1.0。"
+            except Exception:
+                pass
+
             return f"你与{sender}是普通朋友关系。"
 
     async def _store_chat_memory_async(self, reply_to: str, reply_message: dict[str, Any] | None = None):

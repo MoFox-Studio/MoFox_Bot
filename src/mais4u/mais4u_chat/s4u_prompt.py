@@ -107,10 +107,13 @@ class PromptBuilder:
         style_habits = []
         grammar_habits = []
 
-        # 使用从处理器传来的选中表达方式
-        # LLM模式：调用LLM选择5-10个，然后随机选5个
-        selected_expressions = await expression_selector.select_suitable_expressions_llm(
-            chat_stream.stream_id, chat_history, max_num=12, min_num=5, target_message=target
+        # 使用统一的表达方式选择入口（支持classic和exp_model模式）
+        selected_expressions = await expression_selector.select_suitable_expressions(
+            chat_id=chat_stream.stream_id,
+            chat_history=chat_history,
+            target_message=target,
+            max_num=12,
+            min_num=5
         )
 
         if selected_expressions:
@@ -163,13 +166,25 @@ class PromptBuilder:
                 person_id = PersonInfoManager.get_person_id(person[0], person[1])
                 person_ids.append(person_id)
 
-            # 使用 RelationshipFetcher 的 build_relation_info 方法，设置 points_num=3 保持与原来相同的行为
-            relation_info_list = await asyncio.gather(
-                *[relationship_fetcher.build_relation_info(person_id, points_num=3) for person_id in person_ids]
-            )
-            if relation_info := "".join(relation_info_list):
+            # 构建用户关系信息和聊天流印象信息
+            user_relation_tasks = [relationship_fetcher.build_relation_info(person_id, points_num=3) for person_id in person_ids]
+            stream_impression_task = relationship_fetcher.build_chat_stream_impression(chat_stream.stream_id)
+            
+            # 并行获取所有信息
+            results = await asyncio.gather(*user_relation_tasks, stream_impression_task)
+            relation_info_list = results[:-1]  # 用户关系信息
+            stream_impression = results[-1]     # 聊天流印象
+            
+            # 组合用户关系信息和聊天流印象
+            combined_info_parts = []
+            if user_relation_info := "".join(relation_info_list):
+                combined_info_parts.append(user_relation_info)
+            if stream_impression:
+                combined_info_parts.append(stream_impression)
+            
+            if combined_info := "\n\n".join(combined_info_parts):
                 relation_prompt = await global_prompt_manager.format_prompt(
-                    "relation_prompt", relation_info=relation_info
+                    "relation_prompt", relation_info=combined_info
                 )
         return relation_prompt
 

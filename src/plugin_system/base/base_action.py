@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 from src.chat.message_receive.chat_stream import ChatStream
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.plugin_system.apis import database_api, message_api, send_api
 from src.plugin_system.base.component_types import ActionActivationType, ActionInfo, ChatMode, ChatType, ComponentType
@@ -180,11 +181,18 @@ class BaseAction(ABC):
 
         if self.has_action_message:
             if self.action_name != "no_reply":
-                self.group_id = str(self.action_message.get("chat_info_group_id", None))
-                self.group_name = self.action_message.get("chat_info_group_name", None)
-
-                self.user_id = str(self.action_message.get("user_id", None))
-                self.user_nickname = self.action_message.get("user_nickname", None)
+                # 统一处理 DatabaseMessages 对象和字典
+                if isinstance(self.action_message, DatabaseMessages):
+                    self.group_id = str(self.action_message.group_info.group_id if self.action_message.group_info else None)
+                    self.group_name = self.action_message.group_info.group_name if self.action_message.group_info else None
+                    self.user_id = str(self.action_message.user_info.user_id)
+                    self.user_nickname = self.action_message.user_info.user_nickname
+                else:
+                    self.group_id = str(self.action_message.get("chat_info_group_id", None))
+                    self.group_name = self.action_message.get("chat_info_group_name", None)
+                    self.user_id = str(self.action_message.get("user_id", None))
+                    self.user_nickname = self.action_message.get("user_nickname", None)
+                
                 if self.group_id:
                     self.is_group = True
                     self.target_id = self.group_id

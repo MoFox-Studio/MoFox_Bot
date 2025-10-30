@@ -606,11 +606,11 @@ class Prompt:
                     recent_messages, replace_bot_name=True, timestamp_mode="normal", truncate=True
                 )
 
-            # 使用LLM选择与当前情景匹配的表达习惯
+            # 使用统一的表达方式选择入口（支持classic和exp_model模式）
             expression_selector = ExpressionSelector(self.parameters.chat_id)
-            selected_expressions = await expression_selector.select_suitable_expressions_llm(
+            selected_expressions = await expression_selector.select_suitable_expressions(
                 chat_id=self.parameters.chat_id,
-                chat_info=chat_history,
+                chat_history=chat_history,
                 target_message=self.parameters.target,
             )
 
@@ -1109,8 +1109,18 @@ class Prompt:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"
 
-        # 使用关系提取器构建关系信息
-        return await relationship_fetcher.build_relation_info(person_id, points_num=5)
+        # 使用关系提取器构建用户关系信息和聊天流印象
+        user_relation_info = await relationship_fetcher.build_relation_info(person_id, points_num=5)
+        stream_impression = await relationship_fetcher.build_chat_stream_impression(chat_id)
+        
+        # 组合两部分信息
+        info_parts = []
+        if user_relation_info:
+            info_parts.append(user_relation_info)
+        if stream_impression:
+            info_parts.append(stream_impression)
+        
+        return "\n\n".join(info_parts) if info_parts else ""
 
     def _get_default_result_for_task(self, task_name: str) -> dict[str, Any]:
         """为超时或失败的异步构建任务提供一个安全的默认返回值.

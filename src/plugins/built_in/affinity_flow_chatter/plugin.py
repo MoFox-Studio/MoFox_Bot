@@ -52,4 +52,20 @@ class AffinityChatterPlugin(BasePlugin):
         except Exception as e:
             logger.error(f"加载 AffinityInterestCalculator 时出错: {e}")
 
+        try:
+            # 延迟导入 UserProfileTool
+            from .user_profile_tool import UserProfileTool
+
+            components.append((UserProfileTool.get_tool_info(), UserProfileTool))
+        except Exception as e:
+            logger.error(f"加载 UserProfileTool 时出错: {e}")
+
+        try:
+            # 延迟导入 ChatStreamImpressionTool
+            from .chat_stream_impression_tool import ChatStreamImpressionTool
+
+            components.append((ChatStreamImpressionTool.get_tool_info(), ChatStreamImpressionTool))
+        except Exception as e:
+            logger.error(f"加载 ChatStreamImpressionTool 时出错: {e}")
+
         return components

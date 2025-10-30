@@ -1,5 +1,5 @@
 [inner]
-version = "7.5.1"
+version = "7.5.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -92,6 +92,11 @@ compress_identity = true # 是否压缩身份，压缩后会精简身份信息�
 
 [expression]
 # 表达学习配置
+# mode: 表达方式模式，可选：
+#   - "classic": 经典模式，随机抽样 + LLM选择
+#   - "exp_model": 表达模型模式，使用机器学习模型预测最合适的表达
+mode = "classic"
+
 # rules是一个列表，每个元素都是一个学习规则
 # chat_stream_id: 聊天流ID，格式为 "platform:id:type"，例如 "qq:123456:private"。空字符串""表示全局配置
 # use_expression: 是否使用学到的表达 (true/false)

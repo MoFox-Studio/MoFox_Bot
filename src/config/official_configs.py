@@ -187,6 +187,10 @@ class ExpressionRule(ValidatedConfigBase):
 class ExpressionConfig(ValidatedConfigBase):
     """表达配置类"""
 
+    mode: Literal["classic", "exp_model"] = Field(
+        default="classic", 
+        description="表达方式选择模式: classic=经典LLM评估, exp_model=机器学习模型预测"
+    )
     rules: list[ExpressionRule] = Field(default_factory=list, description="表达学习规则")
 
     @staticmethod
