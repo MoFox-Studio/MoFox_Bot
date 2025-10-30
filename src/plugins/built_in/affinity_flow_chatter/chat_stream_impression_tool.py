@@ -69,19 +69,26 @@ class ChatStreamImpressionTool(BaseTool):
         """执行聊天流印象更新
         
         Args:
-            function_args: 工具参数，stream_id会由系统自动注入
+            function_args: 工具参数
             
         Returns:
             dict: 执行结果
         """
         try:
-            # stream_id应该由调用方（如工具执行器）自动注入
-            # 如果没有注入，尝试从上下文获取
+            # 优先从 function_args 获取 stream_id
             stream_id = function_args.get("stream_id")
+            
+            # 如果没有，从 chat_stream 对象获取
+            if not stream_id and self.chat_stream:
+                try:
+                    stream_id = self.chat_stream.stream_id
+                    logger.debug(f"从 chat_stream 获取到 stream_id: {stream_id}")
+                except AttributeError:
+                    logger.warning("chat_stream 对象没有 stream_id 属性")
+            
+            # 如果还是没有，返回错误
             if not stream_id:
-                # 尝试从其他可能的来源获取
-                logger.warning("stream_id未自动注入，尝试从其他来源获取")
-                # 这里可以添加从上下文获取的逻辑
+                logger.error("无法获取 stream_id：function_args 和 chat_stream 都没有提供")
                 return {
                     "type": "error",
                     "id": "chat_stream_impression",
