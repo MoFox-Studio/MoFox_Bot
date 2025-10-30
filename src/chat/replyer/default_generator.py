@@ -1820,17 +1820,36 @@ class DefaultReplyer:
             )
 
             if content:
-                # 循环移除，防止模型生成多个回复头
-                cleaned_content = content
-                while True:
-                    new_content = re.sub(r"^\s*\[回复<[^>]+>\s*的消息：[^\]]+\]\s*", "", cleaned_content).lstrip()
-                    if new_content == cleaned_content:
-                        break
-                    cleaned_content = new_content
+                # 移除 [SPLIT] 标记，防止消息被分割
+                cleaned_content = content.replace("[SPLIT]", "")
 
-                if cleaned_content != content:
-                    logger.debug(f"移除了模型自行生成的回复头，原始内容: '{content}', 清理后: '{cleaned_content}'")
-                    content = cleaned_content
+                # 循环移除，以处理模型可能生成的嵌套回复头/尾
+                # 使用更健壮的正则表达式，通过非贪婪匹配和向后查找来定位真正的消息内容
+                pattern = re.compile(r"^\s*\[回复<.+?>\s*(?:的消息)?：(?P<content>.*)\](?:，?说：)?\s*$", re.DOTALL)
+                
+                temp_content = cleaned_content
+                while True:
+                    match = pattern.match(temp_content)
+                    if match:
+                        new_content = match.group("content").strip()
+                        # 如果内容没有变化，说明可能无法进一步解析，退出循环
+                        if new_content == temp_content:
+                            break
+                        temp_content = new_content
+                    else:
+                        break # 没有匹配到，退出循环
+                
+                # 在循环处理后，再使用 rsplit 来处理日志中观察到的特殊情况
+                # 这可以作为处理复杂嵌套的最后一道防线
+                final_split = temp_content.rsplit("]，说：", 1)
+                if len(final_split) > 1:
+                    final_content = final_split[1].strip()
+                else:
+                    final_content = temp_content
+                
+                if final_content != content:
+                    logger.debug(f"清理了模型生成的多余内容，原始内容: '{content}', 清理后: '{final_content}'")
+                    content = final_content
 
             logger.debug(f"replyer生成内容: {content}")
         return content, reasoning_content, model_name, tool_calls
