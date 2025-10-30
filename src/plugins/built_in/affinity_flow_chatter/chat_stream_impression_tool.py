@@ -39,8 +39,8 @@ class ChatStreamImpressionTool(BaseTool):
     available_for_llm = True
     history_ttl = 5
 
-    def __init__(self, plugin_config: dict | None = None):
-        super().__init__(plugin_config)
+    def __init__(self, plugin_config: dict | None = None, chat_stream: Any = None):
+        super().__init__(plugin_config, chat_stream)
         
         # 初始化用于二步调用的LLM
         try:

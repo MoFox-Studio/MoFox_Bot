@@ -120,13 +120,15 @@ class RelationshipFetcher:
         know_since = await person_info_manager.get_value(person_id, "know_since")
         last_know = await person_info_manager.get_value(person_id, "last_know")
 
-        # 如果用户没有基本信息，返回默认描述
-        if person_name == nickname_str and not short_impression and not full_impression:
-            return f"你完全不认识{person_name}，这是你们第一次交流。"
-
         # 获取用户特征点
         current_points = await person_info_manager.get_value(person_id, "points") or []
         forgotten_points = await person_info_manager.get_value(person_id, "forgotten_points") or []
+        
+        # 确保 points 是列表类型（可能从数据库返回字符串）
+        if not isinstance(current_points, list):
+            current_points = []
+        if not isinstance(forgotten_points, list):
+            forgotten_points = []
 
         # 按时间排序并选择最有代表性的特征点
         all_points = current_points + forgotten_points
@@ -182,8 +184,8 @@ class RelationshipFetcher:
             from src.common.database.sqlalchemy_database_api import db_query
             from src.common.database.sqlalchemy_models import UserRelationships
 
-            # 查询用户关系数据
-            user_id = str(person_info_manager.get_value(person_id, "user_id"))
+            # 查询用户关系数据（修复：添加 await）
+            user_id = str(await person_info_manager.get_value(person_id, "user_id"))
             relationships = await db_query(
                 UserRelationships,
                 filters={"user_id": user_id},
@@ -191,33 +193,34 @@ class RelationshipFetcher:
             )
 
             if relationships:
+                # db_query 返回字典列表，使用字典访问方式
                 rel_data = relationships[0]
                 
                 # 5.1 用户别名
-                if rel_data.user_aliases:
-                    aliases_list = [alias.strip() for alias in rel_data.user_aliases.split(",") if alias.strip()]
+                if rel_data.get("user_aliases"):
+                    aliases_list = [alias.strip() for alias in rel_data["user_aliases"].split(",") if alias.strip()]
                     if aliases_list:
                         aliases_str = "、".join(aliases_list)
                         relation_parts.append(f"{person_name}的别名有：{aliases_str}")
                 
                 # 5.2 关系印象文本（主观认知）
-                if rel_data.relationship_text:
-                    relation_parts.append(f"你对{person_name}的整体认知：{rel_data.relationship_text}")
+                if rel_data.get("relationship_text"):
+                    relation_parts.append(f"你对{person_name}的整体认知：{rel_data['relationship_text']}")
                 
                 # 5.3 用户偏好关键词
-                if rel_data.preference_keywords:
-                    keywords_list = [kw.strip() for kw in rel_data.preference_keywords.split(",") if kw.strip()]
+                if rel_data.get("preference_keywords"):
+                    keywords_list = [kw.strip() for kw in rel_data["preference_keywords"].split(",") if kw.strip()]
                     if keywords_list:
                         keywords_str = "、".join(keywords_list)
                         relation_parts.append(f"{person_name}的偏好和兴趣：{keywords_str}")
                 
                 # 5.4 关系亲密程度（好感分数）
-                if rel_data.relationship_score is not None:
-                    score_desc = self._get_relationship_score_description(rel_data.relationship_score)
-                    relation_parts.append(f"你们的关系程度：{score_desc}（{rel_data.relationship_score:.2f}）")
+                if rel_data.get("relationship_score") is not None:
+                    score_desc = self._get_relationship_score_description(rel_data["relationship_score"])
+                    relation_parts.append(f"你们的关系程度：{score_desc}（{rel_data['relationship_score']:.2f}）")
 
         except Exception as e:
-            logger.debug(f"查询UserRelationships表失败: {e}")
+            logger.error(f"查询UserRelationships表失败: {e}", exc_info=True)
 
         # 构建最终的关系信息字符串
         if relation_parts:
@@ -225,7 +228,8 @@ class RelationshipFetcher:
                 [f"• {part}" for part in relation_parts]
             )
         else:
-            relation_info = f"你对{person_name}了解不多，这是比较初步的交流。"
+            # 只有当所有数据源都没有信息时才返回默认文本
+            relation_info = f"你完全不认识{person_name}，这是你们第一次交流。"
 
         return relation_info
 
@@ -252,34 +256,35 @@ class RelationshipFetcher:
             if not streams:
                 return ""
 
+            # db_query 返回字典列表，使用字典访问方式
             stream_data = streams[0]
             impression_parts = []
 
             # 1. 聊天环境基本信息
-            if stream_data.group_name:
-                impression_parts.append(f"这是一个名为「{stream_data.group_name}」的群聊")
+            if stream_data.get("group_name"):
+                impression_parts.append(f"这是一个名为「{stream_data['group_name']}」的群聊")
             else:
                 impression_parts.append("这是一个私聊对话")
 
             # 2. 聊天流的主观印象
-            if stream_data.stream_impression_text:
-                impression_parts.append(f"你对这个聊天环境的印象：{stream_data.stream_impression_text}")
+            if stream_data.get("stream_impression_text"):
+                impression_parts.append(f"你对这个聊天环境的印象：{stream_data['stream_impression_text']}")
 
             # 3. 聊天风格
-            if stream_data.stream_chat_style:
-                impression_parts.append(f"这里的聊天风格：{stream_data.stream_chat_style}")
+            if stream_data.get("stream_chat_style"):
+                impression_parts.append(f"这里的聊天风格：{stream_data['stream_chat_style']}")
 
             # 4. 常见话题
-            if stream_data.stream_topic_keywords:
-                topics_list = [topic.strip() for topic in stream_data.stream_topic_keywords.split(",") if topic.strip()]
+            if stream_data.get("stream_topic_keywords"):
+                topics_list = [topic.strip() for topic in stream_data["stream_topic_keywords"].split(",") if topic.strip()]
                 if topics_list:
                     topics_str = "、".join(topics_list)
                     impression_parts.append(f"这里常讨论的话题：{topics_str}")
 
             # 5. 兴趣程度
-            if stream_data.stream_interest_score is not None:
-                interest_desc = self._get_interest_score_description(stream_data.stream_interest_score)
-                impression_parts.append(f"你对这个聊天环境的兴趣程度：{interest_desc}（{stream_data.stream_interest_score:.2f}）")
+            if stream_data.get("stream_interest_score") is not None:
+                interest_desc = self._get_interest_score_description(stream_data["stream_interest_score"])
+                impression_parts.append(f"你对这个聊天环境的兴趣程度：{interest_desc}（{stream_data['stream_interest_score']:.2f}）")
 
             # 构建最终的印象信息字符串
             if impression_parts:
