@@ -108,52 +108,79 @@ def message_dict_to_message_recv(message_dict: dict[str, Any]) -> MessageRecv | 
     """查找要回复的消息
 
     Args:
-        message_dict: 消息字典
+        message_dict: 消息字典或 DatabaseMessages 对象
 
     Returns:
         Optional[MessageRecv]: 找到的消息，如果没找到则返回None
     """
+    # 兼容 DatabaseMessages 对象和字典
+    if isinstance(message_dict, dict):
+        user_platform = message_dict.get("user_platform", "")
+        user_id = message_dict.get("user_id", "")
+        user_nickname = message_dict.get("user_nickname", "")
+        user_cardname = message_dict.get("user_cardname", "")
+        chat_info_group_id = message_dict.get("chat_info_group_id")
+        chat_info_group_platform = message_dict.get("chat_info_group_platform", "")
+        chat_info_group_name = message_dict.get("chat_info_group_name", "")
+        chat_info_platform = message_dict.get("chat_info_platform", "")
+        message_id = message_dict.get("message_id") or message_dict.get("chat_info_message_id") or message_dict.get("id")
+        time_val = message_dict.get("time")
+        additional_config = message_dict.get("additional_config")
+        processed_plain_text = message_dict.get("processed_plain_text")
+    else:
+        # DatabaseMessages 对象
+        user_platform = getattr(message_dict, "user_platform", "")
+        user_id = getattr(message_dict, "user_id", "")
+        user_nickname = getattr(message_dict, "user_nickname", "")
+        user_cardname = getattr(message_dict, "user_cardname", "")
+        chat_info_group_id = getattr(message_dict, "chat_info_group_id", None)
+        chat_info_group_platform = getattr(message_dict, "chat_info_group_platform", "")
+        chat_info_group_name = getattr(message_dict, "chat_info_group_name", "")
+        chat_info_platform = getattr(message_dict, "chat_info_platform", "")
+        message_id = getattr(message_dict, "message_id", None)
+        time_val = getattr(message_dict, "time", None)
+        additional_config = getattr(message_dict, "additional_config", None)
+        processed_plain_text = getattr(message_dict, "processed_plain_text", "")
+    
     # 构建MessageRecv对象
     user_info = {
-        "platform": message_dict.get("user_platform", ""),
-        "user_id": message_dict.get("user_id", ""),
-        "user_nickname": message_dict.get("user_nickname", ""),
-        "user_cardname": message_dict.get("user_cardname", ""),
+        "platform": user_platform,
+        "user_id": user_id,
+        "user_nickname": user_nickname,
+        "user_cardname": user_cardname,
     }
 
     group_info = {}
-    if message_dict.get("chat_info_group_id"):
+    if chat_info_group_id:
         group_info = {
-            "platform": message_dict.get("chat_info_group_platform", ""),
-            "group_id": message_dict.get("chat_info_group_id", ""),
-            "group_name": message_dict.get("chat_info_group_name", ""),
+            "platform": chat_info_group_platform,
+            "group_id": chat_info_group_id,
+            "group_name": chat_info_group_name,
         }
 
     format_info = {"content_format": "", "accept_format": ""}
     template_info = {"template_items": {}}
 
     message_info = {
-        "platform": message_dict.get("chat_info_platform", ""),
-        "message_id": message_dict.get("message_id")
-        or message_dict.get("chat_info_message_id")
-        or message_dict.get("id"),
-        "time": message_dict.get("time"),
+        "platform": chat_info_platform,
+        "message_id": message_id,
+        "time": time_val,
         "group_info": group_info,
         "user_info": user_info,
-        "additional_config": message_dict.get("additional_config"),
+        "additional_config": additional_config,
         "format_info": format_info,
         "template_info": template_info,
     }
 
     new_message_dict = {
         "message_info": message_info,
-        "raw_message": message_dict.get("processed_plain_text"),
-        "processed_plain_text": message_dict.get("processed_plain_text"),
+        "raw_message": processed_plain_text,
+        "processed_plain_text": processed_plain_text,
     }
 
     message_recv = MessageRecv(new_message_dict)
 
-    logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {message_dict.get('user_nickname', '')}")
+    logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {user_nickname}")
     return message_recv
 
 

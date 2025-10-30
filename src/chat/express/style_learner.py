@@ -142,13 +142,26 @@ class StyleLearner:
             (最佳style文本, 所有候选的分数字典)
         """
         try:
+            # 先检查是否有训练数据
+            if not self.style_to_id:
+                logger.debug(f"StyleLearner还没有任何训练数据: chat_id={self.chat_id}")
+                return None, {}
+            
             best_style_id, scores = self.expressor.predict(up_content, k=top_k)
 
             if best_style_id is None:
+                logger.debug(f"ExpressorModel未返回预测结果: chat_id={self.chat_id}, up_content={up_content[:50]}...")
                 return None, {}
 
             # 将style_id转换为style文本
             best_style = self.id_to_style.get(best_style_id)
+            
+            if best_style is None:
+                logger.warning(
+                    f"style_id无法转换为style文本: style_id={best_style_id}, "
+                    f"已知的id_to_style数量={len(self.id_to_style)}"
+                )
+                return None, {}
 
             # 转换所有分数
             style_scores = {}
@@ -156,11 +169,18 @@ class StyleLearner:
                 style_text = self.id_to_style.get(sid)
                 if style_text:
                     style_scores[style_text] = score
+                else:
+                    logger.warning(f"跳过无法转换的style_id: {sid}")
+            
+            logger.debug(
+                f"预测成功: up_content={up_content[:30]}..., "
+                f"best_style={best_style}, top3_scores={list(style_scores.items())[:3]}"
+            )
 
             return best_style, style_scores
 
         except Exception as e:
-            logger.error(f"预测style失败: {e}")
+            logger.error(f"预测style失败: {e}", exc_info=True)
             return None, {}
 
     def get_style_info(self, style: str) -> Tuple[Optional[str], Optional[str]]:

@@ -46,6 +46,9 @@ class StreamLoopManager:
         # 状态控制
         self.is_running = False
 
+        # 每个流的上一次间隔值（用于日志去重）
+        self._last_intervals: dict[str, float] = {}
+
         logger.info(f"流循环管理器初始化完成 (最大并发流数: {self.max_concurrent_streams})")
 
     async def start(self) -> None:
@@ -285,7 +288,11 @@ class StreamLoopManager:
                     interval = await self._calculate_interval(stream_id, has_messages)
 
                     # 6. sleep等待下次检查
-                    logger.info(f"流 {stream_id} 等待 {interval:.2f}s")
+                    # 只在间隔发生变化时输出日志，避免刷屏
+                    last_interval = self._last_intervals.get(stream_id)
+                    if last_interval is None or abs(interval - last_interval) > 0.01:
+                        logger.info(f"流 {stream_id} 等待周期变化: {interval:.2f}s")
+                        self._last_intervals[stream_id] = interval
                     await asyncio.sleep(interval)
 
                 except asyncio.CancelledError:
@@ -315,6 +322,9 @@ class StreamLoopManager:
                 logger.debug(f"释放自适应流处理槽位: {stream_id}")
             except Exception as e:
                 logger.debug(f"释放自适应流处理槽位失败: {e}")
+
+            # 清理间隔记录
+            self._last_intervals.pop(stream_id, None)
 
             logger.info(f"流循环结束: {stream_id}")
 
