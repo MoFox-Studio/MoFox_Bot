@@ -2,7 +2,7 @@ import base64
 import time
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import urllib3
 from maim_message import BaseMessageInfo, MessageBase, Seg, UserInfo
@@ -13,6 +13,7 @@ from src.chat.utils.self_voice_cache import consume_self_voice_text
 from src.chat.utils.utils_image import get_image_manager
 from src.chat.utils.utils_video import get_video_analyzer, is_video_analysis_available
 from src.chat.utils.utils_voice import get_voice_text
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config
 
@@ -43,7 +44,7 @@ class Message(MessageBase, metaclass=ABCMeta):
         user_info: UserInfo,
         message_segment: Seg | None = None,
         timestamp: float | None = None,
-        reply: Optional["MessageRecv"] = None,
+        reply: Optional["DatabaseMessages"] = None,
         processed_plain_text: str = "",
     ):
         # 使用传入的时间戳或当前时间
@@ -95,346 +96,12 @@ class Message(MessageBase, metaclass=ABCMeta):
 
 
 @dataclass
-class MessageRecv(Message):
-    """接收消息类，用于处理从MessageCQ序列化的消息"""
 
-    def __init__(self, message_dict: dict[str, Any]):
-        """从MessageCQ的字典初始化
-
-        Args:
-            message_dict: MessageCQ序列化后的字典
-        """
-        # Manually initialize attributes from MessageBase and Message
-        self.message_info = BaseMessageInfo.from_dict(message_dict.get("message_info", {}))
-        self.message_segment = Seg.from_dict(message_dict.get("message_segment", {}))
-        self.raw_message = message_dict.get("raw_message")
-
-        self.chat_stream = None
-        self.reply = None
-        self.processed_plain_text = message_dict.get("processed_plain_text", "")
-        self.memorized_times = 0
-
-        # MessageRecv specific attributes
-        self.is_emoji = False
-        self.has_emoji = False
-        self.is_picid = False
-        self.has_picid = False
-        self.is_voice = False
-        self.is_video = False
-        self.is_mentioned = None
-        self.is_notify = False  # 是否为notice消息
-        self.is_public_notice = False  # 是否为公共notice
-        self.notice_type = None  # notice类型
-        self.is_at = False
-        self.is_command = False
-
-        self.priority_mode = "interest"
-        self.priority_info = None
-        self.interest_value: float = 0.0
-
-        self.key_words = []
-        self.key_words_lite = []
-
-        # 解析additional_config中的notice信息
-        if self.message_info.additional_config and isinstance(self.message_info.additional_config, dict):
-            self.is_notify = self.message_info.additional_config.get("is_notice", False)
-            self.is_public_notice = self.message_info.additional_config.get("is_public_notice", False)
-            self.notice_type = self.message_info.additional_config.get("notice_type")
-
-    def update_chat_stream(self, chat_stream: "ChatStream"):
-        self.chat_stream = chat_stream
-
-    def to_database_message(self) -> "DatabaseMessages":
-        """将 MessageRecv 转换为 DatabaseMessages 对象
-        
-        Returns:
-            DatabaseMessages: 数据库消息对象
-        """
-        from src.common.data_models.database_data_model import DatabaseMessages
-        import json
-        import time
-        
-        message_info = self.message_info
-        msg_user_info = getattr(message_info, "user_info", None)
-        stream_user_info = getattr(self.chat_stream, "user_info", None) if self.chat_stream else None
-        group_info = getattr(self.chat_stream, "group_info", None) if self.chat_stream else None
-
-        message_id = message_info.message_id or ""
-        message_time = message_info.time if hasattr(message_info, "time") and message_info.time is not None else time.time()
-        is_mentioned = None
-        if isinstance(self.is_mentioned, bool):
-            is_mentioned = self.is_mentioned
-        elif isinstance(self.is_mentioned, int | float):
-            is_mentioned = self.is_mentioned != 0
-
-        # 提取用户信息
-        user_id = ""
-        user_nickname = ""
-        user_cardname = None
-        user_platform = ""
-        if msg_user_info:
-            user_id = str(getattr(msg_user_info, "user_id", "") or "")
-            user_nickname = getattr(msg_user_info, "user_nickname", "") or ""
-            user_cardname = getattr(msg_user_info, "user_cardname", None)
-            user_platform = getattr(msg_user_info, "platform", "") or ""
-        elif stream_user_info:
-            user_id = str(getattr(stream_user_info, "user_id", "") or "")
-            user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
-            user_cardname = getattr(stream_user_info, "user_cardname", None)
-            user_platform = getattr(stream_user_info, "platform", "") or ""
-
-        # 提取聊天流信息
-        chat_user_id = str(getattr(stream_user_info, "user_id", "") or "") if stream_user_info else ""
-        chat_user_nickname = getattr(stream_user_info, "user_nickname", "") or "" if stream_user_info else ""
-        chat_user_cardname = getattr(stream_user_info, "user_cardname", None) if stream_user_info else None
-        chat_user_platform = getattr(stream_user_info, "platform", "") or "" if stream_user_info else ""
-
-        group_id = getattr(group_info, "group_id", None) if group_info else None
-        group_name = getattr(group_info, "group_name", None) if group_info else None
-        group_platform = getattr(group_info, "platform", None) if group_info else None
-
-        # 准备 additional_config
-        additional_config_str = None
-        try:
-            import orjson
-            
-            additional_config_data = {}
-            
-            # 首先获取adapter传递的additional_config
-            if hasattr(message_info, 'additional_config') and message_info.additional_config:
-                if isinstance(message_info.additional_config, dict):
-                    additional_config_data = message_info.additional_config.copy()
-                elif isinstance(message_info.additional_config, str):
-                    try:
-                        additional_config_data = orjson.loads(message_info.additional_config)
-                    except Exception as e:
-                        logger.warning(f"无法解析 additional_config JSON: {e}")
-                        additional_config_data = {}
-            
-            # 添加notice相关标志
-            if self.is_notify:
-                additional_config_data["is_notice"] = True
-                additional_config_data["notice_type"] = self.notice_type or "unknown"
-                additional_config_data["is_public_notice"] = bool(self.is_public_notice)
-            
-            # 添加format_info到additional_config中
-            if hasattr(message_info, 'format_info') and message_info.format_info:
-                try:
-                    format_info_dict = message_info.format_info.to_dict()
-                    additional_config_data["format_info"] = format_info_dict
-                    logger.debug(f"[message.py] 嵌入 format_info 到 additional_config: {format_info_dict}")
-                except Exception as e:
-                    logger.warning(f"将 format_info 转换为字典失败: {e}")
-            
-            # 序列化为JSON字符串
-            if additional_config_data:
-                additional_config_str = orjson.dumps(additional_config_data).decode("utf-8")
-        except Exception as e:
-            logger.error(f"准备 additional_config 失败: {e}")
-
-        # 创建数据库消息对象
-        db_message = DatabaseMessages(
-            message_id=message_id,
-            time=float(message_time),
-            chat_id=self.chat_stream.stream_id if self.chat_stream else "",
-            processed_plain_text=self.processed_plain_text,
-            display_message=self.processed_plain_text,
-            is_mentioned=is_mentioned,
-            is_at=bool(self.is_at) if self.is_at is not None else None,
-            is_emoji=bool(self.is_emoji),
-            is_picid=bool(self.is_picid),
-            is_command=bool(self.is_command),
-            is_notify=bool(self.is_notify),
-            is_public_notice=bool(self.is_public_notice),
-            notice_type=self.notice_type,
-            additional_config=additional_config_str,
-            user_id=user_id,
-            user_nickname=user_nickname,
-            user_cardname=user_cardname,
-            user_platform=user_platform,
-            chat_info_stream_id=self.chat_stream.stream_id if self.chat_stream else "",
-            chat_info_platform=self.chat_stream.platform if self.chat_stream else "",
-            chat_info_create_time=float(self.chat_stream.create_time) if self.chat_stream else 0.0,
-            chat_info_last_active_time=float(self.chat_stream.last_active_time) if self.chat_stream else 0.0,
-            chat_info_user_id=chat_user_id,
-            chat_info_user_nickname=chat_user_nickname,
-            chat_info_user_cardname=chat_user_cardname,
-            chat_info_user_platform=chat_user_platform,
-            chat_info_group_id=group_id,
-            chat_info_group_name=group_name,
-            chat_info_group_platform=group_platform,
-        )
-
-        # 同步兴趣度等衍生属性
-        db_message.interest_value = getattr(self, "interest_value", 0.0)
-        setattr(db_message, "should_reply", getattr(self, "should_reply", False))
-        setattr(db_message, "should_act", getattr(self, "should_act", False))
-
-        return db_message
-
-    async def process(self) -> None:
-        """处理消息内容，生成纯文本和详细文本
-
-        这个方法必须在创建实例后显式调用，因为它包含异步操作。
-        """
-        self.processed_plain_text = await self._process_message_segments(self.message_segment)
-
-    async def _process_single_segment(self, segment: Seg) -> str:
-        """处理单个消息段
-
-        Args:
-            segment: 消息段
-
-        Returns:
-            str: 处理后的文本
-        """
-        try:
-            if segment.type == "text":
-                self.is_picid = False
-                self.is_emoji = False
-                self.is_video = False
-                return segment.data  # type: ignore
-            elif segment.type == "at":
-                self.is_picid = False
-                self.is_emoji = False
-                self.is_video = False
-                # 处理at消息，格式为"昵称:QQ号"
-                if isinstance(segment.data, str) and ":" in segment.data:
-                    nickname, qq_id = segment.data.split(":", 1)
-                    return f"@{nickname}"
-                return f"@{segment.data}" if isinstance(segment.data, str) else "@未知用户"
-            elif segment.type == "image":
-                # 如果是base64图片数据
-                if isinstance(segment.data, str):
-                    self.has_picid = True
-                    self.is_picid = True
-                    self.is_emoji = False
-                    self.is_video = False
-                    image_manager = get_image_manager()
-                    # print(f"segment.data: {segment.data}")
-                    _, processed_text = await image_manager.process_image(segment.data)
-                    return processed_text
-                return "[发了一张图片，网卡了加载不出来]"
-            elif segment.type == "emoji":
-                self.has_emoji = True
-                self.is_emoji = True
-                self.is_picid = False
-                self.is_voice = False
-                self.is_video = False
-                if isinstance(segment.data, str):
-                    return await get_image_manager().get_emoji_description(segment.data)
-                return "[发了一个表情包，网卡了加载不出来]"
-            elif segment.type == "voice":
-                self.is_picid = False
-                self.is_emoji = False
-                self.is_voice = True
-                self.is_video = False
-
-                # 检查消息是否由机器人自己发送
-                if self.message_info and self.message_info.user_info and str(self.message_info.user_info.user_id) == str(global_config.bot.qq_account):
-                    logger.info(f"检测到机器人自身发送的语音消息 (User ID: {self.message_info.user_info.user_id})，尝试从缓存获取文本。")
-                    if isinstance(segment.data, str):
-                        cached_text = consume_self_voice_text(segment.data)
-                        if cached_text:
-                            logger.info(f"成功从缓存中获取语音文本: '{cached_text[:70]}...'")
-                            return f"[语音：{cached_text}]"
-                        else:
-                            logger.warning("机器人自身语音消息缓存未命中，将回退到标准语音识别。")
-
-                # 标准语音识别流程 (也作为缓存未命中的后备方案)
-                if isinstance(segment.data, str):
-                    return await get_voice_text(segment.data)
-                return "[发了一段语音，网卡了加载不出来]"
-            elif segment.type == "mention_bot":
-                self.is_picid = False
-                self.is_emoji = False
-                self.is_voice = False
-                self.is_video = False
-                self.is_mentioned = float(segment.data)  # type: ignore
-                return ""
-            elif segment.type == "priority_info":
-                self.is_picid = False
-                self.is_emoji = False
-                self.is_voice = False
-                if isinstance(segment.data, dict):
-                    # 处理优先级信息
-                    self.priority_mode = "priority"
-                    self.priority_info = segment.data
-                    """
-                    {
-                        'message_type': 'vip', # vip or normal
-                        'message_priority': 1.0, # 优先级，大为优先，float
-                    }
-                    """
-                return ""
-            elif segment.type == "file":
-                if isinstance(segment.data, dict):
-                    file_name = segment.data.get('name', '未知文件')
-                    file_size = segment.data.get('size', '未知大小')
-                    return f"[文件：{file_name} ({file_size}字节)]"
-                return "[收到一个文件]"
-            elif segment.type == "video":
-                self.is_picid = False
-                self.is_emoji = False
-                self.is_voice = False
-                self.is_video = True
-                logger.info(f"接收到视频消息，数据类型: {type(segment.data)}")
-
-                # 检查视频分析功能是否可用
-                if not is_video_analysis_available():
-                    logger.warning("⚠️ Rust视频处理模块不可用，跳过视频分析")
-                    return "[视频]"
-
-                if global_config.video_analysis.enable:
-                    logger.info("已启用视频识别,开始识别")
-                    if isinstance(segment.data, dict):
-                        try:
-                            # 从Adapter接收的视频数据
-                            video_base64 = segment.data.get("base64")
-                            filename = segment.data.get("filename", "video.mp4")
-
-                            logger.info(f"视频文件名: {filename}")
-                            logger.info(f"Base64数据长度: {len(video_base64) if video_base64 else 0}")
-
-                            if video_base64:
-                                # 解码base64视频数据
-                                video_bytes = base64.b64decode(video_base64)
-                                logger.info(f"解码后视频大小: {len(video_bytes)} 字节")
-
-                                # 使用video analyzer分析视频
-                                video_analyzer = get_video_analyzer()
-                                result = await video_analyzer.analyze_video_from_bytes(
-                                    video_bytes, filename, prompt=global_config.video_analysis.batch_analysis_prompt
-                                )
-
-                                logger.info(f"视频分析结果: {result}")
-
-                                # 返回视频分析结果
-                                summary = result.get("summary", "")
-                                if summary:
-                                    return f"[视频内容] {summary}"
-                                else:
-                                    return "[已收到视频，但分析失败]"
-                            else:
-                                logger.warning("视频消息中没有base64数据")
-                                return "[收到视频消息，但数据异常]"
-                        except Exception as e:
-                            logger.error(f"视频处理失败: {e!s}")
-                            import traceback
-
-                            logger.error(f"错误详情: {traceback.format_exc()}")
-                            return "[收到视频，但处理时出现错误]"
-                    else:
-                        logger.warning(f"视频消息数据不是字典格式: {type(segment.data)}")
-                    return "[发了一个视频，但格式不支持]"
-                else:
-                    return ""
-            else:
-                logger.warning(f"未知的消息段类型: {segment.type}")
-                return f"[{segment.type} 消息]"
-        except Exception as e:
-            logger.error(f"处理消息段失败: {e!s}, 类型: {segment.type}, 数据: {segment.data}")
-            return f"[处理失败的{segment.type}消息]"
+# MessageRecv 类已被完全移除，现在统一使用 DatabaseMessages
+# 如需从消息字典创建 DatabaseMessages，请使用：
+# from src.chat.message_receive.message_processor import process_message_from_dict
+#
+# 迁移完成日期: 2025-10-31
 
 
 @dataclass
@@ -447,7 +114,7 @@ class MessageProcessBase(Message):
         chat_stream: "ChatStream",
         bot_user_info: UserInfo,
         message_segment: Seg | None = None,
-        reply: Optional["MessageRecv"] = None,
+        reply: Optional["DatabaseMessages"] = None,
         thinking_start_time: float = 0,
         timestamp: float | None = None,
     ):
@@ -548,7 +215,7 @@ class MessageSending(MessageProcessBase):
         sender_info: UserInfo | None,  # 用来记录发送者信息
         message_segment: Seg,
         display_message: str = "",
-        reply: Optional["MessageRecv"] = None,
+        reply: Optional["DatabaseMessages"] = None,
         is_head: bool = False,
         is_emoji: bool = False,
         thinking_start_time: float = 0,
@@ -567,7 +234,11 @@ class MessageSending(MessageProcessBase):
 
         # 发送状态特有属性
         self.sender_info = sender_info
-        self.reply_to_message_id = reply.message_info.message_id if reply else None
+        # 从 DatabaseMessages 获取 message_id
+        if reply:
+            self.reply_to_message_id = reply.message_id
+        else:
+            self.reply_to_message_id = None
         self.is_head = is_head
         self.is_emoji = is_emoji
         self.apply_set_reply_logic = apply_set_reply_logic
@@ -582,14 +253,18 @@ class MessageSending(MessageProcessBase):
     def build_reply(self):
         """设置回复消息"""
         if self.reply:
-            self.reply_to_message_id = self.reply.message_info.message_id
-            self.message_segment = Seg(
-                type="seglist",
-                data=[
-                    Seg(type="reply", data=self.reply.message_info.message_id),  # type: ignore
-                    self.message_segment,
-                ],
-            )
+            # 从 DatabaseMessages 获取 message_id
+            message_id = self.reply.message_id
+            
+            if message_id:
+                self.reply_to_message_id = message_id
+                self.message_segment = Seg(
+                    type="seglist",
+                    data=[
+                        Seg(type="reply", data=message_id),  # type: ignore
+                        self.message_segment,
+                    ],
+                )
 
     async def process(self) -> None:
         """处理消息内容，生成纯文本和详细文本"""
@@ -607,48 +282,5 @@ class MessageSending(MessageProcessBase):
         return self.message_info.group_info is None or self.message_info.group_info.group_id is None
 
 
-def message_recv_from_dict(message_dict: dict) -> MessageRecv:
-    return MessageRecv(message_dict)
-
-def message_from_db_dict(db_dict: dict) -> MessageRecv:
-    """从数据库字典创建MessageRecv实例"""
-    # 转换扁平的数据库字典为嵌套结构
-    message_info_dict = {
-        "platform": db_dict.get("chat_info_platform"),
-        "message_id": db_dict.get("message_id"),
-        "time": db_dict.get("time"),
-        "group_info": {
-            "platform": db_dict.get("chat_info_group_platform"),
-            "group_id": db_dict.get("chat_info_group_id"),
-            "group_name": db_dict.get("chat_info_group_name"),
-        },
-        "user_info": {
-            "platform": db_dict.get("user_platform"),
-            "user_id": db_dict.get("user_id"),
-            "user_nickname": db_dict.get("user_nickname"),
-            "user_cardname": db_dict.get("user_cardname"),
-        },
-    }
-
-    processed_text = db_dict.get("processed_plain_text", "")
-
-    # 构建 MessageRecv 需要的字典
-    recv_dict = {
-        "message_info": message_info_dict,
-        "message_segment": {"type": "text", "data": processed_text},  # 从纯文本重建消息段
-        "raw_message": None,  # 数据库中未存储原始消息
-        "processed_plain_text": processed_text,
-    }
-
-    # 创建 MessageRecv 实例
-    msg = MessageRecv(recv_dict)
-
-    # 从数据库字典中填充其他可选字段
-    msg.interest_value = db_dict.get("interest_value", 0.0)
-    msg.is_mentioned = db_dict.get("is_mentioned")
-    msg.priority_mode = db_dict.get("priority_mode", "interest")
-    msg.priority_info = db_dict.get("priority_info")
-    msg.is_emoji = db_dict.get("is_emoji", False)
-    msg.is_picid = db_dict.get("is_picid", False)
-
-    return msg
+# message_recv_from_dict 和 message_from_db_dict 函数已被移除
+# 请使用: from src.chat.message_receive.message_processor import process_message_from_dict

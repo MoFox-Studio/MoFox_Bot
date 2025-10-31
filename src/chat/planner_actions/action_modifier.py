@@ -137,7 +137,7 @@ class ActionModifier:
                     logger.debug(f"{self.log_prefix}阶段一移除动作: {disabled_action_name}，原因: 用户自行禁用")
 
         # === 第二阶段：检查动作的关联类型 ===
-        chat_context = self.chat_stream.stream_context
+        chat_context = self.chat_stream.context_manager.context
         current_actions_s2 = self.action_manager.get_using_actions()
         type_mismatched_actions = self._check_action_associated_types(current_actions_s2, chat_context)
 

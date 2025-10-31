@@ -71,14 +71,6 @@ class MessageManager:
         except Exception as e:
             logger.error(f"启动批量数据库写入器失败: {e}")
 
-        # 启动流缓存管理器
-        try:
-            from src.chat.message_manager.stream_cache_manager import init_stream_cache_manager
-
-            await init_stream_cache_manager()
-        except Exception as e:
-            logger.error(f"启动流缓存管理器失败: {e}")
-
         # 启动消息缓存系统（内置）
         logger.info("📦 消息缓存系统已启动")
 
@@ -116,15 +108,6 @@ class MessageManager:
         except Exception as e:
             logger.error(f"停止批量数据库写入器失败: {e}")
 
-        # 停止流缓存管理器
-        try:
-            from src.chat.message_manager.stream_cache_manager import shutdown_stream_cache_manager
-
-            await shutdown_stream_cache_manager()
-            logger.info("🗄️ 流缓存管理器已停止")
-        except Exception as e:
-            logger.error(f"停止流缓存管理器失败: {e}")
-
         # 停止消息缓存系统（内置）
         self.message_caches.clear()
         self.stream_processing_status.clear()
@@ -152,7 +135,7 @@ class MessageManager:
             # 检查是否为notice消息
             if self._is_notice_message(message):
                 # Notice消息处理 - 添加到全局管理器
-                logger.info(f"📢 检测到notice消息: message_id={message.message_id}, is_notify={message.is_notify}, notice_type={getattr(message, 'notice_type', None)}")
+                logger.info(f"📢 检测到notice消息: notice_type={getattr(message, 'notice_type', None)}")
                 await self._handle_notice_message(stream_id, message)
 
                 # 根据配置决定是否继续处理（触发聊天流程）
@@ -206,39 +189,6 @@ class MessageManager:
         except Exception as e:
             logger.error(f"更新消息 {message_id} 时发生错误: {e}")
 
-    async def bulk_update_messages(self, stream_id: str, updates: list[dict[str, Any]]) -> int:
-        """批量更新消息信息，降低更新频率"""
-        if not updates:
-            return 0
-
-        try:
-            chat_manager = get_chat_manager()
-            chat_stream = await chat_manager.get_stream(stream_id)
-            if not chat_stream:
-                logger.warning(f"MessageManager.bulk_update_messages: 聊天流 {stream_id} 不存在")
-                return 0
-
-            updated_count = 0
-            for item in updates:
-                message_id = item.get("message_id")
-                if not message_id:
-                    continue
-
-                payload = {key: value for key, value in item.items() if key != "message_id" and value is not None}
-
-                if not payload:
-                    continue
-
-                success = await chat_stream.context_manager.update_message(message_id, payload)
-                if success:
-                    updated_count += 1
-
-            if updated_count:
-                logger.debug(f"批量更新消息 {updated_count} 条 (stream={stream_id})")
-            return updated_count
-        except Exception as e:
-            logger.error(f"批量更新聊天流 {stream_id} 消息失败: {e}")
-            return 0
 
     async def add_action(self, stream_id: str, message_id: str, action: str):
         """添加动作到消息"""
@@ -266,7 +216,7 @@ class MessageManager:
                 logger.warning(f"停用流失败: 聊天流 {stream_id} 不存在")
                 return
 
-            context = chat_stream.stream_context
+            context = chat_stream.context_manager.context
             context.is_active = False
 
             # 取消处理任务
@@ -288,7 +238,7 @@ class MessageManager:
                 logger.warning(f"激活流失败: 聊天流 {stream_id} 不存在")
                 return
 
-            context = chat_stream.stream_context
+            context = chat_stream.context_manager.context
             context.is_active = True
             logger.info(f"激活聊天流: {stream_id}")
 
@@ -304,7 +254,7 @@ class MessageManager:
             if not chat_stream:
                 return None
 
-            context = chat_stream.stream_context
+            context = chat_stream.context_manager.context
             unread_count = len(chat_stream.context_manager.get_unread_messages())
 
             return StreamStats(
@@ -447,7 +397,7 @@ class MessageManager:
             await asyncio.sleep(0.1)
 
             # 获取当前的stream context
-            context = chat_stream.stream_context
+            context = chat_stream.context_manager.context
 
             # 确保有未读消息需要处理
             unread_messages = context.get_unread_messages()

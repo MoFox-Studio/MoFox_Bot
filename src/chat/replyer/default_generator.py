@@ -13,7 +13,7 @@ from typing import Any
 
 from src.chat.express.expression_selector import expression_selector
 from src.chat.message_receive.chat_stream import ChatStream
-from src.chat.message_receive.message import MessageRecv, MessageSending, Seg, UserInfo
+from src.chat.message_receive.message import MessageSending, Seg, UserInfo
 from src.chat.message_receive.uni_message_sender import HeartFCSender
 from src.chat.utils.chat_message_builder import (
     build_readable_messages,
@@ -1733,7 +1733,7 @@ class DefaultReplyer:
         is_emoji: bool,
         thinking_start_time: float,
         display_message: str,
-        anchor_message: MessageRecv | None = None,
+        anchor_message: DatabaseMessages | None = None,
     ) -> MessageSending:
         """构建单个发送消息"""
 
@@ -1743,8 +1743,11 @@ class DefaultReplyer:
             platform=self.chat_stream.platform,
         )
 
-        # await anchor_message.process()
-        sender_info = anchor_message.message_info.user_info if anchor_message else None
+        # 从 DatabaseMessages 获取 sender_info
+        if anchor_message:
+            sender_info = anchor_message.user_info
+        else:
+            sender_info = None
 
         return MessageSending(
             message_id=message_id,  # 使用片段的唯一ID

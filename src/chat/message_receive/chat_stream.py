@@ -12,12 +12,9 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.common.database.sqlalchemy_database_api import get_db_session
 from src.common.database.sqlalchemy_models import ChatStreams  # 新增导入
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config  # 新增导入
-
-# 避免循环导入，使用TYPE_CHECKING进行类型提示
-if TYPE_CHECKING:
-    from .message import MessageRecv
 
 
 install(extra_lines=3)
@@ -33,7 +30,7 @@ class ChatStream:
         self,
         stream_id: str,
         platform: str,
-        user_info: UserInfo,
+        user_info: UserInfo | None = None,
         group_info: GroupInfo | None = None,
         data: dict | None = None,
     ):
@@ -46,20 +43,18 @@ class ChatStream:
         self.sleep_pressure = data.get("sleep_pressure", 0.0) if data else 0.0
         self.saved = False
 
-        # 使用StreamContext替代ChatMessageContext
+        # 创建单流上下文管理器（包含StreamContext）
+        from src.chat.message_manager.context_manager import SingleStreamContextManager
         from src.common.data_models.message_manager_data_model import StreamContext
         from src.plugin_system.base.component_types import ChatMode, ChatType
 
-        # 创建StreamContext
-        self.stream_context: StreamContext = StreamContext(
-            stream_id=stream_id, chat_type=ChatType.GROUP if group_info else ChatType.PRIVATE, chat_mode=ChatMode.NORMAL
-        )
-
-        # 创建单流上下文管理器
-        from src.chat.message_manager.context_manager import SingleStreamContextManager
-
         self.context_manager: SingleStreamContextManager = SingleStreamContextManager(
-            stream_id=stream_id, context=self.stream_context
+            stream_id=stream_id,
+            context=StreamContext(
+                stream_id=stream_id,
+                chat_type=ChatType.GROUP if group_info else ChatType.PRIVATE,
+                chat_mode=ChatMode.NORMAL,
+            ),
         )
 
         # 基础参数
@@ -88,13 +83,12 @@ class ChatStream:
         new_stream._focus_energy = self._focus_energy
         new_stream.no_reply_consecutive = self.no_reply_consecutive
 
-        # 复制 stream_context，但跳过 processing_task
-        new_stream.stream_context = copy.deepcopy(self.stream_context, memo)
-        if hasattr(new_stream.stream_context, "processing_task"):
-            new_stream.stream_context.processing_task = None
-
-        # 复制 context_manager
+        # 复制 context_manager（包含 stream_context）
         new_stream.context_manager = copy.deepcopy(self.context_manager, memo)
+        
+        # 清理 processing_task（如果存在）
+        if hasattr(new_stream.context_manager.context, "processing_task"):
+            new_stream.context_manager.context.processing_task = None
 
         return new_stream
 
@@ -111,11 +105,11 @@ class ChatStream:
             "focus_energy": self.focus_energy,
             # 基础兴趣度
             "base_interest_energy": self.base_interest_energy,
-            # stream_context基本信息
-            "stream_context_chat_type": self.stream_context.chat_type.value,
-            "stream_context_chat_mode": self.stream_context.chat_mode.value,
+            # stream_context基本信息（通过context_manager访问）
+            "stream_context_chat_type": self.context_manager.context.chat_type.value,
+            "stream_context_chat_mode": self.context_manager.context.chat_mode.value,
             # 统计信息
-            "interruption_count": self.stream_context.interruption_count,
+            "interruption_count": self.context_manager.context.interruption_count,
         }
 
     @classmethod
@@ -132,27 +126,19 @@ class ChatStream:
             data=data,
         )
 
-        # 恢复stream_context信息
+        # 恢复stream_context信息（通过context_manager访问）
         if "stream_context_chat_type" in data:
             from src.plugin_system.base.component_types import ChatMode, ChatType
 
-            instance.stream_context.chat_type = ChatType(data["stream_context_chat_type"])
+            instance.context_manager.context.chat_type = ChatType(data["stream_context_chat_type"])
         if "stream_context_chat_mode" in data:
             from src.plugin_system.base.component_types import ChatMode, ChatType
 
-            instance.stream_context.chat_mode = ChatMode(data["stream_context_chat_mode"])
+            instance.context_manager.context.chat_mode = ChatMode(data["stream_context_chat_mode"])
 
         # 恢复interruption_count信息
         if "interruption_count" in data:
-            instance.stream_context.interruption_count = data["interruption_count"]
-
-        # 确保 context_manager 已初始化
-        if not hasattr(instance, "context_manager"):
-            from src.chat.message_manager.context_manager import SingleStreamContextManager
-
-            instance.context_manager = SingleStreamContextManager(
-                stream_id=instance.stream_id, context=instance.stream_context
-            )
+            instance.context_manager.context.interruption_count = data["interruption_count"]
 
         return instance
 
@@ -160,156 +146,44 @@ class ChatStream:
         """获取原始的、未哈希的聊天流ID字符串"""
         if self.group_info:
             return f"{self.platform}:{self.group_info.group_id}:group"
-        else:
+        elif self.user_info:
             return f"{self.platform}:{self.user_info.user_id}:private"
+        else:
+            return f"{self.platform}:unknown:private"
 
     def update_active_time(self):
         """更新最后活跃时间"""
         self.last_active_time = time.time()
         self.saved = False
 
-    async def set_context(self, message: "MessageRecv"):
-        """设置聊天消息上下文"""
-        # 将MessageRecv转换为DatabaseMessages并设置到stream_context
-        import json
-
-        from src.common.data_models.database_data_model import DatabaseMessages
-
-        # 安全获取message_info中的数据
-        message_info = getattr(message, "message_info", {})
-        user_info = getattr(message_info, "user_info", {})
-        group_info = getattr(message_info, "group_info", {})
-
-        # 提取reply_to信息（从message_segment中查找reply类型的段）
-        reply_to = None
-        if hasattr(message, "message_segment") and message.message_segment:
-            reply_to = self._extract_reply_from_segment(message.message_segment)
-
-        # 完整的数据转移逻辑
-        db_message = DatabaseMessages(
-            # 基础消息信息
-            message_id=getattr(message, "message_id", ""),
-            time=getattr(message, "time", time.time()),
-            chat_id=self._generate_chat_id(message_info),
-            reply_to=reply_to,
-            # 兴趣度相关
-            interest_value=getattr(message, "interest_value", 0.0),
-            # 关键词
-            key_words=json.dumps(getattr(message, "key_words", []), ensure_ascii=False)
-            if getattr(message, "key_words", None)
-            else None,
-            key_words_lite=json.dumps(getattr(message, "key_words_lite", []), ensure_ascii=False)
-            if getattr(message, "key_words_lite", None)
-            else None,
-            # 消息状态标记
-            is_mentioned=getattr(message, "is_mentioned", None),
-            is_at=getattr(message, "is_at", False),
-            is_emoji=getattr(message, "is_emoji", False),
-            is_picid=getattr(message, "is_picid", False),
-            is_voice=getattr(message, "is_voice", False),
-            is_video=getattr(message, "is_video", False),
-            is_command=getattr(message, "is_command", False),
-            is_notify=getattr(message, "is_notify", False),
-            is_public_notice=getattr(message, "is_public_notice", False),
-            notice_type=getattr(message, "notice_type", None),
-            # 消息内容
-            processed_plain_text=getattr(message, "processed_plain_text", ""),
-            display_message=getattr(message, "processed_plain_text", ""),  # 默认使用processed_plain_text
-            # 优先级信息
-            priority_mode=getattr(message, "priority_mode", None),
-            priority_info=json.dumps(getattr(message, "priority_info", None))
-            if getattr(message, "priority_info", None)
-            else None,
-            # 额外配置 - 需要将 format_info 嵌入到 additional_config 中
-            additional_config=self._prepare_additional_config(message_info),
-            # 用户信息
-            user_id=str(getattr(user_info, "user_id", "")),
-            user_nickname=getattr(user_info, "user_nickname", ""),
-            user_cardname=getattr(user_info, "user_cardname", None),
-            user_platform=getattr(user_info, "platform", ""),
-            # 群组信息
-            chat_info_group_id=getattr(group_info, "group_id", None),
-            chat_info_group_name=getattr(group_info, "group_name", None),
-            chat_info_group_platform=getattr(group_info, "platform", None),
-            # 聊天流信息
-            chat_info_user_id=str(getattr(user_info, "user_id", "")),
-            chat_info_user_nickname=getattr(user_info, "user_nickname", ""),
-            chat_info_user_cardname=getattr(user_info, "user_cardname", None),
-            chat_info_user_platform=getattr(user_info, "platform", ""),
-            chat_info_stream_id=self.stream_id,
-            chat_info_platform=self.platform,
-            chat_info_create_time=self.create_time,
-            chat_info_last_active_time=self.last_active_time,
-            # 新增兴趣度系统字段 - 添加安全处理
-            actions=self._safe_get_actions(message),
-            should_reply=getattr(message, "should_reply", False),
-            should_act=getattr(message, "should_act", False),
-        )
-
-        self.stream_context.set_current_message(db_message)
-        self.stream_context.priority_mode = getattr(message, "priority_mode", None)
-        self.stream_context.priority_info = getattr(message, "priority_info", None)
-
-        # 调试日志：记录数据转移情况
-        logger.debug(
-            f"消息数据转移完成 - message_id: {db_message.message_id}, "
-            f"chat_id: {db_message.chat_id}, "
-            f"is_mentioned: {db_message.is_mentioned}, "
-            f"is_emoji: {db_message.is_emoji}, "
-            f"is_picid: {db_message.is_picid}, "
-            f"interest_value: {db_message.interest_value}"
-        )
-
-    def _prepare_additional_config(self, message_info) -> str | None:
-        """
-        准备 additional_config，将 format_info 嵌入其中
-
-        这个方法模仿 storage.py 中的逻辑，确保 DatabaseMessages 中的 additional_config
-        包含 format_info，使得 action_modifier 能够正确获取适配器支持的消息类型
-
+    async def set_context(self, message: DatabaseMessages):
+        """设置聊天消息上下文
+        
         Args:
-            message_info: BaseMessageInfo 对象
-
-        Returns:
-            str | None: JSON 字符串格式的 additional_config，如果为空则返回 None
+            message: DatabaseMessages 对象，直接使用不需要转换
         """
-        import orjson
-
-        # 首先获取adapter传递的additional_config
-        additional_config_data = {}
-        if hasattr(message_info, 'additional_config') and message_info.additional_config:
-            if isinstance(message_info.additional_config, dict):
-                additional_config_data = message_info.additional_config.copy()
-            elif isinstance(message_info.additional_config, str):
-                # 如果是字符串，尝试解析
-                try:
-                    additional_config_data = orjson.loads(message_info.additional_config)
-                except Exception as e:
-                    logger.warning(f"无法解析 additional_config JSON: {e}")
-                    additional_config_data = {}
+        # 直接使用传入的 DatabaseMessages，设置到上下文中
+        self.context_manager.context.set_current_message(message)
         
-        # 然后添加format_info到additional_config中
-        if hasattr(message_info, 'format_info') and message_info.format_info:
-            try:
-                format_info_dict = message_info.format_info.to_dict()
-                additional_config_data["format_info"] = format_info_dict
-                logger.debug(f"嵌入 format_info 到 additional_config: {format_info_dict}")
-            except Exception as e:
-                logger.warning(f"将 format_info 转换为字典失败: {e}")
-        else:
-            logger.warning(f"[问题] 消息缺少 format_info: message_id={getattr(message_info, 'message_id', 'unknown')}")
-            logger.warning("[问题] 这可能导致 Action 无法正确检查适配器支持的类型")
-        
-        # 序列化为JSON字符串
-        if additional_config_data:
-            try:
-                return orjson.dumps(additional_config_data).decode("utf-8")
-            except Exception as e:
-                logger.error(f"序列化 additional_config 失败: {e}")
-                return None
-        return None
+        # 设置优先级信息（如果存在）
+        priority_mode = getattr(message, "priority_mode", None)
+        priority_info = getattr(message, "priority_info", None)
+        if priority_mode:
+            self.context_manager.context.priority_mode = priority_mode
+        if priority_info:
+            self.context_manager.context.priority_info = priority_info
 
-    def _safe_get_actions(self, message: "MessageRecv") -> list | None:
+        # 调试日志
+        logger.debug(
+            f"消息上下文已设置 - message_id: {message.message_id}, "
+            f"chat_id: {message.chat_id}, "
+            f"is_mentioned: {message.is_mentioned}, "
+            f"is_emoji: {message.is_emoji}, "
+            f"is_picid: {message.is_picid}, "
+            f"interest_value: {message.interest_value}"
+        )
+
+    def _safe_get_actions(self, message: DatabaseMessages) -> list | None:
         """安全获取消息的actions字段"""
         import json
         
@@ -379,23 +253,6 @@ class ChatStream:
                 db_message.should_reply = False
             if hasattr(db_message, "should_act"):
                 db_message.should_act = False
-
-    def _extract_reply_from_segment(self, segment) -> str | None:
-        """从消息段中提取reply_to信息"""
-        try:
-            if hasattr(segment, "type") and segment.type == "seglist":
-                # 递归搜索seglist中的reply段
-                if hasattr(segment, "data") and segment.data:
-                    for seg in segment.data:
-                        reply_id = self._extract_reply_from_segment(seg)
-                        if reply_id:
-                            return reply_id
-            elif hasattr(segment, "type") and segment.type == "reply":
-                # 找到reply段，返回message_id
-                return str(segment.data) if segment.data else None
-        except Exception as e:
-            logger.warning(f"提取reply_to信息失败: {e}")
-        return None
 
     def _generate_chat_id(self, message_info) -> str:
         """生成chat_id，基于群组或用户信息"""
@@ -493,8 +350,10 @@ class ChatManager:
 
     def __init__(self):
         if not self._initialized:
+            from src.common.data_models.database_data_model import DatabaseMessages
+            
             self.streams: dict[str, ChatStream] = {}  # stream_id -> ChatStream
-            self.last_messages: dict[str, "MessageRecv"] = {}  # stream_id -> last_message
+            self.last_messages: dict[str, DatabaseMessages] = {}  # stream_id -> last_message
             # try:
             # async with get_db_session() as session:
             #     db.connect(reuse_if_open=True)
@@ -528,12 +387,30 @@ class ChatManager:
             except Exception as e:
                 logger.error(f"聊天流自动保存失败: {e!s}")
 
-    def register_message(self, message: "MessageRecv"):
+    def register_message(self, message: DatabaseMessages):
         """注册消息到聊天流"""
+        # 从 DatabaseMessages 提取平台和用户/群组信息
+        from maim_message import UserInfo, GroupInfo
+        
+        user_info = UserInfo(
+            platform=message.user_info.platform,
+            user_id=message.user_info.user_id,
+            user_nickname=message.user_info.user_nickname,
+            user_cardname=message.user_info.user_cardname or ""
+        )
+        
+        group_info = None
+        if message.group_info:
+            group_info = GroupInfo(
+                platform=message.group_info.group_platform or "",
+                group_id=message.group_info.group_id,
+                group_name=message.group_info.group_name
+            )
+        
         stream_id = self._generate_stream_id(
-            message.message_info.platform,  # type: ignore
-            message.message_info.user_info,
-            message.message_info.group_info,
+            message.chat_info.platform,
+            user_info,
+            group_info,
         )
         self.last_messages[stream_id] = message
         # logger.debug(f"注册消息到聊天流: {stream_id}")
@@ -578,32 +455,6 @@ class ChatManager:
         try:
             stream_id = self._generate_stream_id(platform, user_info, group_info)
 
-            # 优先使用缓存管理器（优化版本）
-            try:
-                from src.chat.message_manager.stream_cache_manager import get_stream_cache_manager
-
-                cache_manager = get_stream_cache_manager()
-
-                if cache_manager.is_running:
-                    optimized_stream = await cache_manager.get_or_create_stream(
-                        stream_id=stream_id, platform=platform, user_info=user_info, group_info=group_info
-                    )
-
-                    # 设置消息上下文
-                    from .message import MessageRecv
-
-                    if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], MessageRecv):
-                        optimized_stream.set_context(self.last_messages[stream_id])
-
-                    # 转换为原始ChatStream以保持兼容性
-                    original_stream = self._convert_to_original_stream(optimized_stream)
-
-                    return original_stream
-
-            except Exception as e:
-                logger.debug(f"缓存管理器获取流失败，使用原始方法: {e}")
-
-            # 回退到原始方法
             # 检查内存中是否存在
             if stream_id in self.streams:
                 stream = self.streams[stream_id]
@@ -615,12 +466,13 @@ class ChatManager:
                     stream.user_info = user_info
                 if group_info:
                     stream.group_info = group_info
-                from .message import MessageRecv  # 延迟导入，避免循环引用
-
-                if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], MessageRecv):
+                
+                # 检查是否有最后一条消息（现在使用 DatabaseMessages）
+                from src.common.data_models.database_data_model import DatabaseMessages
+                if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], DatabaseMessages):
                     await stream.set_context(self.last_messages[stream_id])
                 else:
-                    logger.error(f"聊天流 {stream_id} 不在最后消息列表中，可能是新创建的")
+                    logger.debug(f"聊天流 {stream_id} 不在最后消息列表中，可能是新创建的或还没有消息")
                 return stream
 
             # 检查数据库中是否存在
@@ -679,19 +531,27 @@ class ChatManager:
             raise e
 
         stream = copy.deepcopy(stream)
-        from .message import MessageRecv  # 延迟导入，避免循环引用
+        from src.common.data_models.database_data_model import DatabaseMessages
 
-        if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], MessageRecv):
+        if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], DatabaseMessages):
             await stream.set_context(self.last_messages[stream_id])
         else:
-            logger.error(f"聊天流 {stream_id} 不在最后消息列表中，可能是新创建的")
+            logger.debug(f"聊天流 {stream_id} 不在最后消息列表中，可能是新创建的")
 
         # 确保 ChatStream 有自己的 context_manager
         if not hasattr(stream, "context_manager"):
-            # 创建新的单流上下文管理器
             from src.chat.message_manager.context_manager import SingleStreamContextManager
+            from src.common.data_models.message_manager_data_model import StreamContext
+            from src.plugin_system.base.component_types import ChatMode, ChatType
 
-            stream.context_manager = SingleStreamContextManager(stream_id=stream_id, context=stream.stream_context)
+            stream.context_manager = SingleStreamContextManager(
+                stream_id=stream_id,
+                context=StreamContext(
+                    stream_id=stream_id,
+                    chat_type=ChatType.GROUP if stream.group_info else ChatType.PRIVATE,
+                    chat_mode=ChatMode.NORMAL,
+                ),
+            )
 
         # 保存到内存和数据库
         self.streams[stream_id] = stream
@@ -700,10 +560,12 @@ class ChatManager:
 
     async def get_stream(self, stream_id: str) -> ChatStream | None:
         """通过stream_id获取聊天流"""
+        from src.common.data_models.database_data_model import DatabaseMessages
+        
         stream = self.streams.get(stream_id)
         if not stream:
             return None
-        if stream_id in self.last_messages:
+        if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], DatabaseMessages):
             await stream.set_context(self.last_messages[stream_id])
         return stream
 
@@ -921,55 +783,22 @@ class ChatManager:
                 # 确保 ChatStream 有自己的 context_manager
                 if not hasattr(stream, "context_manager"):
                     from src.chat.message_manager.context_manager import SingleStreamContextManager
+                    from src.common.data_models.message_manager_data_model import StreamContext
+                    from src.plugin_system.base.component_types import ChatMode, ChatType
 
                     stream.context_manager = SingleStreamContextManager(
-                        stream_id=stream.stream_id, context=stream.stream_context
+                        stream_id=stream.stream_id,
+                        context=StreamContext(
+                            stream_id=stream.stream_id,
+                            chat_type=ChatType.GROUP if stream.group_info else ChatType.PRIVATE,
+                            chat_mode=ChatMode.NORMAL,
+                        ),
                     )
         except Exception as e:
             logger.error(f"从数据库加载所有聊天流失败 (SQLAlchemy): {e}", exc_info=True)
 
 
 chat_manager = None
-
-
-def _convert_to_original_stream(self, optimized_stream) -> "ChatStream":
-    """将OptimizedChatStream转换为原始ChatStream以保持兼容性"""
-    try:
-        # 创建原始ChatStream实例
-        original_stream = ChatStream(
-            stream_id=optimized_stream.stream_id,
-            platform=optimized_stream.platform,
-            user_info=optimized_stream._get_effective_user_info(),
-            group_info=optimized_stream._get_effective_group_info(),
-        )
-
-        # 复制状态
-        original_stream.create_time = optimized_stream.create_time
-        original_stream.last_active_time = optimized_stream.last_active_time
-        original_stream.sleep_pressure = optimized_stream.sleep_pressure
-        original_stream.base_interest_energy = optimized_stream.base_interest_energy
-        original_stream._focus_energy = optimized_stream._focus_energy
-        original_stream.no_reply_consecutive = optimized_stream.no_reply_consecutive
-        original_stream.saved = optimized_stream.saved
-
-        # 复制上下文信息（如果存在）
-        if hasattr(optimized_stream, "_stream_context") and optimized_stream._stream_context:
-            original_stream.stream_context = optimized_stream._stream_context
-
-        if hasattr(optimized_stream, "_context_manager") and optimized_stream._context_manager:
-            original_stream.context_manager = optimized_stream._context_manager
-
-        return original_stream
-
-    except Exception as e:
-        logger.error(f"转换OptimizedChatStream失败: {e}")
-        # 如果转换失败，创建一个新的原始流
-        return ChatStream(
-            stream_id=optimized_stream.stream_id,
-            platform=optimized_stream.platform,
-            user_info=optimized_stream._get_effective_user_info(),
-            group_info=optimized_stream._get_effective_group_info(),
-        )
 
 
 def get_chat_manager():

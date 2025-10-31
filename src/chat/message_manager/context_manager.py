@@ -29,7 +29,6 @@ class SingleStreamContextManager:
 
         # 配置参数
         self.max_context_size = max_context_size or getattr(global_config.chat, "max_context_size", 100)
-        self.context_ttl = getattr(global_config.chat, "context_ttl", 24 * 3600)  # 24小时
 
         # 元数据
         self.created_time = time.time()
@@ -93,27 +92,24 @@ class SingleStreamContextManager:
                         return True
                     else:
                         logger.warning(f"消息缓存系统添加失败，回退到直接添加: {self.stream_id}")
-
-            except ImportError:
-                logger.debug("MessageManager不可用，使用直接添加模式")
             except Exception as e:
                 logger.warning(f"消息缓存系统异常，回退到直接添加: {self.stream_id}, error={e}")
 
-            # 回退方案：直接添加到未读消息
-            message.is_read = False
-            self.context.unread_messages.append(message)
+                # 回退方案：直接添加到未读消息
+                message.is_read = False
+                self.context.unread_messages.append(message)
 
-            # 自动检测和更新chat type
-            self._detect_chat_type(message)
+                # 自动检测和更新chat type
+                self._detect_chat_type(message)
 
-            # 在上下文管理器中计算兴趣值
-            await self._calculate_message_interest(message)
-            self.total_messages += 1
-            self.last_access_time = time.time()
-            # 启动流的循环任务（如果还未启动）
-            asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
-            logger.debug(f"添加消息{message.processed_plain_text}到单流上下文: {self.stream_id}")
-            return True
+                # 在上下文管理器中计算兴趣值
+                await self._calculate_message_interest(message)
+                self.total_messages += 1
+                self.last_access_time = time.time()
+                # 启动流的循环任务（如果还未启动）
+                asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
+                logger.debug(f"添加消息{message.processed_plain_text}到单流上下文: {self.stream_id}")
+                return True
         except Exception as e:
             logger.error(f"添加消息到单流上下文失败 {self.stream_id}: {e}", exc_info=True)
             return False
