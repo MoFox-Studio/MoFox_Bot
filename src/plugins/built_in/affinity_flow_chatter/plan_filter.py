@@ -402,6 +402,9 @@ class ChatterPlanFilter:
                     mapped = message_id_list[idx]
                     synthetic_id = mapped.get("id")
                     real_msg_id = msg.get("message_id") or msg.get("id")
+                    if not real_msg_id:
+                        continue  # 如果消息没有ID，则跳过
+
                     msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
                     user_nickname = msg.get("user_nickname", "未知用户")
                     msg_content = msg.get("processed_plain_text", "")
@@ -568,7 +571,7 @@ class ChatterPlanFilter:
                     # 确保字典中有 message_id 字段
                     if "message_id" not in target_message_obj and "id" in target_message_obj:
                         target_message_obj["message_id"] = target_message_obj["id"]
-                    
+
                     try:
                         # 使用 ** 解包字典传入构造函数
                         action_message_obj = DatabaseMessages(**target_message_obj)
