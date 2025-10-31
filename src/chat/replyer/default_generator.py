@@ -32,8 +32,6 @@ from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.individuality.individuality import get_individuality
 from src.llm_models.utils_model import LLMRequest
-
-
 from src.mood.mood_manager import mood_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.apis import llm_api
@@ -943,10 +941,10 @@ class DefaultReplyer:
             chat_stream = await chat_manager.get_stream(chat_id)
             if chat_stream:
                 stream_context = chat_stream.context_manager
-                
+
                 # 确保历史消息已从数据库加载
                 await stream_context.ensure_history_initialized()
-                
+
                 # 直接使用内存中的已读和未读消息，无需再查询数据库
                 read_messages = stream_context.context.history_messages  # 已读消息（已从数据库加载）
                 unread_messages = stream_context.get_unread_messages()  # 未读消息
@@ -956,11 +954,11 @@ class DefaultReplyer:
                 if read_messages:
                     # 将 DatabaseMessages 对象转换为字典格式，以便使用 build_readable_messages
                     read_messages_dicts = [msg.flatten() for msg in read_messages]
-                    
+
                     # 按时间排序并限制数量
                     sorted_messages = sorted(read_messages_dicts, key=lambda x: x.get("time", 0))
                     final_history = sorted_messages[-50:]  # 限制最多50条
-                    
+
                     read_content = await build_readable_messages(
                         final_history,
                         replace_bot_name=True,
@@ -1194,7 +1192,7 @@ class DefaultReplyer:
             if reply_message is None:
                 logger.warning("reply_message 为 None，无法构建prompt")
                 return ""
-            
+
             # 统一处理 DatabaseMessages 对象和字典
             if isinstance(reply_message, DatabaseMessages):
                 platform = reply_message.chat_info.platform
@@ -1208,7 +1206,7 @@ class DefaultReplyer:
                 user_nickname = reply_message.get("user_nickname")
                 user_cardname = reply_message.get("user_cardname")
                 processed_plain_text = reply_message.get("processed_plain_text")
-            
+
             person_id = person_info_manager.get_person_id(
                 platform,  # type: ignore
                 user_id,  # type: ignore
@@ -1262,24 +1260,24 @@ class DefaultReplyer:
 
         # 从内存获取历史消息，避免重复查询数据库
         from src.plugin_system.apis.chat_api import get_chat_manager
-        
+
         chat_manager = get_chat_manager()
         chat_stream_obj = await chat_manager.get_stream(chat_id)
-        
+
         if chat_stream_obj:
             # 确保历史消息已初始化
             await chat_stream_obj.context_manager.ensure_history_initialized()
-            
+
             # 获取所有消息（历史+未读）
             all_messages = (
                 chat_stream_obj.context_manager.context.history_messages +
                 chat_stream_obj.context_manager.get_unread_messages()
             )
-            
+
             # 转换为字典格式
             message_list_before_now_long = [msg.flatten() for msg in all_messages[-(global_config.chat.max_context_size * 2):]]
             message_list_before_short = [msg.flatten() for msg in all_messages[-int(global_config.chat.max_context_size * 0.33):]]
-            
+
             logger.debug(f"使用内存中的消息: long={len(message_list_before_now_long)}, short={len(message_list_before_short)}")
         else:
             # 回退到数据库查询
@@ -1294,7 +1292,7 @@ class DefaultReplyer:
                 timestamp=time.time(),
                 limit=int(global_config.chat.max_context_size * 0.33),
             )
-        
+
         chat_talking_prompt_short = await build_readable_messages(
             message_list_before_short,
             replace_bot_name=True,
@@ -1634,24 +1632,24 @@ class DefaultReplyer:
 
         # 从内存获取历史消息，避免重复查询数据库
         from src.plugin_system.apis.chat_api import get_chat_manager
-        
+
         chat_manager = get_chat_manager()
         chat_stream_obj = await chat_manager.get_stream(chat_id)
-        
+
         if chat_stream_obj:
             # 确保历史消息已初始化
             await chat_stream_obj.context_manager.ensure_history_initialized()
-            
+
             # 获取所有消息（历史+未读）
             all_messages = (
                 chat_stream_obj.context_manager.context.history_messages +
                 chat_stream_obj.context_manager.get_unread_messages()
             )
-            
+
             # 转换为字典格式，限制数量
             limit = min(int(global_config.chat.max_context_size * 0.33), 15)
             message_list_before_now_half = [msg.flatten() for msg in all_messages[-limit:]]
-            
+
             logger.debug(f"Rewrite使用内存中的 {len(message_list_before_now_half)} 条消息")
         else:
             # 回退到数据库查询
@@ -1661,7 +1659,7 @@ class DefaultReplyer:
                 timestamp=time.time(),
                 limit=min(int(global_config.chat.max_context_size * 0.33), 15),
             )
-        
+
         chat_talking_prompt_half = await build_readable_messages(
             message_list_before_now_half,
             replace_bot_name=True,
@@ -1818,7 +1816,7 @@ class DefaultReplyer:
                 # 循环移除，以处理模型可能生成的嵌套回复头/尾
                 # 使用更健壮的正则表达式，通过非贪婪匹配和向后查找来定位真正的消息内容
                 pattern = re.compile(r"^\s*\[回复<.+?>\s*(?:的消息)?：(?P<content>.*)\](?:，?说：)?\s*$", re.DOTALL)
-                
+
                 temp_content = cleaned_content
                 while True:
                     match = pattern.match(temp_content)
@@ -1830,7 +1828,7 @@ class DefaultReplyer:
                         temp_content = new_content
                     else:
                         break # 没有匹配到，退出循环
-                
+
                 # 在循环处理后，再使用 rsplit 来处理日志中观察到的特殊情况
                 # 这可以作为处理复杂嵌套的最后一道防线
                 final_split = temp_content.rsplit("]，说：", 1)
@@ -1838,7 +1836,7 @@ class DefaultReplyer:
                     final_content = final_split[1].strip()
                 else:
                     final_content = temp_content
-                
+
                 if final_content != content:
                     logger.debug(f"清理了模型生成的多余内容，原始内容: '{content}', 清理后: '{final_content}'")
                     content = final_content
@@ -2077,24 +2075,24 @@ class DefaultReplyer:
 
             # 从内存获取聊天历史用于存储，避免重复查询数据库
             from src.plugin_system.apis.chat_api import get_chat_manager
-            
+
             chat_manager = get_chat_manager()
             chat_stream_obj = await chat_manager.get_stream(stream.stream_id)
-            
+
             if chat_stream_obj:
                 # 确保历史消息已初始化
                 await chat_stream_obj.context_manager.ensure_history_initialized()
-                
+
                 # 获取所有消息（历史+未读）
                 all_messages = (
                     chat_stream_obj.context_manager.context.history_messages +
                     chat_stream_obj.context_manager.get_unread_messages()
                 )
-                
+
                 # 转换为字典格式，限制数量
                 limit = int(global_config.chat.max_context_size * 0.33)
                 message_list_before_short = [msg.flatten() for msg in all_messages[-limit:]]
-                
+
                 logger.debug(f"记忆存储使用内存中的 {len(message_list_before_short)} 条消息")
             else:
                 # 回退到数据库查询

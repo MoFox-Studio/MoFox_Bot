@@ -1,8 +1,6 @@
 import asyncio
-import copy
 import hashlib
 import time
-from typing import TYPE_CHECKING
 
 from maim_message import GroupInfo, UserInfo
 from rich.traceback import install
@@ -10,12 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.sqlalchemy_database_api import get_db_session
 from src.common.database.sqlalchemy_models import ChatStreams  # 新增导入
-from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config  # 新增导入
-
 
 install(extra_lines=3)
 
@@ -134,7 +131,7 @@ class ChatStream:
         """
         # 直接使用传入的 DatabaseMessages，设置到上下文中
         self.context_manager.context.set_current_message(message)
-        
+
         # 设置优先级信息（如果存在）
         priority_mode = getattr(message, "priority_mode", None)
         priority_info = getattr(message, "priority_info", None)
@@ -156,7 +153,7 @@ class ChatStream:
     def _safe_get_actions(self, message: DatabaseMessages) -> list | None:
         """安全获取消息的actions字段"""
         import json
-        
+
         try:
             actions = getattr(message, "actions", None)
             if actions is None:
@@ -321,7 +318,7 @@ class ChatManager:
     def __init__(self):
         if not self._initialized:
             from src.common.data_models.database_data_model import DatabaseMessages
-            
+
             self.streams: dict[str, ChatStream] = {}  # stream_id -> ChatStream
             self.last_messages: dict[str, DatabaseMessages] = {}  # stream_id -> last_message
             # try:
@@ -360,15 +357,15 @@ class ChatManager:
     def register_message(self, message: DatabaseMessages):
         """注册消息到聊天流"""
         # 从 DatabaseMessages 提取平台和用户/群组信息
-        from maim_message import UserInfo, GroupInfo
-        
+        from maim_message import GroupInfo, UserInfo
+
         user_info = UserInfo(
             platform=message.user_info.platform,
             user_id=message.user_info.user_id,
             user_nickname=message.user_info.user_nickname,
             user_cardname=message.user_info.user_cardname or ""
         )
-        
+
         group_info = None
         if message.group_info:
             group_info = GroupInfo(
@@ -376,7 +373,7 @@ class ChatManager:
                 group_id=message.group_info.group_id,
                 group_name=message.group_info.group_name
             )
-        
+
         stream_id = self._generate_stream_id(
             message.chat_info.platform,
             user_info,
@@ -435,7 +432,7 @@ class ChatManager:
                     stream.user_info = user_info
                 if group_info:
                     stream.group_info = group_info
-                
+
                 # 检查是否有最后一条消息（现在使用 DatabaseMessages）
                 from src.common.data_models.database_data_model import DatabaseMessages
                 if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], DatabaseMessages):
@@ -532,7 +529,7 @@ class ChatManager:
     async def get_stream(self, stream_id: str) -> ChatStream | None:
         """通过stream_id获取聊天流"""
         from src.common.data_models.database_data_model import DatabaseMessages
-        
+
         stream = self.streams.get(stream_id)
         if not stream:
             return None

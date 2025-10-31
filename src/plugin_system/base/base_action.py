@@ -192,7 +192,7 @@ class BaseAction(ABC):
                     self.group_name = self.action_message.get("chat_info_group_name", None)
                     self.user_id = str(self.action_message.get("user_id", None))
                     self.user_nickname = self.action_message.get("user_nickname", None)
-                
+
                 if self.group_id:
                     self.is_group = True
                     self.target_id = self.group_id

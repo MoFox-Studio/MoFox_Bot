@@ -64,7 +64,7 @@ class PlusCommand(ABC):
         self.message = message
         self.plugin_config = plugin_config or {}
         self.log_prefix = "[PlusCommand]"
-        
+
         # chat_stream 会在运行时被 bot.py 设置
         self.chat_stream: "ChatStream | None" = None
 

@@ -35,12 +35,12 @@ class SingleStreamContextManager:
         self.last_access_time = time.time()
         self.access_count = 0
         self.total_messages = 0
-        
+
         # 标记是否已初始化历史消息
         self._history_initialized = False
 
         logger.info(f"[新建] 单流上下文管理器初始化: {stream_id} (id={id(self)})")
-        
+
         # 异步初始化历史消息（不阻塞构造函数）
         asyncio.create_task(self._initialize_history_from_db())
 
@@ -299,55 +299,55 @@ class SingleStreamContextManager:
         """更新访问统计"""
         self.last_access_time = time.time()
         self.access_count += 1
-    
+
     async def _initialize_history_from_db(self):
         """从数据库初始化历史消息到context中"""
         if self._history_initialized:
             logger.info(f"历史消息已初始化，跳过: {self.stream_id}")
             return
-        
+
         # 立即设置标志，防止并发重复加载
         logger.info(f"设置历史初始化标志: {self.stream_id}")
         self._history_initialized = True
-        
+
         try:
             logger.info(f"开始从数据库加载历史消息: {self.stream_id}")
-            
+
             from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat
-            
+
             # 加载历史消息（限制数量为max_context_size的2倍，用于丰富上下文）
             db_messages = await get_raw_msg_before_timestamp_with_chat(
                 chat_id=self.stream_id,
                 timestamp=time.time(),
                 limit=self.max_context_size * 2,
             )
-            
+
             if db_messages:
                 # 将数据库消息转换为 DatabaseMessages 对象并添加到历史
                 for msg_dict in db_messages:
                     try:
                         # 使用 ** 解包字典作为关键字参数
                         db_msg = DatabaseMessages(**msg_dict)
-                        
+
                         # 标记为已读
                         db_msg.is_read = True
-        
+
                         # 添加到历史消息
                         self.context.history_messages.append(db_msg)
-                        
+
                     except Exception as e:
                         logger.warning(f"转换历史消息失败 (message_id={msg_dict.get('message_id', 'unknown')}): {e}")
                         continue
-                
+
                 logger.info(f"成功从数据库加载 {len(self.context.history_messages)} 条历史消息到内存: {self.stream_id}")
             else:
                 logger.debug(f"没有历史消息需要加载: {self.stream_id}")
-            
+
         except Exception as e:
             logger.error(f"从数据库初始化历史消息失败: {self.stream_id}, {e}", exc_info=True)
             # 加载失败时重置标志，允许重试
             self._history_initialized = False
-    
+
     async def ensure_history_initialized(self):
         """确保历史消息已初始化（供外部调用）"""
         if not self._history_initialized:

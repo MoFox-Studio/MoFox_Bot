@@ -4,7 +4,6 @@
 """
 import math
 from collections import Counter, defaultdict
-from typing import Dict, List, Optional
 
 from src.common.logger import get_logger
 
@@ -28,15 +27,15 @@ class OnlineNaiveBayes:
         self.V = vocab_size
 
         # 类别统计
-        self.cls_counts: Dict[str, float] = defaultdict(float)  # cid -> total token count
-        self.token_counts: Dict[str, Dict[str, float]] = defaultdict(
+        self.cls_counts: dict[str, float] = defaultdict(float)  # cid -> total token count
+        self.token_counts: dict[str, dict[str, float]] = defaultdict(
             lambda: defaultdict(float)
         )  # cid -> term -> count
 
         # 缓存
-        self._logZ: Dict[str, float] = {}  # cache log(∑counts + Vα)
+        self._logZ: dict[str, float] = {}  # cache log(∑counts + Vα)
 
-    def score_batch(self, tf: Counter, cids: List[str]) -> Dict[str, float]:
+    def score_batch(self, tf: Counter, cids: list[str]) -> dict[str, float]:
         """
         批量计算候选的贝叶斯分数
 
@@ -51,7 +50,7 @@ class OnlineNaiveBayes:
         n_cls = max(1, len(self.cls_counts))
         denom_prior = math.log(total_cls + self.beta * n_cls)
 
-        out: Dict[str, float] = {}
+        out: dict[str, float] = {}
         for cid in cids:
             # 计算先验概率 log P(c)
             prior = math.log(self.cls_counts[cid] + self.beta) - denom_prior
@@ -88,7 +87,7 @@ class OnlineNaiveBayes:
         self.cls_counts[cid] += inc
         self._invalidate(cid)
 
-    def decay(self, factor: Optional[float] = None):
+    def decay(self, factor: float | None = None):
         """
         知识衰减（遗忘机制）
 
@@ -133,7 +132,7 @@ class OnlineNaiveBayes:
         if cid in self._logZ:
             del self._logZ[cid]
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """获取统计信息"""
         return {
             "n_classes": len(self.cls_counts),

@@ -45,7 +45,7 @@ class BaseCommand(ABC):
         self.plugin_config = plugin_config or {}  # 直接存储插件配置字典
 
         self.log_prefix = "[Command]"
-        
+
         # chat_stream 会在运行时被 bot.py 设置
         self.chat_stream: "ChatStream | None" = None
 

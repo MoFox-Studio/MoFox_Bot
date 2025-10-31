@@ -261,7 +261,7 @@ class SetEmojiLikeAction(BaseAction):
             elif isinstance(self.action_message, dict):
                 message_id = self.action_message.get("message_id")
                 logger.info(f"获取到的消息ID: {message_id}")
-        
+
         if not message_id:
             logger.error("未提供有效的消息或消息ID")
             await self.store_action_info(action_prompt_display="贴表情失败: 未提供消息ID", action_done=False)
@@ -279,7 +279,7 @@ class SetEmojiLikeAction(BaseAction):
             context_text = self.action_message.processed_plain_text or ""
         else:
             context_text = self.action_message.get("processed_plain_text", "")
-        
+
         if not context_text:
             logger.error("无法找到动作选择的原始消息文本")
             return False, "无法找到动作选择的原始消息文本"

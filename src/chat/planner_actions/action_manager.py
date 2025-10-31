@@ -270,7 +270,7 @@ class ChatterActionManager:
                             msg_text = target_message.get("processed_plain_text", "未知消息")
                         else:
                             msg_text = "未知消息"
-                        
+
                         logger.info(f"对 {msg_text} 的回复生成失败")
                         return {"action_type": "reply", "success": False, "reply_text": "", "loop_info": None}
                 except asyncio.CancelledError:

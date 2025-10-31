@@ -55,7 +55,7 @@ async def file_to_stream(
 
    if not file_name:
        file_name = Path(file_path).name
-   
+
    params = {
        "file": file_path,
        "name": file_name,
@@ -68,7 +68,7 @@ async def file_to_stream(
    else:
        action = "upload_private_file"
        params["user_id"] = target_stream.user_info.user_id
-   
+
    response = await adapter_command_to_stream(
        action=action,
        params=params,
@@ -86,7 +86,7 @@ async def file_to_stream(
 import asyncio
 import time
 import traceback
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from maim_message import Seg, UserInfo
 
@@ -117,11 +117,11 @@ def message_dict_to_db_message(message_dict: dict[str, Any]) -> "DatabaseMessage
         Optional[DatabaseMessages]: 构建的消息对象，如果构建失败则返回None
     """
     from src.common.data_models.database_data_model import DatabaseMessages
-    
+
     # 如果已经是 DatabaseMessages，直接返回
     if isinstance(message_dict, DatabaseMessages):
         return message_dict
-    
+
     # 从字典提取信息
     user_platform = message_dict.get("user_platform", "")
     user_id = message_dict.get("user_id", "")
@@ -135,7 +135,7 @@ def message_dict_to_db_message(message_dict: dict[str, Any]) -> "DatabaseMessage
     time_val = message_dict.get("time", time.time())
     additional_config = message_dict.get("additional_config")
     processed_plain_text = message_dict.get("processed_plain_text", "")
-    
+
     # DatabaseMessages 使用扁平参数构造
     db_message = DatabaseMessages(
         message_id=message_id or "temp_reply_id",
@@ -151,7 +151,7 @@ def message_dict_to_db_message(message_dict: dict[str, Any]) -> "DatabaseMessage
         processed_plain_text=processed_plain_text,
         additional_config=additional_config
     )
-    
+
     logger.info(f"[SendAPI] 构建回复消息对象，发送者: {user_nickname}")
     return db_message
 

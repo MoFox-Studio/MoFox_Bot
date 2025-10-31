@@ -11,6 +11,7 @@ import rjieba
 from maim_message import UserInfo
 
 from src.chat.message_receive.chat_stream import get_chat_manager
+
 # MessageRecv 已被移除，现在使用 DatabaseMessages
 from src.common.logger import get_logger
 from src.common.message_repository import count_messages, find_messages
@@ -49,13 +50,13 @@ def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
         
     Returns:
         tuple[bool, float]: (是否提及, 提及概率)
-    """ 
+    """
     keywords = [global_config.bot.nickname]
     nicknames = global_config.bot.alias_names
     reply_probability = 0.0
     is_at = False
     is_mentioned = False
-    
+
     # 检查 is_mentioned 属性
     mentioned_attr = getattr(message, "is_mentioned", None)
     if mentioned_attr is not None:
@@ -63,7 +64,7 @@ def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
             return bool(mentioned_attr), float(mentioned_attr)
         except (ValueError, TypeError):
             pass
-    
+
     # 检查 additional_config
     additional_config = None
 

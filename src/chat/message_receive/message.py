@@ -1,8 +1,7 @@
-import base64
 import time
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Optional
 
 import urllib3
 from maim_message import BaseMessageInfo, MessageBase, Seg, UserInfo
@@ -11,7 +10,6 @@ from rich.traceback import install
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.self_voice_cache import consume_self_voice_text
 from src.chat.utils.utils_image import get_image_manager
-from src.chat.utils.utils_video import get_video_analyzer, is_video_analysis_available
 from src.chat.utils.utils_voice import get_voice_text
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
@@ -269,7 +267,7 @@ class MessageSending(MessageProcessBase):
         if self.reply:
             # 从 DatabaseMessages 获取 message_id
             message_id = self.reply.message_id
-            
+
             if message_id:
                 self.reply_to_message_id = message_id
                 self.message_segment = Seg(
