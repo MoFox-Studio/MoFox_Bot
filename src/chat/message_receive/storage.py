@@ -5,12 +5,13 @@ import traceback
 import orjson
 from sqlalchemy import desc, select, update
 
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.sqlalchemy_database_api import get_db_session
 from src.common.database.sqlalchemy_models import Images, Messages
 from src.common.logger import get_logger
 
 from .chat_stream import ChatStream
-from .message import MessageRecv, MessageSending
+from .message import MessageSending
 
 logger = get_logger("message_storage")
 
@@ -34,97 +35,166 @@ class MessageStorage:
             return []
 
     @staticmethod
-    async def store_message(message: MessageSending | MessageRecv, chat_stream: ChatStream) -> None:
+    async def store_message(message: DatabaseMessages | MessageSending, chat_stream: ChatStream) -> None:
         """存储消息到数据库"""
         try:
             # 过滤敏感信息的正则模式
             pattern = r"<MainRule>.*?</MainRule>|<schedule>.*?</schedule>|<UserMessage>.*?</UserMessage>"
 
-            processed_plain_text = message.processed_plain_text
-
-            if processed_plain_text:
-                processed_plain_text = await MessageStorage.replace_image_descriptions(processed_plain_text)
-                # 增加对None的防御性处理
-                safe_processed_plain_text = processed_plain_text or ""
-                filtered_processed_plain_text = re.sub(pattern, "", safe_processed_plain_text, flags=re.DOTALL)
-            else:
-                filtered_processed_plain_text = ""
-
-            if isinstance(message, MessageSending):
-                display_message = message.display_message
-                if display_message:
-                    filtered_display_message = re.sub(pattern, "", display_message, flags=re.DOTALL)
+            # 如果是 DatabaseMessages，直接使用它的字段
+            if isinstance(message, DatabaseMessages):
+                processed_plain_text = message.processed_plain_text
+                if processed_plain_text:
+                    processed_plain_text = await MessageStorage.replace_image_descriptions(processed_plain_text)
+                    safe_processed_plain_text = processed_plain_text or ""
+                    filtered_processed_plain_text = re.sub(pattern, "", safe_processed_plain_text, flags=re.DOTALL)
                 else:
-                    # 如果没有设置display_message，使用processed_plain_text作为显示消息
-                    filtered_display_message = (
-                        re.sub(pattern, "", (message.processed_plain_text or ""), flags=re.DOTALL)
-                    )
-                interest_value = 0
-                is_mentioned = False
-                reply_to = message.reply_to
-                priority_mode = ""
-                priority_info = {}
-                is_emoji = False
-                is_picid = False
-                is_notify = False
-                is_command = False
-                key_words = ""
-                key_words_lite = ""
-            else:
-                filtered_display_message = ""
-                interest_value = message.interest_value
+                    filtered_processed_plain_text = ""
+
+                display_message = message.display_message or message.processed_plain_text or ""
+                filtered_display_message = re.sub(pattern, "", display_message, flags=re.DOTALL)
+
+                # 直接从 DatabaseMessages 获取所有字段
+                msg_id = message.message_id
+                msg_time = message.time
+                chat_id = message.chat_id
+                reply_to = ""  # DatabaseMessages 没有 reply_to 字段
                 is_mentioned = message.is_mentioned
-                reply_to = ""
-                priority_mode = message.priority_mode
-                priority_info = message.priority_info
-                is_emoji = message.is_emoji
-                is_picid = message.is_picid
-                is_notify = message.is_notify
-                is_command = message.is_command
-                # 序列化关键词列表为JSON字符串
-                key_words = MessageStorage._serialize_keywords(message.key_words)
-                key_words_lite = MessageStorage._serialize_keywords(message.key_words_lite)
+                interest_value = message.interest_value or 0.0
+                priority_mode = ""  # DatabaseMessages 没有 priority_mode
+                priority_info_json = None  # DatabaseMessages 没有 priority_info
+                is_emoji = message.is_emoji or False
+                is_picid = message.is_picid or False
+                is_notify = message.is_notify or False
+                is_command = message.is_command or False
+                key_words = ""  # DatabaseMessages 没有 key_words
+                key_words_lite = ""
+                memorized_times = 0  # DatabaseMessages 没有 memorized_times
 
-            chat_info_dict = chat_stream.to_dict()
-            user_info_dict = message.message_info.user_info.to_dict()  # type: ignore
+                # 使用 DatabaseMessages 中的嵌套对象信息
+                user_platform = message.user_info.platform if message.user_info else ""
+                user_id = message.user_info.user_id if message.user_info else ""
+                user_nickname = message.user_info.user_nickname if message.user_info else ""
+                user_cardname = message.user_info.user_cardname if message.user_info else None
 
-            # message_id 现在是 TextField，直接使用字符串值
-            msg_id = message.message_info.message_id
+                chat_info_stream_id = message.chat_info.stream_id if message.chat_info else ""
+                chat_info_platform = message.chat_info.platform if message.chat_info else ""
+                chat_info_create_time = message.chat_info.create_time if message.chat_info else 0.0
+                chat_info_last_active_time = message.chat_info.last_active_time if message.chat_info else 0.0
+                chat_info_user_platform = message.chat_info.user_info.platform if message.chat_info and message.chat_info.user_info else ""
+                chat_info_user_id = message.chat_info.user_info.user_id if message.chat_info and message.chat_info.user_info else ""
+                chat_info_user_nickname = message.chat_info.user_info.user_nickname if message.chat_info and message.chat_info.user_info else ""
+                chat_info_user_cardname = message.chat_info.user_info.user_cardname if message.chat_info and message.chat_info.user_info else None
+                chat_info_group_platform = message.group_info.group_platform if message.group_info else None
+                chat_info_group_id = message.group_info.group_id if message.group_info else None
+                chat_info_group_name = message.group_info.group_name if message.group_info else None
 
-            # 安全地获取 group_info, 如果为 None 则视为空字典
-            group_info_from_chat = chat_info_dict.get("group_info") or {}
-            # 安全地获取 user_info, 如果为 None 则视为空字典 (以防万一)
-            user_info_from_chat = chat_info_dict.get("user_info") or {}
+            else:
+                # MessageSending 处理逻辑
+                processed_plain_text = message.processed_plain_text
 
-            # 将priority_info字典序列化为JSON字符串，以便存储到数据库的Text字段
-            priority_info_json = orjson.dumps(priority_info).decode("utf-8") if priority_info else None
+                if processed_plain_text:
+                    processed_plain_text = await MessageStorage.replace_image_descriptions(processed_plain_text)
+                    # 增加对None的防御性处理
+                    safe_processed_plain_text = processed_plain_text or ""
+                    filtered_processed_plain_text = re.sub(pattern, "", safe_processed_plain_text, flags=re.DOTALL)
+                else:
+                    filtered_processed_plain_text = ""
+
+                if isinstance(message, MessageSending):
+                    display_message = message.display_message
+                    if display_message:
+                        filtered_display_message = re.sub(pattern, "", display_message, flags=re.DOTALL)
+                    else:
+                        # 如果没有设置display_message，使用processed_plain_text作为显示消息
+                        filtered_display_message = (
+                            re.sub(pattern, "", (message.processed_plain_text or ""), flags=re.DOTALL)
+                        )
+                    interest_value = 0
+                    is_mentioned = False
+                    reply_to = message.reply_to
+                    priority_mode = ""
+                    priority_info = {}
+                    is_emoji = False
+                    is_picid = False
+                    is_notify = False
+                    is_command = False
+                    key_words = ""
+                    key_words_lite = ""
+                else:
+                    filtered_display_message = ""
+                    interest_value = message.interest_value
+                    is_mentioned = message.is_mentioned
+                    reply_to = ""
+                    priority_mode = message.priority_mode
+                    priority_info = message.priority_info
+                    is_emoji = message.is_emoji
+                    is_picid = message.is_picid
+                    is_notify = message.is_notify
+                    is_command = message.is_command
+                    # 序列化关键词列表为JSON字符串
+                    key_words = MessageStorage._serialize_keywords(message.key_words)
+                    key_words_lite = MessageStorage._serialize_keywords(message.key_words_lite)
+
+                chat_info_dict = chat_stream.to_dict()
+                user_info_dict = message.message_info.user_info.to_dict()  # type: ignore
+
+                # message_id 现在是 TextField，直接使用字符串值
+                msg_id = message.message_info.message_id
+                msg_time = float(message.message_info.time or time.time())
+                chat_id = chat_stream.stream_id
+                memorized_times = message.memorized_times
+
+                # 安全地获取 group_info, 如果为 None 则视为空字典
+                group_info_from_chat = chat_info_dict.get("group_info") or {}
+                # 安全地获取 user_info, 如果为 None 则视为空字典 (以防万一)
+                user_info_from_chat = chat_info_dict.get("user_info") or {}
+
+                # 将priority_info字典序列化为JSON字符串，以便存储到数据库的Text字段
+                priority_info_json = orjson.dumps(priority_info).decode("utf-8") if priority_info else None
+
+                user_platform = user_info_dict.get("platform")
+                user_id = user_info_dict.get("user_id")
+                user_nickname = user_info_dict.get("user_nickname")
+                user_cardname = user_info_dict.get("user_cardname")
+
+                chat_info_stream_id = chat_info_dict.get("stream_id")
+                chat_info_platform = chat_info_dict.get("platform")
+                chat_info_create_time = float(chat_info_dict.get("create_time", 0.0))
+                chat_info_last_active_time = float(chat_info_dict.get("last_active_time", 0.0))
+                chat_info_user_platform = user_info_from_chat.get("platform")
+                chat_info_user_id = user_info_from_chat.get("user_id")
+                chat_info_user_nickname = user_info_from_chat.get("user_nickname")
+                chat_info_user_cardname = user_info_from_chat.get("user_cardname")
+                chat_info_group_platform = group_info_from_chat.get("platform")
+                chat_info_group_id = group_info_from_chat.get("group_id")
+                chat_info_group_name = group_info_from_chat.get("group_name")
 
             # 获取数据库会话
-
             new_message = Messages(
                 message_id=msg_id,
-                time=float(message.message_info.time or time.time()),
-                chat_id=chat_stream.stream_id,
+                time=msg_time,
+                chat_id=chat_id,
                 reply_to=reply_to,
                 is_mentioned=is_mentioned,
-                chat_info_stream_id=chat_info_dict.get("stream_id"),
-                chat_info_platform=chat_info_dict.get("platform"),
-                chat_info_user_platform=user_info_from_chat.get("platform"),
-                chat_info_user_id=user_info_from_chat.get("user_id"),
-                chat_info_user_nickname=user_info_from_chat.get("user_nickname"),
-                chat_info_user_cardname=user_info_from_chat.get("user_cardname"),
-                chat_info_group_platform=group_info_from_chat.get("platform"),
-                chat_info_group_id=group_info_from_chat.get("group_id"),
-                chat_info_group_name=group_info_from_chat.get("group_name"),
-                chat_info_create_time=float(chat_info_dict.get("create_time", 0.0)),
-                chat_info_last_active_time=float(chat_info_dict.get("last_active_time", 0.0)),
-                user_platform=user_info_dict.get("platform"),
-                user_id=user_info_dict.get("user_id"),
-                user_nickname=user_info_dict.get("user_nickname"),
-                user_cardname=user_info_dict.get("user_cardname"),
+                chat_info_stream_id=chat_info_stream_id,
+                chat_info_platform=chat_info_platform,
+                chat_info_user_platform=chat_info_user_platform,
+                chat_info_user_id=chat_info_user_id,
+                chat_info_user_nickname=chat_info_user_nickname,
+                chat_info_user_cardname=chat_info_user_cardname,
+                chat_info_group_platform=chat_info_group_platform,
+                chat_info_group_id=chat_info_group_id,
+                chat_info_group_name=chat_info_group_name,
+                chat_info_create_time=chat_info_create_time,
+                chat_info_last_active_time=chat_info_last_active_time,
+                user_platform=user_platform,
+                user_id=user_id,
+                user_nickname=user_nickname,
+                user_cardname=user_cardname,
                 processed_plain_text=filtered_processed_plain_text,
                 display_message=filtered_display_message,
-                memorized_times=message.memorized_times,
+                memorized_times=memorized_times,
                 interest_value=interest_value,
                 priority_mode=priority_mode,
                 priority_info=priority_info_json,
@@ -145,36 +215,43 @@ class MessageStorage:
             traceback.print_exc()
 
     @staticmethod
-    async def update_message(message):
-        """更新消息ID"""
+    async def update_message(message_data: dict):
+        """更新消息ID（从消息字典）"""
         try:
-            mmc_message_id = message.message_info.message_id
+            # 从字典中提取信息
+            message_info = message_data.get("message_info", {})
+            mmc_message_id = message_info.get("message_id")
+
+            message_segment = message_data.get("message_segment", {})
+            segment_type = message_segment.get("type") if isinstance(message_segment, dict) else None
+            segment_data = message_segment.get("data", {}) if isinstance(message_segment, dict) else {}
+
             qq_message_id = None
 
-            logger.debug(f"尝试更新消息ID: {mmc_message_id}, 消息段类型: {message.message_segment.type}")
+            logger.debug(f"尝试更新消息ID: {mmc_message_id}, 消息段类型: {segment_type}")
 
             # 根据消息段类型提取message_id
-            if message.message_segment.type == "notify":
-                qq_message_id = message.message_segment.data.get("id")
-            elif message.message_segment.type == "text":
-                qq_message_id = message.message_segment.data.get("id")
-            elif message.message_segment.type == "reply":
-                qq_message_id = message.message_segment.data.get("id")
+            if segment_type == "notify":
+                qq_message_id = segment_data.get("id")
+            elif segment_type == "text":
+                qq_message_id = segment_data.get("id")
+            elif segment_type == "reply":
+                qq_message_id = segment_data.get("id")
                 if qq_message_id:
                     logger.debug(f"从reply消息段获取到消息ID: {qq_message_id}")
-            elif message.message_segment.type == "adapter_response":
+            elif segment_type == "adapter_response":
                 logger.debug("适配器响应消息，不需要更新ID")
                 return
-            elif message.message_segment.type == "adapter_command":
+            elif segment_type == "adapter_command":
                 logger.debug("适配器命令消息，不需要更新ID")
                 return
             else:
-                logger.debug(f"未知的消息段类型: {message.message_segment.type}，跳过ID更新")
+                logger.debug(f"未知的消息段类型: {segment_type}，跳过ID更新")
                 return
 
             if not qq_message_id:
-                logger.debug(f"消息段类型 {message.message_segment.type} 中未找到有效的message_id，跳过更新")
-                logger.debug(f"消息段数据: {message.message_segment.data}")
+                logger.debug(f"消息段类型 {segment_type} 中未找到有效的message_id，跳过更新")
+                logger.debug(f"消息段数据: {segment_data}")
                 return
 
             # 使用上下文管理器确保session正确管理

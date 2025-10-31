@@ -503,7 +503,7 @@ class MemorySystem:
                 existing_id = self._memory_fingerprints.get(fingerprint_key)
                 if existing_id and existing_id not in new_memory_ids:
                     candidate_ids.add(existing_id)
-            except Exception as exc:  # noqa: PERF203
+            except Exception as exc:
                 logger.debug("构建记忆指纹失败，跳过候选收集: %s", exc)
 
         # 基于主体索引的候选（使用统一存储）
@@ -1739,9 +1739,7 @@ def get_memory_system() -> MemorySystem:
     if memory_system is None:
         logger.warning("Global memory_system is None. Creating new uninitialized instance. This might be a problem.")
         memory_system = MemorySystem()
-    logger.info(f"get_memory_system() called, returning instance with id: {id(memory_system)}")
     return memory_system
-
 
 async def initialize_memory_system(llm_model: LLMRequest | None = None):
     """初始化全局记忆系统"""

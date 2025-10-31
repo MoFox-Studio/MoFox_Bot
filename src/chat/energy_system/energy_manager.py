@@ -201,15 +201,16 @@ class RelationshipEnergyCalculator(EnergyCalculator):
 
         # 从数据库获取聊天流兴趣分数
         try:
+            from sqlalchemy import select
+
             from src.common.database.sqlalchemy_database_api import get_db_session
             from src.common.database.sqlalchemy_models import ChatStreams
-            from sqlalchemy import select
 
             async with get_db_session() as session:
                 stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)
                 result = await session.execute(stmt)
                 stream = result.scalar_one_or_none()
-                
+
                 if stream and stream.stream_interest_score is not None:
                     interest_score = float(stream.stream_interest_score)
                     logger.debug(f"使用聊天流兴趣度计算关系能量: {interest_score:.3f}")

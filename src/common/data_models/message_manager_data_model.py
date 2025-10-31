@@ -7,7 +7,7 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Optional
 
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ChatMode, ChatType
@@ -64,7 +64,7 @@ class StreamContext(BaseDataModel):
     triggering_user_id: str | None = None  # 触发当前聊天流的用户ID
     is_replying: bool = False  # 是否正在生成回复
     processing_message_id: str | None = None  # 当前正在规划/处理的目标消息ID，用于防止重复回复
-    decision_history: List["DecisionRecord"] = field(default_factory=list)  # 决策历史
+    decision_history: list["DecisionRecord"] = field(default_factory=list)  # 决策历史
 
     def add_action_to_message(self, message_id: str, action: str):
         """
@@ -260,7 +260,7 @@ class StreamContext(BaseDataModel):
                             if requested_type not in accept_format:
                                 logger.debug(f"[check_types] 消息不支持类型 '{requested_type}'，支持的类型: {accept_format}")
                                 return False
-                        logger.debug(f"[check_types] ✅ 消息支持所有请求的类型 (来自 accept_format)")
+                        logger.debug("[check_types] ✅ 消息支持所有请求的类型 (来自 accept_format)")
                         return True
 
                     # 方法2: 检查content_format字段（向后兼容）
@@ -279,7 +279,7 @@ class StreamContext(BaseDataModel):
                             if requested_type not in content_format:
                                 logger.debug(f"[check_types] 消息不支持类型 '{requested_type}'，支持的内容格式: {content_format}")
                                 return False
-                        logger.debug(f"[check_types] ✅ 消息支持所有请求的类型 (来自 content_format)")
+                        logger.debug("[check_types] ✅ 消息支持所有请求的类型 (来自 content_format)")
                         return True
                 else:
                     logger.warning("[check_types] [问题] additional_config 中没有 format_info 字段")

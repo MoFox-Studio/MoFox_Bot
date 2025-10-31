@@ -60,7 +60,7 @@ class ChatterPlanFilter:
             prompt, used_message_id_list = await self._build_prompt(plan)
             plan.llm_prompt = prompt
             if global_config.debug.show_prompt:
-                logger.info(f"规划器原始提示词:{prompt}")  #叫你不要改你耳朵聋吗😡😡😡😡😡
+                logger.info(f"规划器原始提示词:{prompt}")  # 叫你不要改你耳朵聋吗😡😡😡😡😡
 
             llm_content, _ = await self.planner_llm.generate_response_async(prompt=prompt)
 
@@ -104,23 +104,25 @@ class ChatterPlanFilter:
                         # 预解析 action_type 来进行判断
                         thinking = item.get("thinking", "未提供思考过程")
                         actions_obj = item.get("actions", {})
-                        
+
                         # 记录决策历史
-                        if hasattr(global_config.chat, "enable_decision_history") and global_config.chat.enable_decision_history:
+                        if (
+                            hasattr(global_config.chat, "enable_decision_history")
+                            and global_config.chat.enable_decision_history
+                        ):
                             action_types_to_log = []
                             actions_to_process_for_log = []
                             if isinstance(actions_obj, dict):
                                 actions_to_process_for_log.append(actions_obj)
                             elif isinstance(actions_obj, list):
                                 actions_to_process_for_log.extend(actions_obj)
-                            
+
                             for single_action in actions_to_process_for_log:
                                 if isinstance(single_action, dict):
                                     action_types_to_log.append(single_action.get("action_type", "no_action"))
-                            
+
                             if thinking != "未提供思考过程" and action_types_to_log:
                                 await self._add_decision_to_history(plan, thinking, ", ".join(action_types_to_log))
-
 
                         # 处理actions字段可能是字典或列表的情况
                         if isinstance(actions_obj, dict):
@@ -579,15 +581,15 @@ class ChatterPlanFilter:
                 ):
                     reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                     action = "no_action"
-                #TODO:把逻辑迁移到DatabaseMessages(如果没人做下个星期我自己来)
-                #from src.common.data_models.database_data_model import DatabaseMessages
+                # TODO:把逻辑迁移到DatabaseMessages(如果没人做下个星期我自己来)
+                # from src.common.data_models.database_data_model import DatabaseMessages
 
-                #action_message_obj = None
-                #if target_message_obj:
-                    #try:
-                        #action_message_obj = DatabaseMessages(**target_message_obj)
-                    #except Exception:
-                        #logger.warning("无法将目标消息转换为DatabaseMessages对象")
+                # action_message_obj = None
+                # if target_message_obj:
+                # try:
+                # action_message_obj = DatabaseMessages(**target_message_obj)
+                # except Exception:
+                # logger.warning("无法将目标消息转换为DatabaseMessages对象")
 
                 parsed_actions.append(
                     ActionPlannerInfo(

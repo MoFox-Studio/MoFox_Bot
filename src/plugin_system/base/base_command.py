@@ -1,9 +1,13 @@
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-from src.chat.message_receive.message import MessageRecv
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.plugin_system.apis import send_api
 from src.plugin_system.base.component_types import ChatType, CommandInfo, ComponentType
+
+if TYPE_CHECKING:
+    from src.chat.message_receive.chat_stream import ChatStream
 
 logger = get_logger("base_command")
 
@@ -29,11 +33,11 @@ class BaseCommand(ABC):
     chat_type_allow: ChatType = ChatType.ALL
     """允许的聊天类型，默认为所有类型"""
 
-    def __init__(self, message: MessageRecv, plugin_config: dict | None = None):
+    def __init__(self, message: DatabaseMessages, plugin_config: dict | None = None):
         """初始化Command组件
 
         Args:
-            message: 接收到的消息对象
+            message: 接收到的消息对象（DatabaseMessages）
             plugin_config: 插件配置字典
         """
         self.message = message
@@ -42,6 +46,9 @@ class BaseCommand(ABC):
 
         self.log_prefix = "[Command]"
 
+        # chat_stream 会在运行时被 bot.py 设置
+        self.chat_stream: "ChatStream | None" = None
+
         # 从类属性获取chat_type_allow设置
         self.chat_type_allow = getattr(self.__class__, "chat_type_allow", ChatType.ALL)
 
@@ -49,7 +56,7 @@ class BaseCommand(ABC):
 
         # 验证聊天类型限制
         if not self._validate_chat_type():
-            is_group = hasattr(self.message, "is_group_message") and self.message.is_group_message
+            is_group = message.group_info is not None
             logger.warning(
                 f"{self.log_prefix} Command '{self.command_name}' 不支持当前聊天类型: "
                 f"{'群聊' if is_group else '私聊'}, 允许类型: {self.chat_type_allow.value}"
@@ -72,8 +79,8 @@ class BaseCommand(ABC):
         if self.chat_type_allow == ChatType.ALL:
             return True
 
-        # 检查是否为群聊消息
-        is_group = self.message.message_info.group_info
+        # 检查是否为群聊消息（DatabaseMessages使用group_info来判断）
+        is_group = self.message.group_info is not None
 
         if self.chat_type_allow == ChatType.GROUP and is_group:
             return True
@@ -137,12 +144,11 @@ class BaseCommand(ABC):
             bool: 是否发送成功
         """
         # 获取聊天流信息
-        chat_stream = self.message.chat_stream
-        if not chat_stream or not hasattr(chat_stream, "stream_id"):
+        if not self.chat_stream or not hasattr(self.chat_stream, "stream_id"):
             logger.error(f"{self.log_prefix} 缺少聊天流或stream_id")
             return False
 
-        return await send_api.text_to_stream(text=content, stream_id=chat_stream.stream_id, reply_to=reply_to)
+        return await send_api.text_to_stream(text=content, stream_id=self.chat_stream.stream_id, reply_to=reply_to)
 
     async def send_type(
         self, message_type: str, content: str, display_message: str = "", typing: bool = False, reply_to: str = ""
@@ -160,15 +166,14 @@ class BaseCommand(ABC):
             bool: 是否发送成功
         """
         # 获取聊天流信息
-        chat_stream = self.message.chat_stream
-        if not chat_stream or not hasattr(chat_stream, "stream_id"):
+        if not self.chat_stream or not hasattr(self.chat_stream, "stream_id"):
             logger.error(f"{self.log_prefix} 缺少聊天流或stream_id")
             return False
 
         return await send_api.custom_to_stream(
             message_type=message_type,
             content=content,
-            stream_id=chat_stream.stream_id,
+            stream_id=self.chat_stream.stream_id,
             display_message=display_message,
             typing=typing,
             reply_to=reply_to,
@@ -190,8 +195,7 @@ class BaseCommand(ABC):
         """
         try:
             # 获取聊天流信息
-            chat_stream = self.message.chat_stream
-            if not chat_stream or not hasattr(chat_stream, "stream_id"):
+            if not self.chat_stream or not hasattr(self.chat_stream, "stream_id"):
                 logger.error(f"{self.log_prefix} 缺少聊天流或stream_id")
                 return False
 
@@ -200,7 +204,7 @@ class BaseCommand(ABC):
 
             success = await send_api.command_to_stream(
                 command=command_data,
-                stream_id=chat_stream.stream_id,
+                stream_id=self.chat_stream.stream_id,
                 storage_message=storage_message,
                 display_message=display_message,
             )
@@ -225,12 +229,11 @@ class BaseCommand(ABC):
         Returns:
             bool: 是否发送成功
         """
-        chat_stream = self.message.chat_stream
-        if not chat_stream or not hasattr(chat_stream, "stream_id"):
+        if not self.chat_stream or not hasattr(self.chat_stream, "stream_id"):
             logger.error(f"{self.log_prefix} 缺少聊天流或stream_id")
             return False
 
-        return await send_api.emoji_to_stream(emoji_base64, chat_stream.stream_id)
+        return await send_api.emoji_to_stream(emoji_base64, self.chat_stream.stream_id)
 
     async def send_image(self, image_base64: str) -> bool:
         """发送图片
@@ -241,12 +244,11 @@ class BaseCommand(ABC):
         Returns:
             bool: 是否发送成功
         """
-        chat_stream = self.message.chat_stream
-        if not chat_stream or not hasattr(chat_stream, "stream_id"):
+        if not self.chat_stream or not hasattr(self.chat_stream, "stream_id"):
             logger.error(f"{self.log_prefix} 缺少聊天流或stream_id")
             return False
 
-        return await send_api.image_to_stream(image_base64, chat_stream.stream_id)
+        return await send_api.image_to_stream(image_base64, self.chat_stream.stream_id)
 
     @classmethod
     def get_command_info(cls) -> "CommandInfo":

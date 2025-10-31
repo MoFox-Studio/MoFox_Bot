@@ -2,7 +2,6 @@ import math
 import random
 import time
 
-from src.chat.message_receive.message import MessageRecv
 from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_by_timestamp_with_chat_inclusive
 from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.common.data_models.database_data_model import DatabaseMessages
@@ -98,7 +97,7 @@ class ChatMood:
                 if not hasattr(self, "last_change_time"):
                     self.last_change_time = 0
 
-    async def update_mood_by_message(self, message: MessageRecv | DatabaseMessages, interested_rate: float):
+    async def update_mood_by_message(self, message: DatabaseMessages, interested_rate: float):
         # 确保异步初始化已完成
         await self._initialize()
 
@@ -109,11 +108,8 @@ class ChatMood:
 
         self.regression_count = 0
 
-        # 处理不同类型的消息对象
-        if isinstance(message, MessageRecv):
-            message_time = message.message_info.time
-        else:  # DatabaseMessages
-            message_time = message.time
+        # 使用 DatabaseMessages 的时间字段
+        message_time = message.time
 
         # 防止负时间差
         during_last_time = max(0, message_time - self.last_change_time)

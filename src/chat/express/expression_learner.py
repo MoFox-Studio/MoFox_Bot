@@ -438,9 +438,9 @@ class ExpressionLearner:
                 try:
                     # 获取 StyleLearner 实例
                     learner = style_learner_manager.get_learner(chat_id)
-                    
+
                     logger.info(f"开始训练 StyleLearner: chat_id={chat_id}, 样本数={len(expr_list)}")
-                    
+
                     # 为每个学习到的表达方式训练模型
                     # 使用 situation 作为输入，style 作为目标
                     # 这是最符合语义的方式：场景 -> 表达方式
@@ -448,25 +448,25 @@ class ExpressionLearner:
                     for expr in expr_list:
                         situation = expr["situation"]
                         style = expr["style"]
-                        
+
                         # 训练映射关系: situation -> style
                         if learner.learn_mapping(situation, style):
                             success_count += 1
                         else:
                             logger.warning(f"训练失败: {situation} -> {style}")
-                    
+
                     logger.info(
                         f"StyleLearner 训练完成: {success_count}/{len(expr_list)} 成功, "
                         f"当前风格总数={len(learner.get_all_styles())}, "
                         f"总样本数={learner.learning_stats['total_samples']}"
                     )
-                    
+
                     # 保存模型
                     if learner.save(style_learner_manager.model_save_path):
                         logger.info(f"StyleLearner 模型保存成功: {chat_id}")
                     else:
                         logger.error(f"StyleLearner 模型保存失败: {chat_id}")
-                        
+
                 except Exception as e:
                     logger.error(f"训练 StyleLearner 失败: {e}", exc_info=True)
 
@@ -527,7 +527,7 @@ class ExpressionLearner:
         logger.debug(f"学习{type_str}的response: {response}")
 
         expressions: list[tuple[str, str, str]] = self.parse_expression_response(response, chat_id)
-        
+
         if not expressions:
             logger.warning(f"从LLM响应中未能解析出任何{type_str}。请检查LLM输出格式是否正确。")
             logger.info(f"LLM完整响应:\n{response}")
@@ -542,26 +542,26 @@ class ExpressionLearner:
         """
         expressions: list[tuple[str, str, str]] = []
         failed_lines = []
-        
+
         for line_num, line in enumerate(response.splitlines(), 1):
             line = line.strip()
             if not line:
                 continue
-            
+
             # 替换中文引号为英文引号，便于统一处理
             line_normalized = line.replace('"', '"').replace('"', '"').replace("'", '"').replace("'", '"')
-            
+
             # 查找"当"和下一个引号
             idx_when = line_normalized.find('当"')
             if idx_when == -1:
                 # 尝试不带引号的格式: 当xxx时
-                idx_when = line_normalized.find('当')
+                idx_when = line_normalized.find("当")
                 if idx_when == -1:
                     failed_lines.append((line_num, line, "找不到'当'关键字"))
                     continue
-                    
+
                 # 提取"当"和"时"之间的内容
-                idx_shi = line_normalized.find('时', idx_when)
+                idx_shi = line_normalized.find("时", idx_when)
                 if idx_shi == -1:
                     failed_lines.append((line_num, line, "找不到'时'关键字"))
                     continue
@@ -575,20 +575,20 @@ class ExpressionLearner:
                     continue
                 situation = line_normalized[idx_quote1 + 1 : idx_quote2]
                 search_start = idx_quote2
-            
+
             # 查找"使用"或"可以"
             idx_use = line_normalized.find('使用"', search_start)
             if idx_use == -1:
                 idx_use = line_normalized.find('可以"', search_start)
                 if idx_use == -1:
                     # 尝试不带引号的格式
-                    idx_use = line_normalized.find('使用', search_start)
+                    idx_use = line_normalized.find("使用", search_start)
                     if idx_use == -1:
-                        idx_use = line_normalized.find('可以', search_start)
+                        idx_use = line_normalized.find("可以", search_start)
                         if idx_use == -1:
                             failed_lines.append((line_num, line, "找不到'使用'或'可以'关键字"))
                             continue
-                    
+
                     # 提取剩余部分作为style
                     style = line_normalized[idx_use + 2:].strip('"\'""，。')
                     if not style:
@@ -610,24 +610,24 @@ class ExpressionLearner:
                     style = line_normalized[idx_quote3 + 1:].strip('"\'""')
                 else:
                     style = line_normalized[idx_quote3 + 1 : idx_quote4]
-            
+
             # 清理并验证
             situation = situation.strip()
             style = style.strip()
-            
+
             if not situation or not style:
                 failed_lines.append((line_num, line, f"situation或style为空: situation='{situation}', style='{style}'"))
                 continue
-            
+
             expressions.append((chat_id, situation, style))
-        
+
         # 记录解析失败的行
         if failed_lines:
             logger.warning(f"解析表达方式时有 {len(failed_lines)} 行失败:")
             for line_num, line, reason in failed_lines[:5]:  # 只显示前5个
                 logger.warning(f"  行{line_num}: {reason}")
                 logger.debug(f"    原文: {line}")
-        
+
         if not expressions:
             logger.warning(f"LLM返回了内容但无法解析任何表达方式。响应预览:\n{response[:500]}")
         else:

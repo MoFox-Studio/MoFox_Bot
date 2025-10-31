@@ -40,7 +40,7 @@ class EventManager:
         self._events: dict[str, BaseEvent] = {}
         self._event_handlers: dict[str, type[BaseEventHandler]] = {}
         self._pending_subscriptions: dict[str, list[str]] = {}  # 缓存失败的订阅
-        self._scheduler_callback: Optional[Any] = None  # scheduler 回调函数
+        self._scheduler_callback: Any | None = None  # scheduler 回调函数
         self._initialized = True
         logger.info("EventManager 单例初始化完成")
 

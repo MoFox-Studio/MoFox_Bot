@@ -429,7 +429,7 @@ MoFox_Bot(第三方修改版)
             await initialize_scheduler()
         except Exception as e:
             logger.error(f"统一调度器初始化失败: {e}")
-            
+
         # 加载所有插件
         plugin_manager.load_all_plugins()
 

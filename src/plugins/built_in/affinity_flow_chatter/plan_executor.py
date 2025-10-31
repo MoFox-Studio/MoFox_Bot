@@ -231,11 +231,11 @@ class ChatterPlanExecutor:
         except Exception as e:
             error_message = str(e)
             logger.error(f"执行回复动作失败: {action_info.action_type}, 错误: {error_message}")
-        
+
         # 将机器人回复添加到已读消息中
         if success and action_info.action_message:
             await self._add_bot_reply_to_read_messages(action_info, plan, reply_content)
-        
+
         execution_time = time.time() - start_time
         self.execution_stats["execution_times"].append(execution_time)
 
@@ -381,13 +381,11 @@ class ChatterPlanExecutor:
                 is_picid=False,
                 is_command=False,
                 is_notify=False,
-
                 # 用户信息
                 user_id=bot_user_id,
                 user_nickname=bot_nickname,
                 user_cardname=bot_nickname,
                 user_platform="qq",
-
                 # 聊天上下文信息
                 chat_info_user_id=chat_stream.user_info.user_id if chat_stream.user_info else bot_user_id,
                 chat_info_user_nickname=chat_stream.user_info.user_nickname if chat_stream.user_info else bot_nickname,
@@ -397,24 +395,21 @@ class ChatterPlanExecutor:
                 chat_info_platform=chat_stream.platform,
                 chat_info_create_time=chat_stream.create_time,
                 chat_info_last_active_time=chat_stream.last_active_time,
-
                 # 群组信息（如果是群聊）
                 chat_info_group_id=chat_stream.group_info.group_id if chat_stream.group_info else None,
                 chat_info_group_name=chat_stream.group_info.group_name if chat_stream.group_info else None,
-                chat_info_group_platform=getattr(chat_stream.group_info, "platform", None) if chat_stream.group_info else None,
-
+                chat_info_group_platform=getattr(chat_stream.group_info, "platform", None)
+                if chat_stream.group_info
+                else None,
                 # 动作信息
                 actions=["bot_reply"],
                 should_reply=False,
-                should_act=False
+                should_act=False,
             )
 
             # 添加到chat_stream的已读消息中
-            if hasattr(chat_stream, "stream_context") and chat_stream.stream_context:
-                chat_stream.stream_context.history_messages.append(bot_message)
-                logger.debug(f"机器人回复已添加到已读消息: {reply_content[:50]}...")
-            else:
-                logger.warning("chat_stream没有stream_context，无法添加已读消息")
+            chat_stream.context_manager.context.history_messages.append(bot_message)
+            logger.debug(f"机器人回复已添加到已读消息: {reply_content[:50]}...")
 
         except Exception as e:
             logger.error(f"添加机器人回复到已读消息时出错: {e}")

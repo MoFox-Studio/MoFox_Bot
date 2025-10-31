@@ -6,7 +6,7 @@
 
 import re
 
-from src.chat.message_receive.message import MessageRecv
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 
 logger = get_logger("anti_injector.message_processor")
@@ -15,7 +15,7 @@ logger = get_logger("anti_injector.message_processor")
 class MessageProcessor:
     """消息内容处理器"""
 
-    def extract_text_content(self, message: MessageRecv) -> str:
+    def extract_text_content(self, message: DatabaseMessages) -> str:
         """提取消息中的文本内容，过滤掉引用的历史内容
 
         Args:
@@ -64,7 +64,7 @@ class MessageProcessor:
         return new_content
 
     @staticmethod
-    def check_whitelist(message: MessageRecv, whitelist: list) -> tuple | None:
+    def check_whitelist(message: DatabaseMessages, whitelist: list) -> tuple | None:
         """检查用户白名单
 
         Args:
@@ -74,8 +74,8 @@ class MessageProcessor:
         Returns:
             如果在白名单中返回结果元组，否则返回None
         """
-        user_id = message.message_info.user_info.user_id
-        platform = message.message_info.platform
+        user_id = message.user_info.user_id
+        platform = message.chat_info.platform
 
         # 检查用户白名单：格式为 [[platform, user_id], ...]
         for whitelist_entry in whitelist:

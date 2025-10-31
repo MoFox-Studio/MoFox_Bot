@@ -9,7 +9,6 @@ from typing import Any
 
 from src.chat.chatter_manager import ChatterManager
 from src.chat.energy_system import energy_manager
-from src.chat.message_manager.adaptive_stream_manager import StreamPriority
 from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -70,10 +69,10 @@ class StreamLoopManager:
         try:
             # 获取所有活跃的流
             from src.plugin_system.apis.chat_api import get_chat_manager
-            
+
             chat_manager = get_chat_manager()
             all_streams = await chat_manager.get_all_streams()
-            
+
             # 创建任务列表以便并发取消
             cancel_tasks = []
             for chat_stream in all_streams:
@@ -117,38 +116,13 @@ class StreamLoopManager:
             logger.debug(f"流 {stream_id} 循环已在运行")
             return True
 
-        # 使用自适应流管理器获取槽位
-        try:
-            from src.chat.message_manager.adaptive_stream_manager import get_adaptive_stream_manager
-
-            adaptive_manager = get_adaptive_stream_manager()
-
-            if adaptive_manager.is_running:
-                # 确定流优先级
-                priority = self._determine_stream_priority(stream_id)
-
-                # 获取处理槽位
-                slot_acquired = await adaptive_manager.acquire_stream_slot(
-                    stream_id=stream_id, priority=priority, force=force
-                )
-
-                if slot_acquired:
-                    logger.debug(f"成功获取流处理槽位: {stream_id} (优先级: {priority.name})")
-                else:
-                    logger.debug(f"自适应管理器拒绝槽位请求: {stream_id}，尝试回退方案")
-            else:
-                logger.debug("自适应管理器未运行")
-
-        except Exception as e:
-            logger.debug(f"自适应管理器获取槽位失败: {e}")
-
         # 创建流循环任务
         try:
             loop_task = asyncio.create_task(self._stream_loop_worker(stream_id), name=f"stream_loop_{stream_id}")
-            
+
             # 将任务记录到 StreamContext 中
             context.stream_loop_task = loop_task
-            
+
             # 更新统计信息
             self.stats["active_streams"] += 1
             self.stats["total_loops"] += 1
@@ -158,34 +132,7 @@ class StreamLoopManager:
 
         except Exception as e:
             logger.error(f"启动流循环任务失败 {stream_id}: {e}")
-            # 释放槽位
-            from src.chat.message_manager.adaptive_stream_manager import get_adaptive_stream_manager
-
-            adaptive_manager = get_adaptive_stream_manager()
-            adaptive_manager.release_stream_slot(stream_id)
-
             return False
-
-    def _determine_stream_priority(self, stream_id: str) -> "StreamPriority":
-        """确定流优先级"""
-        try:
-            from src.chat.message_manager.adaptive_stream_manager import StreamPriority
-
-            # 这里可以基于流的历史数据、用户身份等确定优先级
-            # 简化版本：基于流ID的哈希值分配优先级
-            hash_value = hash(stream_id) % 10
-
-            if hash_value >= 8:  # 20% 高优先级
-                return StreamPriority.HIGH
-            elif hash_value >= 5:  # 30% 中等优先级
-                return StreamPriority.NORMAL
-            else:  # 50% 低优先级
-                return StreamPriority.LOW
-
-        except Exception:
-            from src.chat.message_manager.adaptive_stream_manager import StreamPriority
-
-            return StreamPriority.NORMAL
 
     async def stop_stream_loop(self, stream_id: str) -> bool:
         """停止指定流的循环任务
@@ -222,7 +169,7 @@ class StreamLoopManager:
 
         # 清空 StreamContext 中的任务记录
         context.stream_loop_task = None
-            
+
         logger.info(f"停止流循环: {stream_id}")
         return True
 
@@ -248,31 +195,18 @@ class StreamLoopManager:
                     unread_count = self._get_unread_count(context)
                     force_dispatch = self._needs_force_dispatch_for_context(context, unread_count)
 
-                    # 3. 更新自适应管理器指标
-                    try:
-                        from src.chat.message_manager.adaptive_stream_manager import get_adaptive_stream_manager
-
-                        adaptive_manager = get_adaptive_stream_manager()
-                        adaptive_manager.update_stream_metrics(
-                            stream_id,
-                            message_rate=unread_count / 5.0 if unread_count > 0 else 0.0,  # 简化计算
-                            last_activity=time.time(),
-                        )
-                    except Exception as e:
-                        logger.debug(f"更新流指标失败: {e}")
-
                     has_messages = force_dispatch or await self._has_messages_to_process(context)
 
                     if has_messages:
                         if force_dispatch:
                             logger.info("流 %s 未读消息 %d 条，触发强制分发", stream_id, unread_count)
-                        
+
                         # 3. 在处理前更新能量值（用于下次间隔计算）
                         try:
                             await self._update_stream_energy(stream_id, context)
                         except Exception as e:
                             logger.debug(f"更新流能量失败 {stream_id}: {e}")
-                        
+
                         # 4. 激活chatter处理
                         success = await self._process_stream_messages(stream_id, context)
 
@@ -312,16 +246,6 @@ class StreamLoopManager:
                     logger.debug(f"清理 StreamContext 中的流循环任务: {stream_id}")
             except Exception as e:
                 logger.debug(f"清理 StreamContext 任务记录失败: {e}")
-
-            # 释放自适应管理器的槽位
-            try:
-                from src.chat.message_manager.adaptive_stream_manager import get_adaptive_stream_manager
-
-                adaptive_manager = get_adaptive_stream_manager()
-                adaptive_manager.release_stream_slot(stream_id)
-                logger.debug(f"释放自适应流处理槽位: {stream_id}")
-            except Exception as e:
-                logger.debug(f"释放自适应流处理槽位失败: {e}")
 
             # 清理间隔记录
             self._last_intervals.pop(stream_id, None)
@@ -447,7 +371,7 @@ class StreamLoopManager:
             # 清除 Chatter 处理标志
             context.is_chatter_processing = False
             logger.debug(f"清除 Chatter 处理标志: {stream_id}")
-            
+
             # 无论成功或失败，都要设置处理状态为未处理
             self._set_stream_processing_status(stream_id, False)
 
@@ -508,48 +432,48 @@ class StreamLoopManager:
         """
         try:
             from src.chat.message_receive.chat_stream import get_chat_manager
-            
+
             # 获取聊天流
             chat_manager = get_chat_manager()
             chat_stream = await chat_manager.get_stream(stream_id)
-            
+
             if not chat_stream:
                 logger.debug(f"无法找到聊天流 {stream_id}，跳过能量更新")
                 return
-            
+
             # 从 context_manager 获取消息（包括未读和历史消息）
             # 合并未读消息和历史消息
             all_messages = []
-            
+
             # 添加历史消息
             history_messages = context.get_history_messages(limit=global_config.chat.max_context_size)
             all_messages.extend(history_messages)
-            
+
             # 添加未读消息
             unread_messages = context.get_unread_messages()
             all_messages.extend(unread_messages)
-            
+
             # 按时间排序并限制数量
             all_messages.sort(key=lambda m: m.time)
             messages = all_messages[-global_config.chat.max_context_size:]
-            
+
             # 获取用户ID
             user_id = None
             if context.triggering_user_id:
                 user_id = context.triggering_user_id
-            
+
             # 使用能量管理器计算并缓存能量值
             energy = await energy_manager.calculate_focus_energy(
                 stream_id=stream_id,
                 messages=messages,
                 user_id=user_id
             )
-            
+
             # 同步更新到 ChatStream
             chat_stream._focus_energy = energy
-            
+
             logger.debug(f"已更新流 {stream_id} 的能量值: {energy:.3f}")
-            
+
         except Exception as e:
             logger.warning(f"更新流能量失败 {stream_id}: {e}", exc_info=False)
 
@@ -746,7 +670,7 @@ class StreamLoopManager:
 
             # 使用 start_stream_loop 重新创建流循环任务
             success = await self.start_stream_loop(stream_id, force=True)
-            
+
             if success:
                 logger.info(f"已创建强制分发流循环: {stream_id}")
             else:

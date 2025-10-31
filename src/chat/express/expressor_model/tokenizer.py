@@ -1,7 +1,6 @@
 """
 文本分词器，支持中文Jieba分词
 """
-from typing import List
 
 from src.common.logger import get_logger
 
@@ -30,7 +29,7 @@ class Tokenizer:
                 logger.warning("Jieba未安装，将使用字符级分词")
                 self.use_jieba = False
 
-    def tokenize(self, text: str) -> List[str]:
+    def tokenize(self, text: str) -> list[str]:
         """
         分词并返回token列表
 

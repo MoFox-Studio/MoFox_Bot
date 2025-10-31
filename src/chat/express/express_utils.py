@@ -5,14 +5,14 @@
 import difflib
 import random
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.common.logger import get_logger
 
 logger = get_logger("express_utils")
 
 
-def filter_message_content(content: Optional[str]) -> str:
+def filter_message_content(content: str | None) -> str:
     """
     过滤消息内容，移除回复、@、图片等格式
 
@@ -51,7 +51,7 @@ def calculate_similarity(text1: str, text2: str) -> float:
     return difflib.SequenceMatcher(None, text1, text2).ratio()
 
 
-def weighted_sample(population: List[Dict], k: int, weight_key: Optional[str] = None) -> List[Dict]:
+def weighted_sample(population: list[dict], k: int, weight_key: str | None = None) -> list[dict]:
     """
     加权随机抽样函数
 
@@ -108,7 +108,7 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
-def extract_keywords(text: str, max_keywords: int = 10) -> List[str]:
+def extract_keywords(text: str, max_keywords: int = 10) -> list[str]:
     """
     简单的关键词提取（基于词频）
 
@@ -135,7 +135,7 @@ def extract_keywords(text: str, max_keywords: int = 10) -> List[str]:
         return words[:max_keywords]
 
 
-def format_expression_pair(situation: str, style: str, index: Optional[int] = None) -> str:
+def format_expression_pair(situation: str, style: str, index: int | None = None) -> str:
     """
     格式化表达方式对
 
@@ -153,7 +153,7 @@ def format_expression_pair(situation: str, style: str, index: Optional[int] = No
         return f'当"{situation}"时，使用"{style}"'
 
 
-def parse_expression_pair(text: str) -> Optional[tuple[str, str]]:
+def parse_expression_pair(text: str) -> tuple[str, str] | None:
     """
     解析表达方式对文本
 
@@ -170,7 +170,7 @@ def parse_expression_pair(text: str) -> Optional[tuple[str, str]]:
     return None
 
 
-def batch_filter_duplicates(expressions: List[Dict[str, Any]], key_fields: List[str]) -> List[Dict[str, Any]]:
+def batch_filter_duplicates(expressions: list[dict[str, Any]], key_fields: list[str]) -> list[dict[str, Any]]:
     """
     批量去重表达方式
 
@@ -219,8 +219,8 @@ def calculate_time_weight(last_active_time: float, current_time: float, half_lif
 
 
 def merge_expressions_from_multiple_chats(
-    expressions_dict: Dict[str, List[Dict[str, Any]]], max_total: int = 100
-) -> List[Dict[str, Any]]:
+    expressions_dict: dict[str, list[dict[str, Any]]], max_total: int = 100
+) -> list[dict[str, Any]]:
     """
     合并多个聊天室的表达方式
 

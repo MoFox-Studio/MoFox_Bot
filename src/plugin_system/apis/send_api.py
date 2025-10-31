@@ -55,7 +55,7 @@ async def file_to_stream(
 
    if not file_name:
        file_name = Path(file_path).name
-   
+
    params = {
        "file": file_path,
        "name": file_name,
@@ -68,7 +68,7 @@ async def file_to_stream(
    else:
        action = "upload_private_file"
        params["user_id"] = target_stream.user_info.user_id
-   
+
    response = await adapter_command_to_stream(
        action=action,
        params=params,
@@ -86,13 +86,16 @@ async def file_to_stream(
 import asyncio
 import time
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maim_message import Seg, UserInfo
 
+if TYPE_CHECKING:
+    from src.common.data_models.database_data_model import DatabaseMessages
+
 # 导入依赖
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
-from src.chat.message_receive.message import MessageRecv, MessageSending
+from src.chat.message_receive.message import MessageSending
 from src.chat.message_receive.uni_message_sender import HeartFCSender
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -104,84 +107,53 @@ logger = get_logger("send_api")
 _adapter_response_pool: dict[str, asyncio.Future] = {}
 
 
-def message_dict_to_message_recv(message_dict: dict[str, Any]) -> MessageRecv | None:
-    """查找要回复的消息
+def message_dict_to_db_message(message_dict: dict[str, Any]) -> "DatabaseMessages | None":
+    """从消息字典构建 DatabaseMessages 对象
 
     Args:
         message_dict: 消息字典或 DatabaseMessages 对象
 
     Returns:
-        Optional[MessageRecv]: 找到的消息，如果没找到则返回None
+        Optional[DatabaseMessages]: 构建的消息对象，如果构建失败则返回None
     """
-    # 兼容 DatabaseMessages 对象和字典
-    if isinstance(message_dict, dict):
-        user_platform = message_dict.get("user_platform", "")
-        user_id = message_dict.get("user_id", "")
-        user_nickname = message_dict.get("user_nickname", "")
-        user_cardname = message_dict.get("user_cardname", "")
-        chat_info_group_id = message_dict.get("chat_info_group_id")
-        chat_info_group_platform = message_dict.get("chat_info_group_platform", "")
-        chat_info_group_name = message_dict.get("chat_info_group_name", "")
-        chat_info_platform = message_dict.get("chat_info_platform", "")
-        message_id = message_dict.get("message_id") or message_dict.get("chat_info_message_id") or message_dict.get("id")
-        time_val = message_dict.get("time")
-        additional_config = message_dict.get("additional_config")
-        processed_plain_text = message_dict.get("processed_plain_text")
-    else:
-        # DatabaseMessages 对象
-        user_platform = getattr(message_dict, "user_platform", "")
-        user_id = getattr(message_dict, "user_id", "")
-        user_nickname = getattr(message_dict, "user_nickname", "")
-        user_cardname = getattr(message_dict, "user_cardname", "")
-        chat_info_group_id = getattr(message_dict, "chat_info_group_id", None)
-        chat_info_group_platform = getattr(message_dict, "chat_info_group_platform", "")
-        chat_info_group_name = getattr(message_dict, "chat_info_group_name", "")
-        chat_info_platform = getattr(message_dict, "chat_info_platform", "")
-        message_id = getattr(message_dict, "message_id", None)
-        time_val = getattr(message_dict, "time", None)
-        additional_config = getattr(message_dict, "additional_config", None)
-        processed_plain_text = getattr(message_dict, "processed_plain_text", "")
-    
-    # 构建MessageRecv对象
-    user_info = {
-        "platform": user_platform,
-        "user_id": user_id,
-        "user_nickname": user_nickname,
-        "user_cardname": user_cardname,
-    }
+    from src.common.data_models.database_data_model import DatabaseMessages
 
-    group_info = {}
-    if chat_info_group_id:
-        group_info = {
-            "platform": chat_info_group_platform,
-            "group_id": chat_info_group_id,
-            "group_name": chat_info_group_name,
-        }
+    # 如果已经是 DatabaseMessages，直接返回
+    if isinstance(message_dict, DatabaseMessages):
+        return message_dict
 
-    format_info = {"content_format": "", "accept_format": ""}
-    template_info = {"template_items": {}}
+    # 从字典提取信息
+    user_platform = message_dict.get("user_platform", "")
+    user_id = message_dict.get("user_id", "")
+    user_nickname = message_dict.get("user_nickname", "")
+    user_cardname = message_dict.get("user_cardname", "")
+    chat_info_group_id = message_dict.get("chat_info_group_id")
+    chat_info_group_platform = message_dict.get("chat_info_group_platform", "")
+    chat_info_group_name = message_dict.get("chat_info_group_name", "")
+    chat_info_platform = message_dict.get("chat_info_platform", "")
+    message_id = message_dict.get("message_id") or message_dict.get("chat_info_message_id") or message_dict.get("id")
+    time_val = message_dict.get("time", time.time())
+    additional_config = message_dict.get("additional_config")
+    processed_plain_text = message_dict.get("processed_plain_text", "")
 
-    message_info = {
-        "platform": chat_info_platform,
-        "message_id": message_id,
-        "time": time_val,
-        "group_info": group_info,
-        "user_info": user_info,
-        "additional_config": additional_config,
-        "format_info": format_info,
-        "template_info": template_info,
-    }
+    # DatabaseMessages 使用扁平参数构造
+    db_message = DatabaseMessages(
+        message_id=message_id or "temp_reply_id",
+        time=time_val,
+        user_id=user_id,
+        user_nickname=user_nickname,
+        user_cardname=user_cardname,
+        user_platform=user_platform,
+        chat_info_group_id=chat_info_group_id,
+        chat_info_group_name=chat_info_group_name,
+        chat_info_group_platform=chat_info_group_platform,
+        chat_info_platform=chat_info_platform,
+        processed_plain_text=processed_plain_text,
+        additional_config=additional_config
+    )
 
-    new_message_dict = {
-        "message_info": message_info,
-        "raw_message": processed_plain_text,
-        "processed_plain_text": processed_plain_text,
-    }
-
-    message_recv = MessageRecv(new_message_dict)
-
-    logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {user_nickname}")
-    return message_recv
+    logger.info(f"[SendAPI] 构建回复消息对象，发送者: {user_nickname}")
+    return db_message
 
 
 def put_adapter_response(request_id: str, response_data: dict) -> None:
@@ -285,17 +257,17 @@ async def _send_to_target(
                     "message_id": "temp_reply_id", # 临时ID
                     "time": time.time()
                 }
-                anchor_message = message_dict_to_message_recv(message_dict=temp_message_dict)
+                anchor_message = message_dict_to_db_message(message_dict=temp_message_dict)
             else:
                  anchor_message = None
             reply_to_platform_id = f"{target_stream.platform}:{sender_id}" if anchor_message else None
 
         elif reply_to_message:
-            anchor_message = message_dict_to_message_recv(message_dict=reply_to_message)
+            anchor_message = message_dict_to_db_message(message_dict=reply_to_message)
             if anchor_message:
-                anchor_message.update_chat_stream(target_stream)
+                # DatabaseMessages 不需要 update_chat_stream，它是纯数据对象
                 reply_to_platform_id = (
-                    f"{anchor_message.message_info.platform}:{anchor_message.message_info.user_info.user_id}"
+                    f"{anchor_message.chat_info.platform}:{anchor_message.user_info.user_id}"
                 )
             else:
                 reply_to_platform_id = None

@@ -5,9 +5,10 @@
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from collections.abc import Awaitable, Callable
+from datetime import datetime
 from enum import Enum
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import EventType
@@ -33,9 +34,9 @@ class ScheduleTask:
         trigger_type: TriggerType,
         trigger_config: dict[str, Any],
         is_recurring: bool = False,
-        task_name: Optional[str] = None,
-        callback_args: Optional[tuple] = None,
-        callback_kwargs: Optional[dict] = None,
+        task_name: str | None = None,
+        callback_args: tuple | None = None,
+        callback_kwargs: dict | None = None,
     ):
         self.schedule_id = schedule_id
         self.callback = callback
@@ -46,7 +47,7 @@ class ScheduleTask:
         self.callback_args = callback_args or ()
         self.callback_kwargs = callback_kwargs or {}
         self.created_at = datetime.now()
-        self.last_triggered_at: Optional[datetime] = None
+        self.last_triggered_at: datetime | None = None
         self.trigger_count = 0
         self.is_active = True
 
@@ -77,7 +78,7 @@ class UnifiedScheduler:
     def __init__(self):
         self._tasks: dict[str, ScheduleTask] = {}
         self._running = False
-        self._check_task: Optional[asyncio.Task] = None
+        self._check_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._event_subscriptions: set[str] = set()  # 追踪已订阅的事件
 
@@ -111,7 +112,7 @@ class UnifiedScheduler:
         for task in event_tasks:
             try:
                 logger.debug(f"[调度器] 执行事件任务: {task.task_name}")
-                
+
                 # 执行回调，传入事件参数
                 if event_params:
                     if asyncio.iscoroutinefunction(task.callback):
@@ -127,7 +128,7 @@ class UnifiedScheduler:
                 # 如果不是循环任务，标记为删除
                 if not task.is_recurring:
                     tasks_to_remove.append(task.schedule_id)
-                    
+
                 logger.debug(f"[调度器] 事件任务 {task.task_name} 执行完成")
 
             except Exception as e:
@@ -204,11 +205,11 @@ class UnifiedScheduler:
         注意：为了避免死锁，回调执行必须在锁外进行
         """
         current_time = datetime.now()
-        
+
         # 第一阶段：在锁内快速收集需要触发的任务
         async with self._lock:
             tasks_to_trigger = []
-            
+
             for schedule_id, task in list(self._tasks.items()):
                 if not task.is_active:
                     continue
@@ -219,14 +220,14 @@ class UnifiedScheduler:
                         tasks_to_trigger.append(task)
                 except Exception as e:
                     logger.error(f"检查任务 {task.task_name} 时发生错误: {e}", exc_info=True)
-        
+
         # 第二阶段：在锁外执行回调（避免死锁）
         tasks_to_remove = []
-        
+
         for task in tasks_to_trigger:
             try:
                 logger.debug(f"[调度器] 触发定时任务: {task.task_name}")
-                
+
                 # 执行回调
                 await self._execute_callback(task)
 
@@ -339,9 +340,9 @@ class UnifiedScheduler:
         trigger_type: TriggerType,
         trigger_config: dict[str, Any],
         is_recurring: bool = False,
-        task_name: Optional[str] = None,
-        callback_args: Optional[tuple] = None,
-        callback_kwargs: Optional[dict] = None,
+        task_name: str | None = None,
+        callback_args: tuple | None = None,
+        callback_kwargs: dict | None = None,
     ) -> str:
         """创建调度任务（详细注释见文档）"""
         schedule_id = str(uuid.uuid4())
@@ -430,7 +431,7 @@ class UnifiedScheduler:
             logger.info(f"恢复任务: {task.task_name} (ID: {schedule_id[:8]}...)")
             return True
 
-    async def get_task_info(self, schedule_id: str) -> Optional[dict[str, Any]]:
+    async def get_task_info(self, schedule_id: str) -> dict[str, Any] | None:
         """获取任务信息"""
         async with self._lock:
             task = self._tasks.get(schedule_id)
@@ -449,7 +450,7 @@ class UnifiedScheduler:
                 "trigger_config": task.trigger_config.copy(),
             }
 
-    async def list_tasks(self, trigger_type: Optional[TriggerType] = None) -> list[dict[str, Any]]:
+    async def list_tasks(self, trigger_type: TriggerType | None = None) -> list[dict[str, Any]]:
         """列出所有任务或指定类型的任务"""
         async with self._lock:
             tasks = []
@@ -499,11 +500,11 @@ async def initialize_scheduler():
         logger.info("正在启动统一调度器...")
         await unified_scheduler.start()
         logger.info("统一调度器启动成功")
-        
+
         # 获取初始统计信息
         stats = unified_scheduler.get_statistics()
         logger.info(f"调度器状态: {stats}")
-        
+
     except Exception as e:
         logger.error(f"启动统一调度器失败: {e}", exc_info=True)
         raise
@@ -516,20 +517,20 @@ async def shutdown_scheduler():
     """
     try:
         logger.info("正在关闭统一调度器...")
-        
+
         # 显示最终统计
         stats = unified_scheduler.get_statistics()
         logger.info(f"调度器最终统计: {stats}")
-        
+
         # 列出剩余任务
         remaining_tasks = await unified_scheduler.list_tasks()
         if remaining_tasks:
             logger.warning(f"检测到 {len(remaining_tasks)} 个未清理的任务:")
             for task in remaining_tasks:
                 logger.warning(f"  - {task['task_name']} (ID: {task['schedule_id'][:8]}...)")
-        
+
         await unified_scheduler.stop()
         logger.info("统一调度器已关闭")
-        
+
     except Exception as e:
         logger.error(f"关闭统一调度器失败: {e}", exc_info=True)
