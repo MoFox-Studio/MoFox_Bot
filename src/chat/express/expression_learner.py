@@ -234,51 +234,45 @@ class ExpressionLearner:
         """
         获取指定chat_id的style和grammar表达方式
         返回的每个表达方式字典中都包含了source_id, 用于后续的更新操作
+        
+        优化: 一次查询获取所有类型的表达方式，避免多次数据库查询
         """
         learnt_style_expressions = []
         learnt_grammar_expressions = []
 
-        # 直接从数据库查询
+        # 优化: 一次查询获取所有表达方式
         async with get_db_session() as session:
-            style_query = await session.execute(
-                select(Expression).where((Expression.chat_id == self.chat_id) & (Expression.type == "style"))
+            all_expressions = await session.execute(
+                select(Expression).where(Expression.chat_id == self.chat_id)
             )
-        for expr in style_query.scalars():
-            # 确保create_date存在，如果不存在则使用last_active_time
-            create_date = expr.create_date if expr.create_date is not None else expr.last_active_time
-            learnt_style_expressions.append(
-                {
+            
+            for expr in all_expressions.scalars():
+                # 确保create_date存在，如果不存在则使用last_active_time
+                create_date = expr.create_date if expr.create_date is not None else expr.last_active_time
+                
+                expr_data = {
                     "situation": expr.situation,
                     "style": expr.style,
                     "count": expr.count,
                     "last_active_time": expr.last_active_time,
                     "source_id": self.chat_id,
-                    "type": "style",
+                    "type": expr.type,
                     "create_date": create_date,
                 }
-            )
-        grammar_query = await session.execute(
-            select(Expression).where((Expression.chat_id == self.chat_id) & (Expression.type == "grammar"))
-        )
-        for expr in grammar_query.scalars():
-            # 确保create_date存在，如果不存在则使用last_active_time
-            create_date = expr.create_date if expr.create_date is not None else expr.last_active_time
-            learnt_grammar_expressions.append(
-                {
-                    "situation": expr.situation,
-                    "style": expr.style,
-                    "count": expr.count,
-                    "last_active_time": expr.last_active_time,
-                    "source_id": self.chat_id,
-                    "type": "grammar",
-                    "create_date": create_date,
-                }
-            )
+                
+                # 根据类型分类
+                if expr.type == "style":
+                    learnt_style_expressions.append(expr_data)
+                elif expr.type == "grammar":
+                    learnt_grammar_expressions.append(expr_data)
+        
         return learnt_style_expressions, learnt_grammar_expressions
 
     async def _apply_global_decay_to_database(self, current_time: float) -> None:
         """
         对数据库中的所有表达方式应用全局衰减
+        
+        优化: 批量处理所有更改，最后统一提交，避免逐条提交
         """
         try:
             async with get_db_session() as session:
@@ -286,30 +280,32 @@ class ExpressionLearner:
                 all_expressions = await session.execute(select(Expression))
                 all_expressions = all_expressions.scalars().all()
 
-            updated_count = 0
-            deleted_count = 0
+                updated_count = 0
+                deleted_count = 0
 
-            for expr in all_expressions:
-                # 计算时间差
-                last_active = expr.last_active_time
-                time_diff_days = (current_time - last_active) / (24 * 3600)  # 转换为天
+                # 优化: 批量处理所有修改
+                for expr in all_expressions:
+                    # 计算时间差
+                    last_active = expr.last_active_time
+                    time_diff_days = (current_time - last_active) / (24 * 3600)  # 转换为天
 
-                # 计算衰减值
-                decay_value = self.calculate_decay_factor(time_diff_days)
-                new_count = max(0.01, expr.count - decay_value)
+                    # 计算衰减值
+                    decay_value = self.calculate_decay_factor(time_diff_days)
+                    new_count = max(0.01, expr.count - decay_value)
 
-                if new_count <= 0.01:
-                    # 如果count太小，删除这个表达方式
-                    await session.delete(expr)
+                    if new_count <= 0.01:
+                        # 如果count太小，删除这个表达方式
+                        await session.delete(expr)
+                        deleted_count += 1
+                    else:
+                        # 更新count
+                        expr.count = new_count
+                        updated_count += 1
+
+                # 优化: 统一提交所有更改（从N次提交减少到1次）
+                if updated_count > 0 or deleted_count > 0:
                     await session.commit()
-                    deleted_count += 1
-                else:
-                    # 更新count
-                    expr.count = new_count
-                    updated_count += 1
-
-            if updated_count > 0 or deleted_count > 0:
-                logger.info(f"全局衰减完成：更新了 {updated_count} 个表达方式，删除了 {deleted_count} 个表达方式")
+                    logger.info(f"全局衰减完成：更新了 {updated_count} 个表达方式，删除了 {deleted_count} 个表达方式")
 
         except Exception as e:
             logger.error(f"数据库全局衰减失败: {e}")
