@@ -62,36 +62,6 @@ class ChatStream:
         self._focus_energy = 0.5  # 内部存储的focus_energy值
         self.no_reply_consecutive = 0
 
-    def __deepcopy__(self, memo):
-        """自定义深拷贝方法，避免复制不可序列化的 asyncio.Task 对象"""
-        import copy
-
-        # 创建新的实例
-        new_stream = ChatStream(
-            stream_id=self.stream_id,
-            platform=self.platform,
-            user_info=copy.deepcopy(self.user_info, memo),
-            group_info=copy.deepcopy(self.group_info, memo),
-        )
-
-        # 复制基本属性
-        new_stream.create_time = self.create_time
-        new_stream.last_active_time = self.last_active_time
-        new_stream.sleep_pressure = self.sleep_pressure
-        new_stream.saved = self.saved
-        new_stream.base_interest_energy = self.base_interest_energy
-        new_stream._focus_energy = self._focus_energy
-        new_stream.no_reply_consecutive = self.no_reply_consecutive
-
-        # 复制 context_manager（包含 stream_context）
-        new_stream.context_manager = copy.deepcopy(self.context_manager, memo)
-        
-        # 清理 processing_task（如果存在）
-        if hasattr(new_stream.context_manager.context, "processing_task"):
-            new_stream.context_manager.context.processing_task = None
-
-        return new_stream
-
     def to_dict(self) -> dict:
         """转换为字典格式"""
         return {
@@ -461,7 +431,6 @@ class ChatManager:
 
                 # 更新用户信息和群组信息
                 stream.update_active_time()
-                stream = copy.deepcopy(stream)  # 返回副本以避免外部修改影响缓存
                 if user_info.platform and user_info.user_id:
                     stream.user_info = user_info
                 if group_info:
@@ -530,7 +499,6 @@ class ChatManager:
             logger.error(f"获取或创建聊天流失败: {e}", exc_info=True)
             raise e
 
-        stream = copy.deepcopy(stream)
         from src.common.data_models.database_data_model import DatabaseMessages
 
         if stream_id in self.last_messages and isinstance(self.last_messages[stream_id], DatabaseMessages):
@@ -539,11 +507,12 @@ class ChatManager:
             logger.debug(f"聊天流 {stream_id} 不在最后消息列表中，可能是新创建的")
 
         # 确保 ChatStream 有自己的 context_manager
-        if not hasattr(stream, "context_manager"):
+        if not hasattr(stream, "context_manager") or stream.context_manager is None:
             from src.chat.message_manager.context_manager import SingleStreamContextManager
             from src.common.data_models.message_manager_data_model import StreamContext
             from src.plugin_system.base.component_types import ChatMode, ChatType
 
+            logger.info(f"为 stream {stream_id} 创建新的 context_manager")
             stream.context_manager = SingleStreamContextManager(
                 stream_id=stream_id,
                 context=StreamContext(
@@ -552,6 +521,8 @@ class ChatManager:
                     chat_mode=ChatMode.NORMAL,
                 ),
             )
+        else:
+            logger.info(f"stream {stream_id} 已有 context_manager，跳过创建")
 
         # 保存到内存和数据库
         self.streams[stream_id] = stream
@@ -781,11 +752,12 @@ class ChatManager:
                 #     await stream.set_context(self.last_messages[stream.stream_id])
 
                 # 确保 ChatStream 有自己的 context_manager
-                if not hasattr(stream, "context_manager"):
+                if not hasattr(stream, "context_manager") or stream.context_manager is None:
                     from src.chat.message_manager.context_manager import SingleStreamContextManager
                     from src.common.data_models.message_manager_data_model import StreamContext
                     from src.plugin_system.base.component_types import ChatMode, ChatType
 
+                    logger.debug(f"为加载的 stream {stream.stream_id} 创建新的 context_manager")
                     stream.context_manager = SingleStreamContextManager(
                         stream_id=stream.stream_id,
                         context=StreamContext(
@@ -794,6 +766,8 @@ class ChatManager:
                             chat_mode=ChatMode.NORMAL,
                         ),
                     )
+                else:
+                    logger.debug(f"加载的 stream {stream.stream_id} 已有 context_manager")
         except Exception as e:
             logger.error(f"从数据库加载所有聊天流失败 (SQLAlchemy): {e}", exc_info=True)
 

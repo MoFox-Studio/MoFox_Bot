@@ -74,18 +74,6 @@ class MessageManager:
         # 启动消息缓存系统（内置）
         logger.info("📦 消息缓存系统已启动")
 
-        # 启动自适应流管理器
-        try:
-            from src.chat.message_manager.adaptive_stream_manager import init_adaptive_stream_manager
-
-            await init_adaptive_stream_manager()
-            logger.info("🎯 自适应流管理器已启动")
-        except Exception as e:
-            logger.error(f"启动自适应流管理器失败: {e}")
-
-        # 启动睡眠和唤醒管理器
-        # 睡眠系统的定时任务启动移至 main.py
-
         # 启动流循环管理器并设置chatter_manager
         await stream_loop_manager.start()
         stream_loop_manager.set_chatter_manager(self.chatter_manager)
@@ -112,16 +100,6 @@ class MessageManager:
         self.message_caches.clear()
         self.stream_processing_status.clear()
         logger.info("📦 消息缓存系统已停止")
-
-        # 停止自适应流管理器
-        try:
-            from src.chat.message_manager.adaptive_stream_manager import shutdown_adaptive_stream_manager
-
-            await shutdown_adaptive_stream_manager()
-            logger.info("🎯 自适应流管理器已停止")
-        except Exception as e:
-            logger.error(f"停止自适应流管理器失败: {e}")
-
 
         # 停止流循环管理器
         await stream_loop_manager.stop()

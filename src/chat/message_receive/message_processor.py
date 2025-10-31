@@ -79,13 +79,9 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
     group_name = group_info.group_name if group_info else None
     group_platform = group_info.platform if group_info else None
     
-    # 生成 chat_id
-    if group_info and group_id:
-        chat_id = f"{platform}_{group_id}"
-    elif user_info and user_info.user_id:
-        chat_id = f"{platform}_{user_info.user_id}_private"
-    else:
-        chat_id = stream_id
+    # chat_id 应该直接使用 stream_id（与数据库存储格式一致）
+    # stream_id 是通过 platform + user_id/group_id 的 SHA-256 哈希生成的
+    chat_id = stream_id
     
     # 准备 additional_config
     additional_config_str = _prepare_additional_config(message_info, is_notify, is_public_notice, notice_type)

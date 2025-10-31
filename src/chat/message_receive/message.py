@@ -160,7 +160,7 @@ class MessageProcessBase(Message):
                 return "[表情，网卡了加载不出来]"
             elif seg.type == "voice":
                 # 检查消息是否由机器人自己发送
-                # 检查消息是否由机器人自己发送
+                # self.message_info 来自 MessageBase，指当前消息的信息
                 if self.message_info and self.message_info.user_info and str(self.message_info.user_info.user_id) == str(global_config.bot.qq_account):
                     logger.info(f"检测到机器人自身发送的语音消息 (User ID: {self.message_info.user_info.user_id})，尝试从缓存获取文本。")
                     if isinstance(seg.data, str):
@@ -182,10 +182,24 @@ class MessageProcessBase(Message):
                     return f"@{nickname}"
                 return f"@{seg.data}" if isinstance(seg.data, str) else "@未知用户"
             elif seg.type == "reply":
-                if self.reply and hasattr(self.reply, "processed_plain_text"):
-                    # print(f"self.reply.processed_plain_text: {self.reply.processed_plain_text}")
-                    # print(f"reply: {self.reply}")
-                    return f"[回复<{self.reply.message_info.user_info.user_nickname}({self.reply.message_info.user_info.user_id})> 的消息：{self.reply.processed_plain_text}]"  # type: ignore
+                # 处理回复消息段
+                if self.reply:
+                    # 检查 reply 对象是否有必要的属性
+                    if hasattr(self.reply, "processed_plain_text") and self.reply.processed_plain_text:
+                        # DatabaseMessages 使用 user_info 而不是 message_info.user_info
+                        user_nickname = self.reply.user_info.user_nickname if self.reply.user_info else "未知用户"
+                        user_id = self.reply.user_info.user_id if self.reply.user_info else ""
+                        return f"[回复<{user_nickname}({user_id})> 的消息：{self.reply.processed_plain_text}]"
+                    else:
+                        # reply 对象存在但没有 processed_plain_text，返回简化的回复标识
+                        logger.debug(f"reply 消息段没有 processed_plain_text 属性，message_id: {getattr(self.reply, 'message_id', 'unknown')}")
+                        return "[回复消息]"
+                else:
+                    # 没有 reply 对象，但有 reply 消息段（可能是机器人自己发送的消息）
+                    # 这种情况下 seg.data 应该包含被回复消息的 message_id
+                    if isinstance(seg.data, str):
+                        logger.debug(f"处理 reply 消息段，但 self.reply 为 None，reply_to message_id: {seg.data}")
+                        return f"[回复消息 {seg.data}]"
                 return None
             else:
                 return f"[{seg.type}:{seg.data!s}]"

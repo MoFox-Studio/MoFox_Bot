@@ -301,67 +301,6 @@ class ChatBot:
             logger.error(f"处理命令时出错: {e}")
             return False, None, True  # 出错时继续处理消息
 
-    async def handle_notice_message(self, message: DatabaseMessages):
-        """处理notice消息
-        
-        notice消息是系统事件通知（如禁言、戳一戳等），具有以下特点：
-        1. 默认不触发聊天流程，只记录
-        2. 可通过配置开启触发聊天流程
-        3. 会在提示词中展示
-        
-        Args:
-            message: DatabaseMessages 对象
-        
-        Returns:
-            bool: True表示notice已完整处理（需要存储并终止后续流程）
-                  False表示不是notice或notice需要继续处理（触发聊天流程）
-        """
-        # 检查是否是notice消息
-        if message.is_notify:
-            logger.info(f"收到notice消息: {message.notice_type}")
-
-            # 根据配置决定是否触发聊天流程
-            if not global_config.notice.enable_notice_trigger_chat:
-                logger.debug("notice消息不触发聊天流程（配置已关闭），将存储后终止")
-                return True  # 返回True：需要在调用处存储并终止
-            else:
-                logger.debug("notice消息触发聊天流程（配置已开启），继续处理")
-                return False  # 返回False：继续正常流程，作为普通消息处理
-
-        # 兼容旧的notice判断方式
-        if message.message_id == "notice":
-            # 为 DatabaseMessages 设置 is_notify 运行时属性
-            from src.chat.message_receive.message_processor import set_db_message_runtime_attr
-            set_db_message_runtime_attr(message, "is_notify", True)
-            logger.info("旧格式notice消息")
-
-            # 同样根据配置决定
-            if not global_config.notice.enable_notice_trigger_chat:
-                logger.debug("旧格式notice消息不触发聊天流程，将存储后终止")
-                return True  # 需要存储并终止
-            else:
-                logger.debug("旧格式notice消息触发聊天流程，继续处理")
-                return False  # 继续正常流程
-
-        # DatabaseMessages 不再有 message_segment，适配器响应处理已在消息处理阶段完成
-        # 这里保留逻辑以防万一，但实际上不会再执行到
-        return False  # 不是notice消息，继续正常流程
-
-    async def handle_adapter_response(self, message: DatabaseMessages):
-        """处理适配器命令响应
-        
-        注意: 此方法目前未被调用，但保留以备将来使用
-        """
-        try:
-            from src.plugin_system.apis.send_api import put_adapter_response
-
-            # DatabaseMessages 使用 message_segments 字段存储消息段
-            # 注意: 这可能需要根据实际使用情况进行调整
-            logger.warning("handle_adapter_response 方法被调用，但目前未实现对 DatabaseMessages 的支持")
-
-        except Exception as e:
-            logger.error(f"处理适配器响应时出错: {e}")
-
     async def message_process(self, message_data: dict[str, Any]) -> None:
         """处理转化后的统一格式消息"""
         try:
@@ -453,29 +392,6 @@ class ChatBot:
             if any(keyword in processed_text for keyword in failure_keywords):
                 logger.info(f"[硬编码过滤] 检测到媒体内容处理失败（{processed_text}），消息被静默处理。")
                 return
-
-            # 处理notice消息
-            # notice_handled=True: 表示notice不触发聊天，需要在此存储并终止
-            # notice_handled=False: 表示notice触发聊天或不是notice，继续正常流程
-            notice_handled = await self.handle_notice_message(message)
-            if notice_handled:
-                # notice消息不触发聊天流程，在此进行存储和记录后终止
-                try:
-                    # message 已经是 DatabaseMessages，直接使用
-                    # 添加到message_manager（这会将notice添加到全局notice管理器）
-                    await message_manager.add_message(chat.stream_id, message)
-                    logger.info(f"✅ Notice消息已添加到message_manager: type={message.notice_type}, stream={chat.stream_id}")
-
-                except Exception as e:
-                    logger.error(f"Notice消息添加到message_manager失败: {e}", exc_info=True)
-
-                # 存储notice消息到数据库（需要更新 storage.py 支持 DatabaseMessages）
-                # 暂时跳过存储，等待更新 storage.py
-                logger.debug("notice消息已添加到message_manager（存储功能待更新）")
-                return
-            
-            # 如果notice_handled=False，则继续执行后续流程
-            # 对于启用触发聊天的notice，会在后续的正常流程中被存储和处理
 
             # 过滤检查
             # DatabaseMessages 使用 display_message 作为原始消息表示
