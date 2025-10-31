@@ -498,72 +498,65 @@ async def execute_proactive_thinking(stream_id: str):
     
     config = global_config.proactive_thinking
     
-    logger.info(f"[主动思考] 开始为聊天流 {stream_id} 执行主动思考")
+    logger.debug(f"🤔 开始主动思考 {stream_id}")
     
     try:
         # 0. 前置检查
-        # 检查是否在安静时段
         if proactive_thinking_scheduler._is_in_quiet_hours():
-            logger.debug(f"当前在安静时段，跳过主动思考")
+            logger.debug(f"安静时段，跳过")
             return
         
-        # 检查每日限制
         if not proactive_thinking_scheduler._check_daily_limit(stream_id):
-            logger.info(f"聊天流 {stream_id} 今日主动发言次数已达上限")
+            logger.debug(f"今日发言达上限")
             return
         
         # 1. 搜集信息
-        logger.info(f"[主动思考] 步骤1：搜集上下文信息")
+        logger.debug(f"步骤1: 搜集上下文")
         context = await _planner.gather_context(stream_id)
         if not context:
-            logger.warning(f"[主动思考] 无法搜集聊天流 {stream_id} 的上下文，跳过本次主动思考")
+            logger.warning(f"无法搜集上下文，跳过")
             return
-        logger.info(f"[主动思考] 上下文搜集完成")
 
         # 检查兴趣分数阈值
         interest_score = context.get('interest_score', 0.5)
         if not proactive_thinking_scheduler._check_interest_score_threshold(interest_score):
-            logger.info(f"[主动思考] 聊天流 {stream_id} 兴趣分数不在阈值范围内")
+            logger.debug(f"兴趣分数不在阈值范围内")
             return
         
         # 2. 进行决策
-        logger.info(f"[主动思考] 步骤2：LLM决策")
+        logger.debug(f"步骤2: LLM决策")
         decision = await _planner.make_decision(context)
         if not decision:
-            logger.warning(f"[主动思考] 决策失败，跳过本次主动思考")
+            logger.warning(f"决策失败，跳过")
             return
-        logger.info(f"[主动思考] 决策完成")
         
         action = decision.get("action", "do_nothing")
         reasoning = decision.get("reasoning", "无")
         
         # 记录决策日志
         if config.log_decisions:
-            logger.info(f"[决策详情] stream_id={stream_id}, action={action}, reasoning={reasoning}")
+            logger.debug(f"决策: action={action}, reasoning={reasoning}")
         
         # 3. 根据决策执行相应动作
         if action == "do_nothing":
-            logger.info(f"决策：什么都不做。理由：{reasoning}")
-            # 记录决策
+            logger.debug(f"决策：什么都不做。理由：{reasoning}")
             proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
             return
         
         elif action == "simple_bubble":
-            logger.info(f"[主动思考] 决策：简单冒个泡。理由：{reasoning}")
+            logger.info(f"💬 决策：冒个泡。理由：{reasoning}")
             
-            # 记录决策
             proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
             
             # 生成简单的消息
-            logger.info(f"[主动思考] 步骤3：生成冒泡回复")
+            logger.debug(f"步骤3: 生成冒泡回复")
             reply = await _planner.generate_reply(context, "simple_bubble")
             if reply:
-                logger.info(f"[主动思考] 步骤4：发送消息")
                 await send_api.text_to_stream(
                     stream_id=stream_id,
                     text=reply,
                 )
-                logger.info(f"[主动思考] 已发送冒泡消息到 {stream_id}")
+                logger.info(f"✅ 已发送冒泡消息")
                 
                 # 增加每日计数
                 proactive_thinking_scheduler._increment_daily_count(stream_id)

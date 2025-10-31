@@ -236,28 +236,26 @@ class ProactiveThinkingScheduler:
         Returns:
             bool: 是否成功创建/重置任务
         """
-        logger.info(f"[调度器] 开始为聊天流 {stream_id} 创建/重置主动思考任务")
+        logger.debug(f"[调度器] 开始为聊天流 {stream_id} 创建/重置主动思考任务")
         try:
             async with self._lock:
                 # 如果该流因抛出话题而暂停，先清除暂停标记
                 if stream_id in self._paused_streams:
-                    logger.info(f"[调度器] 清除聊天流 {stream_id} 的暂停标记")
+                    logger.debug(f"[调度器] 清除聊天流 {stream_id} 的暂停标记")
                     self._paused_streams.discard(stream_id)
                 
                 # 如果已经有任务，先移除
                 if stream_id in self._stream_schedules:
                     old_schedule_id = self._stream_schedules[stream_id]
-                    logger.info(f"[调度器] 移除聊天流 {stream_id} 的旧任务，schedule_id={old_schedule_id}")
+                    logger.debug(f"[调度器] 移除聊天流 {stream_id} 的旧任务")
                     await unified_scheduler.remove_schedule(old_schedule_id)
-                    logger.info(f"[调度器] 旧任务已移除")
                 
                 # 获取 focus_energy 并计算间隔
-                logger.info(f"[调度器] 开始获取聊天流 {stream_id} 的 focus_energy")
                 focus_energy = await self._get_stream_focus_energy(stream_id)
-                logger.info(f"[调度器] 获取到 focus_energy={focus_energy:.3f}")
+                logger.debug(f"[调度器] focus_energy={focus_energy:.3f}")
                 
                 interval_seconds = self._calculate_interval(focus_energy)
-                logger.info(f"[调度器] 计算得到触发间隔={interval_seconds}秒 ({interval_seconds/60:.1f}分钟)")
+                logger.debug(f"[调度器] 触发间隔={interval_seconds}秒 ({interval_seconds/60:.1f}分钟)")
                 
                 # 导入回调函数（延迟导入避免循环依赖）
                 from src.plugins.built_in.affinity_flow_chatter.proactive_thinking_executor import (
@@ -265,7 +263,6 @@ class ProactiveThinkingScheduler:
                 )
                 
                 # 创建新任务
-                logger.info(f"[调度器] 开始创建新的调度任务")
                 schedule_id = await unified_scheduler.create_schedule(
                     callback=execute_proactive_thinking,
                     trigger_type=TriggerType.TIME,
@@ -278,23 +275,20 @@ class ProactiveThinkingScheduler:
                 )
                 
                 self._stream_schedules[stream_id] = schedule_id
-                logger.info(f"[调度器] 新任务已创建，schedule_id={schedule_id}")
                 
                 # 计算下次触发时间
                 next_run_time = datetime.now() + timedelta(seconds=interval_seconds)
                 
                 logger.info(
-                    f"[调度器] ✅ 为聊天流 {stream_id} 创建主动思考任务成功\n"
-                    f"  - Focus Energy: {focus_energy:.3f}\n"
-                    f"  - 触发间隔: {interval_seconds}秒 ({interval_seconds/60:.1f}分钟)\n"
-                    f"  - 下次触发: {next_run_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-                    f"  - Schedule ID: {schedule_id}"
+                    f"✅ 聊天流 {stream_id} 主动思考任务已创建 | "
+                    f"Focus: {focus_energy:.3f} | "
+                    f"间隔: {interval_seconds/60:.1f}分钟 | "
+                    f"下次: {next_run_time.strftime('%H:%M:%S')}"
                 )
                 return True
                 
         except Exception as e:
-            logger.error(f"[调度器] ❌ 为聊天流 {stream_id} 创建主动思考任务失败: {e}", exc_info=True)
-            logger.error(f"为聊天流 {stream_id} 创建主动思考任务失败: {e}", exc_info=True)
+            logger.error(f"❌ 创建主动思考任务失败 {stream_id}: {e}", exc_info=True)
             return False
     
     async def pause_proactive_thinking(self, stream_id: str, reason: str = "抛出话题") -> bool:
@@ -321,7 +315,7 @@ class ProactiveThinkingScheduler:
                 
                 if success:
                     self._paused_streams.add(stream_id)
-                    logger.info(f"暂停聊天流 {stream_id} 的主动思考任务，原因: {reason}")
+                    logger.info(f"⏸️ 暂停主动思考 {stream_id}，原因: {reason}")
                 
                 return success
                 
@@ -349,12 +343,12 @@ class ProactiveThinkingScheduler:
                 
                 if success:
                     self._paused_streams.discard(stream_id)
-                    logger.info(f"恢复聊天流 {stream_id} 的主动思考任务")
+                    logger.info(f"▶️ 恢复主动思考 {stream_id}")
                 
                 return success
                 
         except Exception as e:
-            logger.error(f"恢复聊天流 {stream_id} 的主动思考任务失败: {e}", exc_info=True)
+            logger.error(f"❌ 恢复主动思考失败 {stream_id}: {e}", exc_info=True)
             return False
     
     async def cancel_proactive_thinking(self, stream_id: str) -> bool:
@@ -375,12 +369,12 @@ class ProactiveThinkingScheduler:
                 self._paused_streams.discard(stream_id)
                 
                 success = await unified_scheduler.remove_schedule(schedule_id)
-                logger.info(f"取消聊天流 {stream_id} 的主动思考任务")
+                logger.debug(f"⏹️ 取消主动思考 {stream_id}")
                 
                 return success
                 
         except Exception as e:
-            logger.error(f"取消聊天流 {stream_id} 的主动思考任务失败: {e}", exc_info=True)
+            logger.error(f"❌ 取消主动思考失败 {stream_id}: {e}", exc_info=True)
             return False
     
     async def is_paused(self, stream_id: str) -> bool:
