@@ -104,16 +104,6 @@ class ChatterActionPlanner:
             if chat_mode == ChatMode.NORMAL:
                 return await self._normal_mode_flow(context)
 
-            # 在规划前，先进行动作修改
-            from src.chat.planner_actions.action_modifier import ActionModifier
-            action_modifier = ActionModifier(self.action_manager, self.chat_id)
-            await action_modifier.modify_actions()
-
-            initial_plan = await self.generator.generate(chat_mode)
-
-            # 确保Plan中包含所有当前可用的动作
-            initial_plan.available_actions = self.action_manager.get_using_actions()
-
             unread_messages = context.get_unread_messages() if context else []
             # 2. 使用新的兴趣度管理系统进行评分
             max_message_interest = 0.0
@@ -169,9 +159,19 @@ class ChatterActionPlanner:
                     action_data={},
                     action_message=None,
                 )
+                initial_plan = await self.generator.generate(chat_mode)
                 filtered_plan = initial_plan
                 filtered_plan.decided_actions = [no_action]
             else:
+                # 在规划前，先进行动作修改
+                from src.chat.planner_actions.action_modifier import ActionModifier
+                action_modifier = ActionModifier(self.action_manager, self.chat_id)
+                await action_modifier.modify_actions()
+
+                initial_plan = await self.generator.generate(chat_mode)
+
+                # 确保Plan中包含所有当前可用的动作
+                initial_plan.available_actions = self.action_manager.get_using_actions()
                 # 4. 筛选 Plan
                 available_actions = list(initial_plan.available_actions.keys())
                 plan_filter = ChatterPlanFilter(self.chat_id, available_actions)
@@ -179,14 +179,15 @@ class ChatterActionPlanner:
 
             # 4.5 检查是否正在处理相同的目标消息，防止重复回复
             target_message_id = None
-            for action in filtered_plan.decided_actions:
-                if action.action_type in ["reply", "proactive_reply"] and action.action_message:
-                    # 提取目标消息ID
-                    if hasattr(action.action_message, "message_id"):
-                        target_message_id = action.action_message.message_id
-                    elif isinstance(action.action_message, dict):
-                        target_message_id = action.action_message.get("message_id")
-                    break
+            if filtered_plan and filtered_plan.decided_actions:
+                for action in filtered_plan.decided_actions:
+                    if action.action_type in ["reply", "proactive_reply"] and action.action_message:
+                        # 提取目标消息ID
+                        if hasattr(action.action_message, "message_id"):
+                            target_message_id = action.action_message.message_id
+                        elif isinstance(action.action_message, dict):
+                            target_message_id = action.action_message.get("message_id")
+                        break
 
             # 如果找到目标消息ID，检查是否已经在处理中
             if target_message_id and context:
@@ -513,9 +514,8 @@ class ChatterActionPlanner:
         chat_mood = mood_manager.get_mood_by_chat_id(self.chat_id)
         return {
             "current_mood": chat_mood.mood_state,
-            "is_angry_from_wakeup": chat_mood.is_angry_from_wakeup,
-            "regression_count": chat_mood.regression_count,
-            "last_change_time": chat_mood.last_change_time,
+            "regression_count": getattr(chat_mood, "regression_count", 0),
+            "last_change_time": getattr(chat_mood, "last_change_time", 0),
         }
 
 
