@@ -94,7 +94,6 @@ class PluginManager:
         if not plugin_class:
             logger.error(f"插件 {plugin_name} 的插件类未注册或不存在")
             return False, 1
-        init_module = None  # 预先定义，避免后续条件加载导致未绑定
         try:
             # 使用记录的插件目录路径
             plugin_dir = self.plugin_paths.get(plugin_name)

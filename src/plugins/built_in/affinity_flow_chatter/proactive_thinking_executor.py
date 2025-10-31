@@ -213,7 +213,7 @@ class ProactiveThinkingPlanner:
 - 理由: {last_reasoning}"""
             if last_topic:
                 last_decision_text += f"\n- 话题: {last_topic}"
-        
+
         return f"""你的人设是：
 {context['bot_personality']}
 
@@ -238,7 +238,7 @@ class ProactiveThinkingPlanner:
 - 适用场景：气氛不适合说话、最近对话很活跃、没什么特别想说的、或者此时说话会显得突兀。
 - 心情影响：如果心情不好（如生气、难过），可能更倾向于保持沉默。
 
-**选项2：简单冒个泡 (simple_bubble)**  
+**选项2：简单冒个泡 (simple_bubble)**
 - 适用场景：对话有些冷清，你想缓和气氛或开启新的互动。
 - 方式：说一句轻松随意的话，旨在建立或维持连接。
 - 心情影响：心情会影响你冒泡的方式和内容。

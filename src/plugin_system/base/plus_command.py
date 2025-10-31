@@ -5,7 +5,7 @@
 
 import re
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
@@ -42,7 +42,7 @@ class PlusCommand(ABC):
     command_description: str = ""
     """命令描述"""
 
-    command_aliases: list[str] = []
+    command_aliases: ClassVar[list[str] ] = []
     """命令别名列表，如 ['say', 'repeat']"""
 
     priority: int = 0
@@ -434,8 +434,4 @@ def create_plus_command_adapter(plus_command_class):
                 return False, f"命令执行出错: {e!s}", self.intercept_message
 
     return AdapterClass
-
-
-# 兼容旧的命名
-PlusCommandAdapter = create_plus_command_adapter
 

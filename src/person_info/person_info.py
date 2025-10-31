@@ -181,15 +181,11 @@ class PersonInfoManager:
         final_data = {"person_id": person_id}
 
         # Start with defaults for all model fields
-        for key, default_value in _person_info_default.items():
-            if key in model_fields:
-                final_data[key] = default_value
+        final_data.update({key: default_value for key, default_value in _person_info_default.items() if key in model_fields})
 
         # Override with provided data
         if data:
-            for key, value in data.items():
-                if key in model_fields:
-                    final_data[key] = value
+            final_data.update({key: value for key, value in data.items() if key in model_fields})
 
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id
@@ -242,15 +238,11 @@ class PersonInfoManager:
         final_data = {"person_id": person_id}
 
         # Start with defaults for all model fields
-        for key, default_value in _person_info_default.items():
-            if key in model_fields:
-                final_data[key] = default_value
+        final_data.update({key: default_value for key, default_value in _person_info_default.items() if key in model_fields})
 
         # Override with provided data
         if data:
-            for key, value in data.items():
-                if key in model_fields:
-                    final_data[key] = value
+            final_data.update({key: value for key, value in data.items() if key in model_fields})
 
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id

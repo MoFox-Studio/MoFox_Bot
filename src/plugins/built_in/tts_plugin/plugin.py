@@ -1,3 +1,5 @@
+from typing import ClassVar
+
 from src.common.logger import get_logger
 from src.plugin_system.apis.plugin_register_api import register_plugin
 from src.plugin_system.base.base_action import ActionActivationType, BaseAction, ChatMode
@@ -22,16 +24,16 @@ class TTSAction(BaseAction):
     action_description = "将文本转换为语音进行播放，适用于需要语音输出的场景"
 
     # 关键词配置 - Normal模式下使用关键词触发
-    activation_keywords = ["语音", "tts", "播报", "读出来", "语音播放", "听", "朗读"]
+    activation_keywords: ClassVar[list[str]] = ["语音", "tts", "播报", "读出来", "语音播放", "听", "朗读"]
     keyword_case_sensitive = False
 
     # 动作参数定义
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "text": "需要转换为语音的文本内容，必填，内容应当适合语音播报，语句流畅、清晰",
     }
 
     # 动作使用场景
-    action_require = [
+    action_require: ClassVar[list] = [
         "当需要发送语音信息时使用",
         "当用户要求你说话时使用",
         "当用户要求听你声音时使用",
@@ -41,7 +43,7 @@ class TTSAction(BaseAction):
     ]
 
     # 关联类型
-    associated_types = ["tts_text"]
+    associated_types: ClassVar[list[str]] = ["tts_text"]
 
     async def execute(self) -> tuple[bool, str]:
         """处理TTS文本转语音动作"""
@@ -111,19 +113,19 @@ class TTSPlugin(BasePlugin):
     # 插件基本信息
     plugin_name: str = "tts_plugin"  # 内部标识符
     enable_plugin: bool = True
-    dependencies: list[str] = []  # 插件依赖列表
-    python_dependencies: list[str] = []  # Python包依赖列表
+    dependencies: ClassVar[list[str]] = []  # 插件依赖列表
+    python_dependencies: ClassVar[list[str]] = []  # Python包依赖列表
     config_file_name: str = "config.toml"
 
     # 配置节描述
-    config_section_descriptions = {
+    config_section_descriptions: ClassVar[dict] = {
         "plugin": "插件基本信息配置",
         "components": "组件启用控制",
         "logging": "日志记录相关配置",
     }
 
     # 配置Schema定义
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {
             "name": ConfigField(type=str, default="tts_plugin", description="插件名称", required=True),
             "version": ConfigField(type=str, default="0.1.0", description="插件版本号"),

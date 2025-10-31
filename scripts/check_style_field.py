@@ -29,15 +29,14 @@ async def analyze_style_fields():
         print(f"\n总共检查 {len(expressions)} 条记录\n")
 
         # 按类型分类
-        style_examples = []
-
-        for expr in expressions:
-            if expr.type == "style":
-                style_examples.append({
-                    "situation": expr.situation,
-                    "style": expr.style,
-                    "length": len(expr.style) if expr.style else 0
-                })
+        style_examples = [
+            {
+                "situation": expr.situation,
+                "style": expr.style,
+                "length": len(expr.style) if expr.style else 0
+            }
+            for expr in expressions if expr.type == "style"
+        ]
 
         print("📋 Style 类型样例 (前15条):")
         print("="*60)

@@ -44,10 +44,10 @@ def db_message_to_str(message_dict: dict) -> str:
 
 def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
     """检查消息是否提到了机器人
-    
+
     Args:
         message: DatabaseMessages 消息对象
-        
+
     Returns:
         tuple[bool, float]: (是否提及, 提及概率)
     """

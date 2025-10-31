@@ -84,9 +84,9 @@ class UnifiedScheduler:
 
     async def _handle_event_trigger(self, event_name: str | EventType, event_params: dict[str, Any]) -> None:
         """处理来自 event_manager 的事件通知
-        
+
         此方法由 event_manager 在触发事件时直接调用
-        
+
         注意：此方法不能在持有 self._lock 的情况下调用，
         否则会导致死锁（因为回调可能再次触发事件）
         """
@@ -201,7 +201,7 @@ class UnifiedScheduler:
 
     async def _check_and_trigger_tasks(self):
         """检查并触发到期任务
-        
+
         注意：为了避免死锁，回调执行必须在锁外进行
         """
         current_time = datetime.now()
@@ -493,7 +493,7 @@ unified_scheduler = UnifiedScheduler()
 
 async def initialize_scheduler():
     """初始化调度器
-    
+
     这个函数应该在 bot 启动时调用
     """
     try:
@@ -512,7 +512,7 @@ async def initialize_scheduler():
 
 async def shutdown_scheduler():
     """关闭调度器
-    
+
     这个函数应该在 bot 关闭时调用
     """
     try:

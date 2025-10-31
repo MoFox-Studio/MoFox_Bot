@@ -1,6 +1,8 @@
 import asyncio
+from typing import Any, Callable, Optional
+
 import websockets as Server
-from typing import Optional, Callable, Any
+
 from src.common.logger import get_logger
 from src.plugin_system.apis import config_api
 

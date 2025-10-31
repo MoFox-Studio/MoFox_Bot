@@ -47,7 +47,7 @@ class ScoringAPI:
         return await relationship_service.get_user_relationship_data(user_id)
 
     @staticmethod
-    async def update_user_relationship(user_id: str, relationship_score: float, relationship_text: str = None, user_name: str = None):
+    async def update_user_relationship(user_id: str, relationship_score: float, relationship_text: str | None = None, user_name: str | None = None):
         """
         更新用户关系数据
 
@@ -71,7 +71,7 @@ class ScoringAPI:
         await interest_service.initialize_smart_interests(personality_description, personality_id)
 
     @staticmethod
-    async def calculate_interest_match(content: str, keywords: list[str] = None):
+    async def calculate_interest_match(content: str, keywords: list[str] | None = None):
         """
         计算内容与兴趣的匹配度
 
@@ -98,7 +98,7 @@ class ScoringAPI:
         }
 
     @staticmethod
-    def clear_caches(user_id: str = None):
+    def clear_caches(user_id: str | None = None):
         """
         清理缓存
 

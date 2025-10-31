@@ -6,6 +6,8 @@
 """
 
 # 导入依赖的系统组件
+from typing import ClassVar
+
 from src.common.logger import get_logger
 
 # 导入新插件系统
@@ -34,18 +36,18 @@ class CoreActionsPlugin(BasePlugin):
     # 插件基本信息
     plugin_name: str = "core_actions"  # 内部标识符
     enable_plugin: bool = True
-    dependencies: list[str] = []  # 插件依赖列表
-    python_dependencies: list[str] = []  # Python包依赖列表
+    dependencies: ClassVar[list[str]] = []  # 插件依赖列表
+    python_dependencies: ClassVar[list[str]] = []  # Python包依赖列表
     config_file_name: str = "config.toml"
 
     # 配置节描述
-    config_section_descriptions = {
+    config_section_descriptions: ClassVar = {
         "plugin": "插件启用配置",
         "components": "核心组件启用配置",
     }
 
     # 配置Schema定义
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {
             "enabled": ConfigField(type=bool, default=True, description="是否启用插件"),
             "config_version": ConfigField(type=str, default="0.6.0", description="配置文件版本"),
@@ -63,7 +65,7 @@ class CoreActionsPlugin(BasePlugin):
         """返回插件包含的组件列表"""
 
         # --- 根据配置注册组件 ---
-        components = []
+        components: ClassVar = []
         if self.get_config("components.enable_emoji", True):
             components.append((EmojiAction.get_action_info(), EmojiAction))
         if self.get_config("components.enable_anti_injector_manager", True):

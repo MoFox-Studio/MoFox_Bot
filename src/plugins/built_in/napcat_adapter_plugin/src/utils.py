@@ -1,19 +1,20 @@
-import websockets as Server
-import json
 import base64
-import uuid
-import urllib3
-import ssl
 import io
+import json
+import ssl
+import uuid
+from typing import List, Optional, Tuple, Union
 
-from .database import BanUser, napcat_db
+import urllib3
+import websockets as Server
+from PIL import Image
+
 from src.common.logger import get_logger
 
-logger = get_logger("napcat_adapter")
+from .database import BanUser, napcat_db
 from .response_pool import get_response
 
-from PIL import Image
-from typing import Union, List, Tuple, Optional
+logger = get_logger("napcat_adapter")
 
 
 class SSLAdapter(urllib3.PoolManager):

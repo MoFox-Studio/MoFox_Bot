@@ -3,7 +3,7 @@ import os
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import toml
 
@@ -30,11 +30,11 @@ class PluginBase(ABC):
     config_file_name: str
     enable_plugin: bool = True
 
-    config_schema: dict[str, dict[str, ConfigField] | str] = {}
+    config_schema: ClassVar[dict[str, dict[str, ConfigField] | str] ] = {}
 
-    permission_nodes: list["PermissionNodeField"] = []
+    permission_nodes: ClassVar[list["PermissionNodeField"] ] = []
 
-    config_section_descriptions: dict[str, str] = {}
+    config_section_descriptions: ClassVar[dict[str, str] ] = {}
 
     def __init__(self, plugin_dir: str, metadata: PluginMetadata):
         """初始化插件
@@ -206,12 +206,12 @@ class PluginBase(ABC):
         if not self.config_schema:
             return {}
 
-        config_data = {}
+        config_data: ClassVar = {}
 
         # 遍历每个配置节
         for section, fields in self.config_schema.items():
             if isinstance(fields, dict):
-                section_data = {}
+                section_data: ClassVar = {}
 
                 # 遍历节内的字段
                 for field_name, field in fields.items():
@@ -331,7 +331,7 @@ class PluginBase(ABC):
 
         try:
             with open(user_config_path, encoding="utf-8") as f:
-                user_config = toml.load(f) or {}
+                user_config: ClassVar = toml.load(f) or {}
         except Exception as e:
             logger.error(f"{self.log_prefix} 加载用户配置文件 {user_config_path} 失败: {e}", exc_info=True)
             self.config = self._generate_config_from_schema()  # 加载失败时使用默认 schema

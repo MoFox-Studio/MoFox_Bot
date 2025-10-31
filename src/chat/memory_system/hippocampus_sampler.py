@@ -468,10 +468,10 @@ class HippocampusSampler:
         merged_groups.append(current_group)
 
         # 过滤掉只有一条消息的组（除非内容较长）
-        result_groups = []
-        for group in merged_groups:
-            if len(group) > 1 or any(len(msg.get("processed_plain_text", "")) > 100 for msg in group):
-                result_groups.append(group)
+        result_groups = [
+            group for group in merged_groups
+            if len(group) > 1 or any(len(msg.get("processed_plain_text", "")) > 100 for msg in group)
+        ]
 
         return result_groups
 

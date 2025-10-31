@@ -9,7 +9,7 @@
 import json
 import os
 import threading
-from typing import Any
+from typing import Any, ClassVar
 
 from src.common.logger import get_logger
 
@@ -26,7 +26,7 @@ class PluginStorageManager:
     哼，现在它和API住在一起了，希望它们能和睦相处。
     """
 
-    _instances: dict[str, "PluginStorage"] = {}
+    _instances: ClassVar[dict[str, "PluginStorage"] ] = {}
     _lock = threading.Lock()
     _base_path = os.path.join("data", "plugin_data")
 

@@ -534,7 +534,7 @@ class _RequestExecutor:
         model_name = model_info.name
         retry_interval = api_provider.retry_interval
 
-        if isinstance(e, (NetworkConnectionError, ReqAbortException)):
+        if isinstance(e, NetworkConnectionError | ReqAbortException):
             return await self._check_retry(remain_try, retry_interval, "连接异常", model_name)
         elif isinstance(e, RespNotOkException):
             return await self._handle_resp_not_ok(e, model_info, api_provider, remain_try, messages_info)
@@ -1064,7 +1064,8 @@ class LLMRequest:
                 # 遍历工具的参数
                 for param in tool.get("parameters", []):
                     # 严格验证参数格式是否为包含5个元素的元组
-                    assert isinstance(param, tuple) and len(param) == 5, "参数必须是包含5个元素的元组"
+                    assert isinstance(param, tuple), "参数必须是元组"
+                    assert len(param) == 5, "参数必须包含5个元素"
                     builder.add_param(
                         name=param[0],
                         param_type=param[1],

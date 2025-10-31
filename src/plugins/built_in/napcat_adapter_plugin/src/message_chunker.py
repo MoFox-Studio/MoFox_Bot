@@ -4,14 +4,14 @@
 仅在 Ada -> MMC 方向进行切片，其他方向（MMC -> Ada，Ada <-> Napcat）不切片
 """
 
-import json
-import uuid
 import asyncio
+import json
 import time
-from typing import List, Dict, Any, Optional, Union
-from src.plugin_system.apis import config_api
+import uuid
+from typing import Any, Dict, List, Optional, Union
 
 from src.common.logger import get_logger
+from src.plugin_system.apis import config_api
 
 logger = get_logger("napcat_adapter")
 

@@ -161,7 +161,7 @@ class GlobalNoticeManager:
                 self._cleanup_expired_notices()
 
             # 收集可访问的notice
-            for storage_key, notices in self._notices.items():
+            for notices in self._notices.values():
                 for notice in notices:
                     if notice.is_expired():
                         continue

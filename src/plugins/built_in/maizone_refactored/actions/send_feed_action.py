@@ -2,6 +2,8 @@
 发送说说动作组件
 """
 
+from typing import ClassVar
+
 from src.common.logger import get_logger
 from src.plugin_system import ActionActivationType, BaseAction, ChatMode
 from src.plugin_system.apis import generator_api
@@ -21,9 +23,9 @@ class SendFeedAction(BaseAction):
     action_description: str = "发送一条关于特定主题的说说"
     activation_type: ActionActivationType = ActionActivationType.KEYWORD
     mode_enable: ChatMode = ChatMode.ALL
-    activation_keywords: list = ["发说说", "发空间", "发动态"]
+    activation_keywords: ClassVar[list] = ["发说说", "发空间", "发动态"]
 
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "topic": "用户想要发送的说说主题",
         "user_name": "请求你发说说的好友的昵称",
     }

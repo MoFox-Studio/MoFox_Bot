@@ -275,8 +275,8 @@ class MessageStorage:
         except Exception as e:
             logger.error(f"更新消息ID失败: {e}")
             logger.error(
-                f"消息信息: message_id={getattr(message.message_info, 'message_id', 'N/A')}, "
-                f"segment_type={getattr(message.message_segment, 'type', 'N/A')}"
+                f"消息信息: message_id={message_data.get('message_info', {}).get('message_id', 'N/A')}, "
+                f"segment_type={message_data.get('message_segment', {}).get('type', 'N/A')}"
             )
 
     @staticmethod

@@ -102,7 +102,7 @@ class UILogHandler(logging.Handler):
             emoji_map = {"info": "📝", "warning": "⚠️", "error": "❌", "debug": "🔍"}
             formatted_msg = f"{emoji_map.get(ui_level, '📝')} {msg}"
 
-            success = self._send_log_with_retry(formatted_msg, ui_level)
+            self._send_log_with_retry(formatted_msg, ui_level)
             # 可选：记录发送状态
             # if not success:
             #     print(f"[UI日志适配器] 日志发送失败: {ui_level} - {formatted_msg[:50]}...")

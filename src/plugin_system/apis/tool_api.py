@@ -9,11 +9,11 @@ logger = get_logger("tool_api")
 
 def get_tool_instance(tool_name: str, chat_stream: Any = None) -> BaseTool | None:
     """获取公开工具实例
-    
+
     Args:
         tool_name: 工具名称
         chat_stream: 聊天流对象，用于提供上下文信息
-        
+
     Returns:
         BaseTool: 工具实例，如果工具不存在则返回None
     """

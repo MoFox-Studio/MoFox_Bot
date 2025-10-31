@@ -1,25 +1,24 @@
 import asyncio
-import json
 import inspect
+import json
+from typing import ClassVar, List
+
 import websockets as Server
-from . import event_types, CONSTS, event_handlers
-
-from typing import List
-
-from src.plugin_system import BasePlugin, BaseEventHandler, register_plugin, EventType, ConfigField
-from src.plugin_system.core.event_manager import event_manager
-from src.plugin_system.apis import config_api
 
 from src.common.logger import get_logger
+from src.plugin_system import BaseEventHandler, BasePlugin, ConfigField, EventType, register_plugin
+from src.plugin_system.apis import config_api
+from src.plugin_system.core.event_manager import event_manager
 
+from . import CONSTS, event_handlers, event_types
 from .src.message_chunker import chunker, reassembler
+from .src.mmc_com_layer import mmc_start_com, mmc_stop_com, router
 from .src.recv_handler.message_handler import message_handler
+from .src.recv_handler.message_sending import message_send_instance
 from .src.recv_handler.meta_event_handler import meta_event_handler
 from .src.recv_handler.notice_handler import notice_handler
-from .src.recv_handler.message_sending import message_send_instance
+from .src.response_pool import check_timeout_response, put_response
 from .src.send_handler import send_handler
-from .src.mmc_com_layer import mmc_start_com, router, mmc_stop_com
-from .src.response_pool import put_response, check_timeout_response
 from .src.websocket_manager import websocket_manager
 
 logger = get_logger("napcat_adapter")
@@ -219,7 +218,7 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
     handler_description: str = "自动启动napcat adapter"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [EventType.ON_START]
+    init_subscribe: ClassVar[list] = [EventType.ON_START]
 
     async def execute(self, kwargs):
         # 启动消息重组器的清理任务
@@ -267,7 +266,7 @@ class StopNapcatAdapterHandler(BaseEventHandler):
     handler_description: str = "关闭napcat adapter"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [EventType.ON_STOP]
+    init_subscribe: ClassVar[list] = [EventType.ON_STOP]
 
     async def execute(self, kwargs):
         await graceful_shutdown()
@@ -277,8 +276,8 @@ class StopNapcatAdapterHandler(BaseEventHandler):
 @register_plugin
 class NapcatAdapterPlugin(BasePlugin):
     plugin_name = CONSTS.PLUGIN_NAME
-    dependencies: List[str] = []  # 插件依赖列表
-    python_dependencies: List[str] = []  # Python包依赖列表
+    dependencies: ClassVar[List[str]] = []  # 插件依赖列表
+    python_dependencies: ClassVar[List[str]] = []  # Python包依赖列表
     config_file_name: str = "config.toml"  # 配置文件名
 
     @property
@@ -291,10 +290,10 @@ class NapcatAdapterPlugin(BasePlugin):
         return False
 
     # 配置节描述
-    config_section_descriptions = {"plugin": "插件基本信息"}
+    config_section_descriptions: ClassVar[dict] = {"plugin": "插件基本信息"}
 
     # 配置Schema定义
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {
             "name": ConfigField(type=str, default="napcat_adapter_plugin", description="插件名称"),
             "version": ConfigField(type=str, default="1.1.0", description="插件版本"),
@@ -389,7 +388,7 @@ class NapcatAdapterPlugin(BasePlugin):
     }
 
     # 配置节描述
-    config_section_descriptions = {
+    config_section_descriptions: ClassVar[dict] = {
         "plugin": "插件基本信息",
         "inner": "内部配置信息（请勿修改）",
         "nickname": "昵称配置（目前未使用）",
@@ -421,9 +420,11 @@ class NapcatAdapterPlugin(BasePlugin):
         components = []
         components.append((LauchNapcatAdapterHandler.get_handler_info(), LauchNapcatAdapterHandler))
         components.append((StopNapcatAdapterHandler.get_handler_info(), StopNapcatAdapterHandler))
-        for handler in get_classes_in_module(event_handlers):
-            if issubclass(handler, BaseEventHandler):
-                components.append((handler.get_handler_info(), handler))
+        components.extend(
+            (handler.get_handler_info(), handler)
+            for handler in get_classes_in_module(event_handlers)
+            if issubclass(handler, BaseEventHandler)
+        )
         return components
 
     async def on_plugin_loaded(self):

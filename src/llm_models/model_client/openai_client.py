@@ -3,7 +3,7 @@ import base64
 import io
 import re
 from collections.abc import Callable, Coroutine, Iterable
-from typing import Any
+from typing import Any, ClassVar
 
 import orjson
 from json_repair import repair_json
@@ -376,7 +376,7 @@ def _default_normal_response_parser(
 @client_registry.register_client_class("openai")
 class OpenaiClient(BaseClient):
     # 类级别的全局缓存：所有 OpenaiClient 实例共享
-    _global_client_cache: dict[int, AsyncOpenAI] = {}
+    _global_client_cache: ClassVar[dict[int, AsyncOpenAI] ] = {}
     """全局 AsyncOpenAI 客户端缓存：config_hash -> AsyncOpenAI 实例"""
 
     def __init__(self, api_provider: APIProvider):

@@ -235,10 +235,10 @@ class RelationshipFetcher:
 
     async def build_chat_stream_impression(self, stream_id: str) -> str:
         """构建聊天流的印象信息
-        
+
         Args:
             stream_id: 聊天流ID
-            
+
         Returns:
             str: 格式化后的聊天流印象字符串
         """

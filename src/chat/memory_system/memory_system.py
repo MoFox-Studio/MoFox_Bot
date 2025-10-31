@@ -1265,9 +1265,7 @@ class MemorySystem:
                 )
 
                 if relevant_memories:
-                    memory_contexts = []
-                    for memory in relevant_memories:
-                        memory_contexts.append(f"[历史记忆] {memory.text_content}")
+                    memory_contexts = [f"[历史记忆] {memory.text_content}" for memory in relevant_memories]
 
                     memory_transcript = "\n".join(memory_contexts)
                     cleaned_fallback = (fallback_text or "").strip()

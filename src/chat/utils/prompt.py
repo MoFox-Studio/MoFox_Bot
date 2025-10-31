@@ -501,9 +501,7 @@ class Prompt:
                     context_data.update(result)
 
             # 合并预构建的参数，这会覆盖任何同名的实时构建结果
-            for key, value in pre_built_params.items():
-                if value:
-                    context_data[key] = value
+            context_data.update({key: value for key, value in pre_built_params.items() if value})
 
         except asyncio.TimeoutError:
             # 这是一个不太可能发生的、总体的构建超时，作为最后的保障

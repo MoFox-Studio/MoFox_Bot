@@ -1,6 +1,8 @@
-from enum import Enum
-import tomlkit
 import os
+from enum import Enum
+
+import tomlkit
+
 from src.common.logger import get_logger
 
 logger = get_logger("napcat_adapter")

@@ -2,7 +2,7 @@
 TTS Voice 插件 - 重构版
 """
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import toml
 
@@ -29,15 +29,15 @@ class TTSVoicePlugin(BasePlugin):
     plugin_version = "3.1.2"
     plugin_author = "Kilo Code & 靚仔"
     config_file_name = "config.toml"
-    dependencies = []
+    dependencies: ClassVar[list[str]] = []
 
-    permission_nodes: list[PermissionNodeField] = [
+    permission_nodes: ClassVar[list[PermissionNodeField]] = [
         PermissionNodeField(node_name="command.use", description="是否可以使用 /tts 命令"),
     ]
 
-    config_schema = {}
+    config_schema: ClassVar[dict] = {}
 
-    config_section_descriptions = {
+    config_section_descriptions: ClassVar[dict] = {
         "plugin": "插件基本配置",
         "components": "组件启用控制",
         "tts": "TTS语音合成基础配置",

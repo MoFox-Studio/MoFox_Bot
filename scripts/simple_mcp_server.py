@@ -21,11 +21,11 @@ mcp = FastMCP("Demo Server")
 @mcp.tool()
 def add(a: int, b: int) -> int:
     """将两个数字相加
-    
+
     Args:
         a: 第一个数字
         b: 第二个数字
-    
+
     Returns:
         两个数字的和
     """
@@ -35,11 +35,11 @@ def add(a: int, b: int) -> int:
 @mcp.tool()
 def multiply(a: float, b: float) -> float:
     """将两个数字相乘
-    
+
     Args:
         a: 第一个数字
         b: 第二个数字
-    
+
     Returns:
         两个数字的乘积
     """
@@ -49,10 +49,10 @@ def multiply(a: float, b: float) -> float:
 @mcp.tool()
 def get_weather(city: str) -> str:
     """获取指定城市的天气信息(模拟)
-    
+
     Args:
         city: 城市名称
-    
+
     Returns:
         天气信息字符串
     """
@@ -73,11 +73,11 @@ def get_weather(city: str) -> str:
 @mcp.tool()
 def echo(message: str, repeat: int = 1) -> str:
     """重复输出一条消息
-    
+
     Args:
         message: 要重复的消息
         repeat: 重复次数，默认为 1
-    
+
     Returns:
         重复后的消息
     """
@@ -87,10 +87,10 @@ def echo(message: str, repeat: int = 1) -> str:
 @mcp.tool()
 def check_prime(number: int) -> bool:
     """检查一个数字是否为质数
-    
+
     Args:
         number: 要检查的数字
-    
+
     Returns:
         如果是质数返回 True，否则返回 False
     """

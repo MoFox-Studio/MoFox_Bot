@@ -18,7 +18,7 @@ def get_voice_key(base64_content: str) -> str:
 def register_self_voice(base64_content: str, text: str):
     """
     为机器人自己发送的语音消息注册其原始文本。
-    
+
     Args:
         base64_content (str): 语音的base64编码内容。
         text (str): 原始文本。
@@ -30,10 +30,10 @@ def consume_self_voice_text(base64_content: str) -> str | None:
     """
     获取并移除机器人自己发送的语音消息的原始文本。
     这是一个一次性操作，获取后即从缓存中删除。
-    
+
     Args:
         base64_content (str): 语音的base64编码内容。
-        
+
     Returns:
         str | None: 如果找到，则返回原始文本，否则返回None。
     """
