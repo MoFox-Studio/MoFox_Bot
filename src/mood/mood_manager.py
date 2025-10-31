@@ -52,7 +52,6 @@ class ChatMood:
         self._initialized = False
 
         self.mood_state: str = "感觉很平静"
-        self.is_angry_from_wakeup: bool = False  # 是否因被吵醒而愤怒
 
     async def _initialize(self):
         """异步初始化方法"""
@@ -280,49 +279,6 @@ class MoodManager:
         new_mood = ChatMood(chat_id)
         self.mood_list.append(new_mood)
         return new_mood
-
-    def reset_mood_by_chat_id(self, chat_id: str):
-        for mood in self.mood_list:
-            if mood.chat_id == chat_id:
-                mood.mood_state = "感觉很平静"
-                mood.regression_count = 0
-                mood.is_angry_from_wakeup = False
-                return
-        self.mood_list.append(ChatMood(chat_id))
-
-    def set_angry_from_wakeup(self, chat_id: str):
-        """设置因被吵醒而愤怒的状态"""
-        mood = self.get_mood_by_chat_id(chat_id)
-        mood.is_angry_from_wakeup = True
-        mood.mood_state = "被人吵醒了非常生气"
-        mood.last_change_time = time.time()
-        logger.info(f"{mood.log_prefix} 因被吵醒设置为愤怒状态")
-
-    def clear_angry_from_wakeup(self, chat_id: str):
-        """清除因被吵醒而愤怒的状态"""
-        mood = self.get_mood_by_chat_id(chat_id)
-        if mood.is_angry_from_wakeup:
-            mood.is_angry_from_wakeup = False
-            mood.mood_state = "感觉很平静"
-            logger.info(f"{mood.log_prefix} 清除被吵醒的愤怒状态")
-
-    def start_insomnia(self, chat_id: str):
-        """开始一个聊天的失眠状态，锁定情绪更新"""
-        logger.info(f"Chat [{chat_id}]进入失眠状态，情绪已锁定。")
-        self.insomnia_chats.add(chat_id)
-
-    def stop_insomnia(self, chat_id: str):
-        """停止一个聊天的失眠状态，解锁情绪更新"""
-        logger.info(f"Chat [{chat_id}]失眠状态结束，情绪已解锁。")
-        self.insomnia_chats.discard(chat_id)
-
-    def get_angry_prompt_addition(self, chat_id: str) -> str:
-        """获取愤怒状态下的提示词补充"""
-        mood = self.get_mood_by_chat_id(chat_id)
-        if mood.is_angry_from_wakeup:
-            return "你被人吵醒了非常生气，说话带着怒气"
-        return ""
-
 
 init_prompt()
 
