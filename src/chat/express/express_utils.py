@@ -123,13 +123,13 @@ def extract_keywords(text: str, max_keywords: int = 10) -> list[str]:
         return []
 
     try:
-        import jieba.analyse
+        import rjieba.analyse
 
         # 使用TF-IDF提取关键词
-        keywords = jieba.analyse.extract_tags(text, topK=max_keywords)
+        keywords = rjieba.analyse.extract_tags(text, topK=max_keywords)
         return keywords
     except ImportError:
-        logger.warning("jieba未安装，无法提取关键词")
+        logger.warning("rjieba未安装，无法提取关键词")
         # 简单分词
         words = text.split()
         return words[:max_keywords]

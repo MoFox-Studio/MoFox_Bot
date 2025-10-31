@@ -21,12 +21,12 @@ class Tokenizer:
 
         if use_jieba:
             try:
-                import jieba
+                import rjieba
 
-                jieba.initialize()
-                logger.info("Jieba分词器初始化成功")
+                # rjieba 会自动初始化，无需手动调用
+                logger.info("RJieba分词器初始化成功")
             except ImportError:
-                logger.warning("Jieba未安装，将使用字符级分词")
+                logger.warning("RJieba未安装，将使用字符级分词")
                 self.use_jieba = False
 
     def tokenize(self, text: str) -> list[str]:
@@ -42,14 +42,14 @@ class Tokenizer:
         if not text:
             return []
 
-        # 使用jieba分词
+        # 使用rjieba分词
         if self.use_jieba:
             try:
-                import jieba
+                import rjieba
 
-                tokens = list(jieba.cut(text))
+                tokens = list(rjieba.cut(text))
             except Exception as e:
-                logger.warning(f"Jieba分词失败，使用字符级分词: {e}")
+                logger.warning(f"RJieba分词失败，使用字符级分词: {e}")
                 tokens = list(text)
         else:
             # 简单按字符分词
