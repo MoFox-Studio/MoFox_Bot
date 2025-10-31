@@ -6,6 +6,7 @@ MCP Client Manager
 
 import asyncio
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -72,8 +73,19 @@ class MCPClientManager:
             Dict[str, MCPServerConfig]: 服务器名称 -> 配置对象
         """
         if not self.config_path.exists():
-            logger.warning(f"MCP 配置文件不存在: {self.config_path}")
-            return {}
+            # 尝试从模板创建配置文件
+            template_path = Path("template/mcp.json")
+            if template_path.exists():
+                try:
+                    self.config_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(template_path, self.config_path)
+                    logger.info(f"已从模板创建 MCP 配置文件: {self.config_path}")
+                except Exception as e:
+                    logger.error(f"从模板创建配置文件失败: {e}")
+                    return {}
+            else:
+                logger.warning(f"MCP 配置文件和模板都不存在: {self.config_path}, {template_path}")
+                return {}
 
         try:
             with open(self.config_path, encoding="utf-8") as f:

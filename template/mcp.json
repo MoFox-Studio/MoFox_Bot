@@ -1,0 +1,88 @@
+{
+  "$schema": "../depends-data/mcp.schema.json",
+  "mcpServers": {
+    "demo_server": {
+      "description": "演示用的 MCP 服务器（无认证）",
+      "enabled": true,
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:8000/mcp"
+      },
+      "auth": null,
+      "timeout": 30,
+      "retry": {
+        "max_retries": 3,
+        "retry_delay": 1
+      }
+    },
+    "bearer_auth_server": {
+      "description": "使用 Bearer Token 认证的服务器",
+      "enabled": false,
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://api.example.com/mcp"
+      },
+      "auth": {
+        "type": "bearer",
+        "token": "your-secret-bearer-token-here"
+      },
+      "timeout": 30,
+      "retry": {
+        "max_retries": 3,
+        "retry_delay": 1
+      }
+    },
+    "oauth_server": {
+      "description": "使用 OAuth 认证的服务器",
+      "enabled": false,
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://api.example.com/mcp"
+      },
+      "auth": {
+        "type": "oauth",
+        "client_id": "your-client-id",
+        "client_secret": "your-client-secret",
+        "token_url": "https://auth.example.com/oauth/token"
+      },
+      "timeout": 60,
+      "retry": {
+        "max_retries": 5,
+        "retry_delay": 2
+      }
+    },
+    "local_stdio_server": {
+      "description": "本地进程通过 stdio 通信的 MCP 服务器",
+      "enabled": false,
+      "transport": {
+        "type": "stdio",
+        "command": "python",
+        "args": [
+          "-m",
+          "my_mcp_server",
+          "--config",
+          "server_config.json"
+        ]
+      },
+      "timeout": 30
+    },
+    "node_stdio_server": {
+      "description": "Node.js MCP 服务器示例",
+      "enabled": false,
+      "transport": {
+        "type": "stdio",
+        "command": "node",
+        "args": [
+          "path/to/mcp-server.js"
+        ]
+      },
+      "timeout": 30
+    }
+  },
+  "global": {
+    "default_timeout": 30,
+    "max_concurrent_connections": 5,
+    "auto_reconnect": true,
+    "log_level": "INFO"
+  }
+}
