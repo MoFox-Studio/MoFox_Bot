@@ -318,6 +318,7 @@ class ChatterActionPlanner:
                     reasoning="Normal模式: 兴趣度达到阈值，直接回复",
                     action_data={"target_message_id": target_message.message_id},
                     action_message=target_message,
+                    should_quote_reply=False,  # Normal模式默认不引用回复，保持对话流畅
                 )
 
                 # Normal模式下直接构建最小化的Plan，跳过generator和action_modifier

@@ -31,7 +31,6 @@ from src.config.official_configs import (
     MemoryConfig,
     MessageReceiveConfig,
     MoodConfig,
-    NormalChatConfig,
     NoticeConfig,
     PermissionConfig,
     PersonalityConfig,
@@ -379,7 +378,6 @@ class Config(ValidatedConfigBase):
     chat: ChatConfig = Field(..., description="聊天配置")
     message_receive: MessageReceiveConfig = Field(..., description="消息接收配置")
     notice: NoticeConfig = Field(..., description="Notice消息配置")
-    normal_chat: NormalChatConfig = Field(..., description="普通聊天配置")
     emoji: EmojiConfig = Field(..., description="表情配置")
     expression: ExpressionConfig = Field(..., description="表达配置")
     memory: MemoryConfig = Field(..., description="记忆配置")

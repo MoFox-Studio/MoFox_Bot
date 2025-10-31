@@ -103,19 +103,10 @@ class ChatConfig(ValidatedConfigBase):
     """聊天配置类"""
 
     max_context_size: int = Field(default=18, description="最大上下文大小")
-    replyer_random_probability: float = Field(default=0.5, description="回复者随机概率")
     thinking_timeout: int = Field(default=40, description="思考超时时间")
-    talk_frequency: float = Field(default=1.0, description="聊天频率")
     mentioned_bot_inevitable_reply: bool = Field(default=False, description="提到机器人的必然回复")
     at_bot_inevitable_reply: bool = Field(default=False, description="@机器人的必然回复")
     allow_reply_self: bool = Field(default=False, description="是否允许回复自己说的话")
-    focus_value: float = Field(default=1.0, description="专注值")
-    focus_mode_quiet_groups: list[str] = Field(
-        default_factory=list,
-        description='专注模式下需要保持安静的群组列表, 格式: ["platform:group_id1", "platform:group_id2"]',
-    )
-    force_reply_private: bool = Field(default=False, description="强制回复私聊")
-    group_chat_mode: Literal["auto", "normal", "focus"] = Field(default="auto", description="群聊模式")
     timestamp_display_mode: Literal["normal", "normal_no_YMD", "relative"] = Field(
         default="normal_no_YMD", description="时间戳显示模式"
     )
@@ -127,13 +118,6 @@ class ChatConfig(ValidatedConfigBase):
     interruption_max_limit: int = Field(default=10, ge=0, description="每个聊天流的最大打断次数")
     interruption_min_probability: float = Field(
         default=0.1, ge=0.0, le=1.0, description="最低打断概率（即使达到较高打断次数，也保证有此概率的打断机会）"
-    )
-
-    # DEPRECATED: interruption_probability_factor (已废弃的配置项)
-    # 新的线性概率模型不再需要复杂的概率因子
-    # 保留此字段是为了向后兼容，现有配置文件不会报错
-    interruption_probability_factor: float = Field(
-        default=0.8, ge=0.0, le=1.0, description="[已废弃] 打断概率因子，新线性概率模型不再使用此参数"
     )
 
     # 动态消息分发系统配置
@@ -168,10 +152,6 @@ class NoticeConfig(ValidatedConfigBase):
     notice_time_window: int = Field(default=3600, ge=60, le=86400, description="notice时间窗口(秒)")
     max_notices_per_chat: int = Field(default=30, ge=10, le=100, description="每个聊天保留的notice数量上限")
     notice_retention_time: int = Field(default=86400, ge=3600, le=604800, description="notice保留时间(秒)")
-
-
-class NormalChatConfig(ValidatedConfigBase):
-    """普通聊天配置类"""
 
 
 class ExpressionRule(ValidatedConfigBase):
@@ -736,33 +716,7 @@ class ProactiveThinkingConfig(ValidatedConfigBase):
     # --- 总开关 ---
     enable: bool = Field(default=False, description="是否启用主动发起对话功能")
 
-    # --- 触发时机 ---
-    interval: int = Field(default=1500, description="基础触发间隔（秒），AI会围绕这个时间点主动发起对话")
-    interval_sigma: int = Field(
-        default=120, description="间隔随机化标准差（秒），让触发时间更自然。设为0则为固定间隔。"
-    )
-    talk_frequency_adjust: list[list[str]] = Field(
-        default_factory=lambda: [["", "8:00,1", "12:00,1.2", "18:00,1.5", "01:00,0.6"]],
-        description='每日活跃度调整，格式：[["", "HH:MM,factor", ...], ["stream_id", ...]]',
-    )
-
-    # --- 作用范围 ---
-    enable_in_private: bool = Field(default=True, description="是否允许在私聊中主动发起对话")
-    enable_in_group: bool = Field(default=True, description="是否允许在群聊中主动发起对话")
-    enabled_private_chats: list[str] = Field(
-        default_factory=list, description='私聊白名单，为空则对所有私聊生效。格式: ["platform:user_id", ...]'
-    )
-    enabled_group_chats: list[str] = Field(
-        default_factory=list, description='群聊白名单，为空则对所有群聊生效。格式: ["platform:group_id", ...]'
-    )
-
-    # --- 冷启动配置 (针对私聊) ---
-    enable_cold_start: bool = Field(default=True, description='对于白名单中不活跃的私聊，是否允许进行一次"冷启动"问候')
-    cold_start_cooldown: int = Field(
-        default=86400, description="冷启动后，该私聊的下一次主动思考需要等待的最小时间（秒）"
-    )
-
-    # --- 新增：间隔配置 ---
+    # --- 间隔配置 ---
     base_interval: int = Field(default=1800, ge=60, description="基础触发间隔（秒），默认30分钟")
     min_interval: int = Field(default=600, ge=60, description="最小触发间隔（秒），默认10分钟。兴趣分数高时会接近此值")
     max_interval: int = Field(default=7200, ge=60, description="最大触发间隔（秒），默认2小时。兴趣分数低时会接近此值")
