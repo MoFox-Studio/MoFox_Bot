@@ -270,7 +270,7 @@ class ExpressionSelector:
 
         # 根据配置选择模式
         mode = global_config.expression.mode
-        logger.debug(f"[ExpressionSelector] 使用模式: {mode}")
+        logger.debug(f"使用表达选择模式: {mode}")
 
         if mode == "exp_model":
             return await self._select_expressions_model_only(
@@ -298,7 +298,7 @@ class ExpressionSelector:
         min_num: int = 5,
     ) -> list[dict[str, Any]]:
         """经典模式：随机抽样 + LLM评估"""
-        logger.debug("[Classic模式] 使用LLM评估表达方式")
+        logger.debug("使用LLM评估表达方式")
         return await self.select_suitable_expressions_llm(
             chat_id=chat_id,
             chat_info=chat_info,
@@ -316,7 +316,7 @@ class ExpressionSelector:
         min_num: int = 5,
     ) -> list[dict[str, Any]]:
         """模型预测模式：先提取情境，再使用StyleLearner预测表达风格"""
-        logger.debug("[Exp_model模式] 使用情境提取 + StyleLearner预测表达方式")
+        logger.debug("使用情境提取 + StyleLearner预测表达方式")
 
         # 检查是否允许在此聊天流中使用表达
         if not self.can_use_expression_for_chat(chat_id):
@@ -331,7 +331,7 @@ class ExpressionSelector:
         )
 
         if not situations:
-            logger.warning("无法提取聊天情境，回退到经典模式")
+            logger.debug("无法提取聊天情境，回退到经典模式")
             return await self._select_expressions_classic(
                 chat_id=chat_id,
                 chat_info=chat_info,
@@ -340,27 +340,27 @@ class ExpressionSelector:
                 min_num=min_num
             )
 
-        logger.info(f"[Exp_model模式] 步骤1完成 - 提取到 {len(situations)} 个情境: {situations}")
+        logger.debug(f"提取到 {len(situations)} 个情境")
 
         # 步骤2: 使用 StyleLearner 为每个情境预测合适的表达方式
         learner = style_learner_manager.get_learner(chat_id)
 
         all_predicted_styles = {}
         for i, situation in enumerate(situations, 1):
-            logger.debug(f"[Exp_model模式] 步骤2.{i} - 为情境预测风格: {situation}")
+            logger.debug(f"为情境 {i} 预测风格: {situation}")
             best_style, scores = learner.predict_style(situation, top_k=max_num)
 
             if best_style and scores:
-                logger.debug(f"  预测结果: best={best_style}, scores数量={len(scores)}")
+                logger.debug(f"预测最佳风格: {best_style}")
                 # 合并分数（取最高分）
                 for style, score in scores.items():
                     if style not in all_predicted_styles or score > all_predicted_styles[style]:
                         all_predicted_styles[style] = score
             else:
-                logger.debug("  该情境未返回预测结果")
+                logger.debug("该情境未返回预测结果")
 
         if not all_predicted_styles:
-            logger.warning("[Exp_model模式] StyleLearner未返回预测结果（可能模型未训练），回退到经典模式")
+            logger.debug("StyleLearner未返回预测结果，回退到经典模式")
             return await self._select_expressions_classic(
                 chat_id=chat_id,
                 chat_info=chat_info,
@@ -372,10 +372,10 @@ class ExpressionSelector:
         # 将分数字典转换为列表格式 [(style, score), ...]
         predicted_styles = sorted(all_predicted_styles.items(), key=lambda x: x[1], reverse=True)
 
-        logger.info(f"[Exp_model模式] 步骤2完成 - 预测到 {len(predicted_styles)} 个风格, Top3: {predicted_styles[:3]}")
+        logger.debug(f"预测到 {len(predicted_styles)} 个风格")
 
         # 步骤3: 根据预测的风格从数据库获取表达方式
-        logger.debug("[Exp_model模式] 步骤3 - 从数据库查询表达方式")
+        logger.debug("从数据库查询表达方式")
         expressions = await self.get_model_predicted_expressions(
             chat_id=chat_id,
             predicted_styles=predicted_styles,
@@ -383,7 +383,7 @@ class ExpressionSelector:
         )
 
         if not expressions:
-            logger.warning("[Exp_model模式] 未找到匹配预测风格的表达方式，回退到经典模式")
+            logger.debug("未找到匹配预测风格的表达方式，回退到经典模式")
             return await self._select_expressions_classic(
                 chat_id=chat_id,
                 chat_info=chat_info,
@@ -392,7 +392,7 @@ class ExpressionSelector:
                 min_num=min_num
             )
 
-        logger.info(f"[Exp_model模式] 成功! 返回 {len(expressions)} 个表达方式")
+        logger.debug(f"返回 {len(expressions)} 个表达方式")
         return expressions
 
     async def get_model_predicted_expressions(
@@ -417,11 +417,11 @@ class ExpressionSelector:
 
         # 提取风格名称（前3个最佳匹配）
         style_names = [style for style, _ in predicted_styles[:min(3, len(predicted_styles))]]
-        logger.debug(f"预测最佳风格: {style_names[0] if style_names else 'None'}, Top3分数: {predicted_styles[:3]}")
+        logger.debug(f"预测最佳风格: {style_names[0] if style_names else 'None'}")
 
         # 🔥 使用 get_related_chat_ids 获取所有相关的 chat_id（支持共享表达方式）
         related_chat_ids = self.get_related_chat_ids(chat_id)
-        logger.info(f"查询相关的chat_ids ({len(related_chat_ids)}个): {related_chat_ids}")
+        logger.debug(f"查询相关的chat_ids: {len(related_chat_ids)}个")
 
         async with get_db_session() as session:
             # 🔍 先检查数据库中实际有哪些 chat_id 的数据
@@ -431,7 +431,7 @@ class ExpressionSelector:
                 .distinct()
             )
             db_chat_ids = list(db_chat_ids_result.scalars())
-            logger.info(f"数据库中有表达方式的chat_ids ({len(db_chat_ids)}个): {db_chat_ids}")
+            logger.debug(f"数据库中有表达方式的chat_ids: {len(db_chat_ids)}个")
 
             # 获取所有相关 chat_id 的表达方式（用于模糊匹配）
             all_expressions_result = await session.execute(
@@ -441,11 +441,11 @@ class ExpressionSelector:
             )
             all_expressions = list(all_expressions_result.scalars())
 
-            logger.info(f"配置的相关chat_id的表达方式数量: {len(all_expressions)}")
+            logger.debug(f"配置的相关chat_id的表达方式数量: {len(all_expressions)}")
 
             # 🔥 智能回退：如果相关 chat_id 没有数据，尝试查询所有 chat_id
             if not all_expressions:
-                logger.info("相关chat_id没有数据，尝试从所有chat_id查询")
+                logger.debug("相关chat_id没有数据，尝试从所有chat_id查询")
                 all_expressions_result = await session.execute(
                     select(Expression)
                     .where(Expression.type == "style")
@@ -501,12 +501,7 @@ class ExpressionSelector:
             expressions_objs = [e[0] for e in matched_expressions[:max_num]]
 
             # 显示最佳匹配的详细信息
-            top_matches = [f"{e[3]}->{e[0].style}({e[1]:.2f})" for e in matched_expressions[:3]]
-            logger.info(
-                f"模糊匹配成功: 找到 {len(expressions_objs)} 个表达方式\n"
-                f"  相似度范围: {matched_expressions[0][1]:.2f} ~ {matched_expressions[min(len(matched_expressions)-1, max_num-1)][1]:.2f}\n"
-                f"  Top3匹配: {top_matches}"
-            )
+            logger.debug(f"模糊匹配成功: 找到 {len(expressions_objs)} 个表达方式")
 
             # 转换为字典格式
             expressions = [

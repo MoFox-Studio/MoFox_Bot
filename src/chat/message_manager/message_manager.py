@@ -72,13 +72,13 @@ class MessageManager:
             logger.error(f"启动批量数据库写入器失败: {e}")
 
         # 启动消息缓存系统（内置）
-        logger.info("📦 消息缓存系统已启动")
+        logger.debug("消息缓存系统已启动")
 
         # 启动流循环管理器并设置chatter_manager
         await stream_loop_manager.start()
         stream_loop_manager.set_chatter_manager(self.chatter_manager)
 
-        logger.info("🚀 消息管理器已启动 | 流循环管理器已启动")
+        logger.info("消息管理器已启动")
 
     async def stop(self):
         """停止消息管理器"""
@@ -92,19 +92,19 @@ class MessageManager:
             from src.chat.message_manager.batch_database_writer import shutdown_batch_writer
 
             await shutdown_batch_writer()
-            logger.info("📦 批量数据库写入器已停止")
+            logger.debug("批量数据库写入器已停止")
         except Exception as e:
             logger.error(f"停止批量数据库写入器失败: {e}")
 
         # 停止消息缓存系统（内置）
         self.message_caches.clear()
         self.stream_processing_status.clear()
-        logger.info("📦 消息缓存系统已停止")
+        logger.debug("消息缓存系统已停止")
 
         # 停止流循环管理器
         await stream_loop_manager.stop()
 
-        logger.info("🛑 消息管理器已停止 | 流循环管理器已停止")
+        logger.info("消息管理器已停止")
 
     async def add_message(self, stream_id: str, message: DatabaseMessages):
         """添加消息到指定聊天流"""
@@ -113,15 +113,15 @@ class MessageManager:
             # 检查是否为notice消息
             if self._is_notice_message(message):
                 # Notice消息处理 - 添加到全局管理器
-                logger.info(f"📢 检测到notice消息: notice_type={getattr(message, 'notice_type', None)}")
+                logger.debug(f"检测到notice消息: notice_type={getattr(message, 'notice_type', None)}")
                 await self._handle_notice_message(stream_id, message)
 
                 # 根据配置决定是否继续处理（触发聊天流程）
                 if not global_config.notice.enable_notice_trigger_chat:
-                    logger.info(f"根据配置，流 {stream_id} 的Notice消息将被忽略，不触发聊天流程。")
+                    logger.debug(f"Notice消息将被忽略，不触发聊天流程: {stream_id}")
                     return  # 停止处理，不进入未读消息队列
                 else:
-                    logger.info(f"根据配置，流 {stream_id} 的Notice消息将触发聊天流程。")
+                    logger.debug(f"Notice消息将触发聊天流程: {stream_id}")
                     # 继续执行，将消息添加到未读队列
 
             # 普通消息处理
@@ -201,7 +201,7 @@ class MessageManager:
             if hasattr(context, "processing_task") and context.processing_task and not context.processing_task.done():
                 context.processing_task.cancel()
 
-            logger.info(f"停用聊天流: {stream_id}")
+            logger.debug(f"停用聊天流: {stream_id}")
 
         except Exception as e:
             logger.error(f"停用聊天流 {stream_id} 时发生错误: {e}")
@@ -218,7 +218,7 @@ class MessageManager:
 
             context = chat_stream.context_manager.context
             context.is_active = True
-            logger.info(f"激活聊天流: {stream_id}")
+            logger.debug(f"激活聊天流: {stream_id}")
 
         except Exception as e:
             logger.error(f"激活聊天流 {stream_id} 时发生错误: {e}")
@@ -354,8 +354,7 @@ class MessageManager:
                 # 取消 stream_loop_task，子任务会通过 try-catch 自动取消
                 try:
                     stream_loop_task.cancel()
-                    logger.info(f"已发送取消信号到流循环任务: {chat_stream.stream_id}")
-
+                    
                     # 等待任务真正结束（设置超时避免死锁）
                     try:
                         await asyncio.wait_for(stream_loop_task, timeout=2.0)
@@ -401,21 +400,21 @@ class MessageManager:
             # 确保有未读消息需要处理
             unread_messages = context.get_unread_messages()
             if not unread_messages:
-                logger.debug(f"💭 聊天流 {stream_id} 没有未读消息，跳过重新处理")
+                logger.debug(f"聊天流 {stream_id} 没有未读消息，跳过重新处理")
                 return
 
-            logger.info(f"💬 准备重新处理 {len(unread_messages)} 条未读消息: {stream_id}")
+            logger.debug(f"准备重新处理 {len(unread_messages)} 条未读消息: {stream_id}")
 
             # 重新创建 stream_loop 任务
             success = await stream_loop_manager.start_stream_loop(stream_id, force=True)
 
             if success:
-                logger.info(f"✅ 成功重新创建流循环任务: {stream_id}")
+                logger.debug(f"成功重新创建流循环任务: {stream_id}")
             else:
-                logger.warning(f"⚠️ 重新创建流循环任务失败: {stream_id}")
+                logger.warning(f"重新创建流循环任务失败: {stream_id}")
 
         except Exception as e:
-            logger.error(f"🚨 触发重新处理时出错: {e}")
+            logger.error(f"触发重新处理时出错: {e}")
 
     async def clear_all_unread_messages(self, stream_id: str):
         """清除指定上下文中的所有未读消息，在消息处理完成后调用"""

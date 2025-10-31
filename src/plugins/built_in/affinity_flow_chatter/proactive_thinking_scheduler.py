@@ -215,10 +215,10 @@ class ProactiveThinkingScheduler:
                 # 计算并获取最新的 focus_energy
                 logger.debug("[调度器] 找到聊天流，开始计算 focus_energy")
                 focus_energy = await chat_stream.calculate_focus_energy()
-                logger.info(f"[调度器] 聊天流 {stream_id} 的 focus_energy: {focus_energy:.3f}")
+                logger.debug(f"[调度器] 聊天流 {stream_id} 的 focus_energy: {focus_energy:.3f}")
                 return focus_energy
             else:
-                logger.warning(f"[调度器] ⚠️ 未找到聊天流 {stream_id}，使用默认 focus_energy=0.5")
+                logger.debug(f"[调度器] 未找到聊天流 {stream_id}，使用默认 focus_energy=0.5")
                 return 0.5
 
         except Exception as e:
@@ -277,8 +277,8 @@ class ProactiveThinkingScheduler:
                 # 计算下次触发时间
                 next_run_time = datetime.now() + timedelta(seconds=interval_seconds)
 
-                logger.info(
-                    f"✅ 聊天流 {stream_id} 主动思考任务已创建 | "
+                logger.debug(
+                    f"主动思考任务已创建: {stream_id} | "
                     f"Focus: {focus_energy:.3f} | "
                     f"间隔: {interval_seconds / 60:.1f}分钟 | "
                     f"下次: {next_run_time.strftime('%H:%M:%S')}"
@@ -313,7 +313,7 @@ class ProactiveThinkingScheduler:
 
                 if success:
                     self._paused_streams.add(stream_id)
-                    logger.info(f"⏸️ 暂停主动思考 {stream_id}，原因: {reason}")
+                    logger.debug(f"暂停主动思考: {stream_id}，原因: {reason}")
 
                 return success
 
@@ -341,7 +341,7 @@ class ProactiveThinkingScheduler:
 
                 if success:
                     self._paused_streams.discard(stream_id)
-                    logger.info(f"▶️ 恢复主动思考 {stream_id}")
+                    logger.debug(f"恢复主动思考: {stream_id}")
 
                 return success
 

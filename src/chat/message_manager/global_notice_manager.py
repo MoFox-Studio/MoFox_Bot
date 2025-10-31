@@ -74,7 +74,7 @@ class GlobalNoticeManager:
             "last_cleanup_time": 0,
         }
 
-        logger.info("全局Notice管理器初始化完成")
+        logger.debug("全局Notice管理器初始化完成")
 
     def add_notice(
         self,
@@ -135,7 +135,7 @@ class GlobalNoticeManager:
             # 定期清理过期消息
             self._cleanup_expired_notices()
 
-            logger.info(f"✅ Notice已添加: id={message.message_id}, type={self._get_notice_type(message)}, scope={scope.value}, target={target_stream_id}, storage_key={storage_key}, ttl={ttl}s")
+            logger.debug(f"Notice已添加: id={message.message_id}, type={self._get_notice_type(message)}, scope={scope.value}")
             return True
 
         except Exception as e:
@@ -282,7 +282,8 @@ class GlobalNoticeManager:
             for key in keys_to_remove:
                 del self._notices[key]
 
-            logger.info(f"清理notice消息: {removed_count} 条")
+            if removed_count > 0:
+                logger.debug(f"清理notice消息: {removed_count} 条")
             return removed_count
 
         except Exception as e:

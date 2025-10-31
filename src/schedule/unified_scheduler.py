@@ -104,7 +104,7 @@ class UnifiedScheduler:
             logger.debug(f"[调度器] 事件 '{event_name}' 没有对应的调度任务")
             return
 
-        logger.info(f"[调度器] 事件 '{event_name}' 触发，共有 {len(event_tasks)} 个调度任务")
+        logger.debug(f"[调度器] 事件 '{event_name}' 触发，共有 {len(event_tasks)} 个调度任务")
 
         tasks_to_remove = []
 
@@ -154,7 +154,7 @@ class UnifiedScheduler:
             from src.plugin_system.core.event_manager import event_manager
 
             event_manager.register_scheduler_callback(self._handle_event_trigger)
-            logger.info("调度器已注册到 event_manager")
+            logger.debug("调度器已注册到 event_manager")
         except ImportError:
             logger.warning("无法导入 event_manager，事件触发功能将不可用")
 
@@ -178,23 +178,23 @@ class UnifiedScheduler:
             from src.plugin_system.core.event_manager import event_manager
 
             event_manager.unregister_scheduler_callback()
-            logger.info("调度器回调已从 event_manager 注销")
+            logger.debug("调度器回调已从 event_manager 注销")
         except ImportError:
             pass
 
-        logger.info(f"统一调度器已停止，共有 {len(self._tasks)} 个任务被清理")
+        logger.info(f"统一调度器已停止")
         self._tasks.clear()
         self._event_subscriptions.clear()
 
     async def _check_loop(self):
         """主循环：每秒检查一次所有任务"""
-        logger.info("调度器检查循环已启动")
+        logger.debug("调度器检查循环已启动")
         while self._running:
             try:
                 await asyncio.sleep(1)
                 await self._check_and_trigger_tasks()
             except asyncio.CancelledError:
-                logger.info("调度器检查循环被取消")
+                logger.debug("调度器检查循环被取消")
                 break
             except Exception as e:
                 logger.error(f"调度器检查循环发生错误: {e}", exc_info=True)
@@ -238,7 +238,7 @@ class UnifiedScheduler:
                 # 如果不是循环任务，标记为删除
                 if not task.is_recurring:
                     tasks_to_remove.append(task.schedule_id)
-                    logger.info(f"[调度器] 一次性任务 {task.task_name} 已完成，将被移除")
+                    logger.debug(f"[调度器] 一次性任务 {task.task_name} 已完成，将被移除")
 
             except Exception as e:
                 logger.error(f"[调度器] 执行任务 {task.task_name} 时发生错误: {e}", exc_info=True)
@@ -306,14 +306,14 @@ class UnifiedScheduler:
     async def _execute_callback(self, task: ScheduleTask):
         """执行任务回调函数"""
         try:
-            logger.info(f"触发任务: {task.task_name} (ID: {task.schedule_id[:8]}...)")
+            logger.debug(f"触发任务: {task.task_name}")
 
             if asyncio.iscoroutinefunction(task.callback):
                 await task.callback(*task.callback_args, **task.callback_kwargs)
             else:
                 task.callback(*task.callback_args, **task.callback_kwargs)
 
-            logger.info(f"任务 {task.task_name} 执行成功 (第 {task.trigger_count + 1} 次)")
+            logger.debug(f"任务 {task.task_name} 执行完成")
 
         except Exception as e:
             logger.error(f"执行任务 {task.task_name} 的回调函数时出错: {e}", exc_info=True)
@@ -371,7 +371,7 @@ class UnifiedScheduler:
                     self._event_subscriptions.add(event_name)
                     logger.debug(f"开始追踪事件: {event_name}")
 
-        logger.info(f"创建调度任务: {task}")
+        logger.debug(f"创建调度任务: {task.task_name}")
         return schedule_id
 
     async def remove_schedule(self, schedule_id: str) -> bool:
@@ -383,7 +383,7 @@ class UnifiedScheduler:
 
             task = self._tasks[schedule_id]
             await self._remove_task_internal(schedule_id)
-            logger.info(f"移除调度任务: {task.task_name} (ID: {schedule_id[:8]}...)")
+            logger.debug(f"移除调度任务: {task.task_name}")
             return True
 
     async def trigger_schedule(self, schedule_id: str) -> bool:
@@ -416,7 +416,7 @@ class UnifiedScheduler:
                 return False
 
             task.is_active = False
-            logger.info(f"暂停任务: {task.task_name} (ID: {schedule_id[:8]}...)")
+            logger.debug(f"暂停任务: {task.task_name}")
             return True
 
     async def resume_schedule(self, schedule_id: str) -> bool:
@@ -428,7 +428,7 @@ class UnifiedScheduler:
                 return False
 
             task.is_active = True
-            logger.info(f"恢复任务: {task.task_name} (ID: {schedule_id[:8]}...)")
+            logger.debug(f"恢复任务: {task.task_name}")
             return True
 
     async def get_task_info(self, schedule_id: str) -> dict[str, Any] | None:
