@@ -445,93 +445,11 @@ class ChatBot:
             # 处理notice消息
             notice_handled = await self.handle_notice_message(message)
             if notice_handled:
-                # notice消息已处理，需要先添加到message_manager再存储
+                # notice消息已处理，使用统一的转换方法
                 try:
-                    import time
-
-                    from src.common.data_models.database_data_model import DatabaseMessages
-
-                    message_info = message.message_info
-                    msg_user_info = getattr(message_info, "user_info", None)
-                    stream_user_info = getattr(message.chat_stream, "user_info", None)
-                    group_info = getattr(message.chat_stream, "group_info", None)
-
-                    message_id = message_info.message_id or ""
-                    message_time = message_info.time if message_info.time is not None else time.time()
-
-                    user_id = ""
-                    user_nickname = ""
-                    user_cardname = None
-                    user_platform = ""
-                    if msg_user_info:
-                        user_id = str(getattr(msg_user_info, "user_id", "") or "")
-                        user_nickname = getattr(msg_user_info, "user_nickname", "") or ""
-                        user_cardname = getattr(msg_user_info, "user_cardname", None)
-                        user_platform = getattr(msg_user_info, "platform", "") or ""
-                    elif stream_user_info:
-                        user_id = str(getattr(stream_user_info, "user_id", "") or "")
-                        user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
-                        user_cardname = getattr(stream_user_info, "user_cardname", None)
-                        user_platform = getattr(stream_user_info, "platform", "") or ""
-
-                    chat_user_id = str(getattr(stream_user_info, "user_id", "") or "")
-                    chat_user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
-                    chat_user_cardname = getattr(stream_user_info, "user_cardname", None)
-                    chat_user_platform = getattr(stream_user_info, "platform", "") or ""
-
-                    group_id = getattr(group_info, "group_id", None)
-                    group_name = getattr(group_info, "group_name", None)
-                    group_platform = getattr(group_info, "platform", None)
-
-                    # 构建additional_config，确保包含is_notice标志
-                    import json
-                    additional_config_dict = {
-                        "is_notice": True,
-                        "notice_type": message.notice_type or "unknown",
-                        "is_public_notice": bool(message.is_public_notice),
-                    }
-
-                    # 如果message_info有additional_config，合并进来
-                    if hasattr(message_info, "additional_config") and message_info.additional_config:
-                        if isinstance(message_info.additional_config, dict):
-                            additional_config_dict.update(message_info.additional_config)
-                        elif isinstance(message_info.additional_config, str):
-                            try:
-                                existing_config = json.loads(message_info.additional_config)
-                                additional_config_dict.update(existing_config)
-                            except Exception:
-                                pass
-
-                    additional_config_json = json.dumps(additional_config_dict)
-
-                    # 创建数据库消息对象
-                    db_message = DatabaseMessages(
-                        message_id=message_id,
-                        time=float(message_time),
-                        chat_id=message.chat_stream.stream_id,
-                        processed_plain_text=message.processed_plain_text,
-                        display_message=message.processed_plain_text,
-                        is_notify=bool(message.is_notify),
-                        is_public_notice=bool(message.is_public_notice),
-                        notice_type=message.notice_type,
-                        additional_config=additional_config_json,
-                        user_id=user_id,
-                        user_nickname=user_nickname,
-                        user_cardname=user_cardname,
-                        user_platform=user_platform,
-                        chat_info_stream_id=message.chat_stream.stream_id,
-                        chat_info_platform=message.chat_stream.platform,
-                        chat_info_create_time=float(message.chat_stream.create_time),
-                        chat_info_last_active_time=float(message.chat_stream.last_active_time),
-                        chat_info_user_id=chat_user_id,
-                        chat_info_user_nickname=chat_user_nickname,
-                        chat_info_user_cardname=chat_user_cardname,
-                        chat_info_user_platform=chat_user_platform,
-                        chat_info_group_id=group_id,
-                        chat_info_group_name=group_name,
-                        chat_info_group_platform=group_platform,
-                    )
-
+                    # 直接转换为 DatabaseMessages
+                    db_message = message.to_database_message()
+                    
                     # 添加到message_manager（这会将notice添加到全局notice管理器）
                     await message_manager.add_message(message.chat_stream.stream_id, db_message)
                     logger.info(f"✅ Notice消息已添加到message_manager: type={message.notice_type}, stream={message.chat_stream.stream_id}")
@@ -589,124 +507,10 @@ class ChatBot:
                 template_group_name = None
 
             async def preprocess():
-                import time
-
-                from src.common.data_models.database_data_model import DatabaseMessages
-
-                message_info = message.message_info
-                msg_user_info = getattr(message_info, "user_info", None)
-                stream_user_info = getattr(message.chat_stream, "user_info", None)
+                # 使用统一的转换方法创建数据库消息对象
+                db_message = message.to_database_message()
+                
                 group_info = getattr(message.chat_stream, "group_info", None)
-
-                message_id = message_info.message_id or ""
-                message_time = message_info.time if hasattr(message_info, "time") and message_info.time is not None else time.time()
-                is_mentioned = None
-                if isinstance(message.is_mentioned, bool):
-                    is_mentioned = message.is_mentioned
-                elif isinstance(message.is_mentioned, int | float):
-                    is_mentioned = message.is_mentioned != 0
-
-                user_id = ""
-                user_nickname = ""
-                user_cardname = None
-                user_platform = ""
-                if msg_user_info:
-                    user_id = str(getattr(msg_user_info, "user_id", "") or "")
-                    user_nickname = getattr(msg_user_info, "user_nickname", "") or ""
-                    user_cardname = getattr(msg_user_info, "user_cardname", None)
-                    user_platform = getattr(msg_user_info, "platform", "") or ""
-                elif stream_user_info:
-                    user_id = str(getattr(stream_user_info, "user_id", "") or "")
-                    user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
-                    user_cardname = getattr(stream_user_info, "user_cardname", None)
-                    user_platform = getattr(stream_user_info, "platform", "") or ""
-
-                chat_user_id = str(getattr(stream_user_info, "user_id", "") or "")
-                chat_user_nickname = getattr(stream_user_info, "user_nickname", "") or ""
-                chat_user_cardname = getattr(stream_user_info, "user_cardname", None)
-                chat_user_platform = getattr(stream_user_info, "platform", "") or ""
-
-                group_id = getattr(group_info, "group_id", None)
-                group_name = getattr(group_info, "group_name", None)
-                group_platform = getattr(group_info, "platform", None)
-
-                # 准备 additional_config，将 format_info 嵌入其中
-                additional_config_str = None
-                try:
-                    import orjson
-                    
-                    additional_config_data = {}
-                    
-                    # 首先获取adapter传递的additional_config
-                    if hasattr(message_info, 'additional_config') and message_info.additional_config:
-                        if isinstance(message_info.additional_config, dict):
-                            additional_config_data = message_info.additional_config.copy()
-                        elif isinstance(message_info.additional_config, str):
-                            try:
-                                additional_config_data = orjson.loads(message_info.additional_config)
-                            except Exception as e:
-                                logger.warning(f"无法解析 additional_config JSON: {e}")
-                                additional_config_data = {}
-                    
-                    # 然后添加format_info到additional_config中
-                    if hasattr(message_info, 'format_info') and message_info.format_info:
-                        try:
-                            format_info_dict = message_info.format_info.to_dict()
-                            additional_config_data["format_info"] = format_info_dict
-                            logger.debug(f"[bot.py] 嵌入 format_info 到 additional_config: {format_info_dict}")
-                        except Exception as e:
-                            logger.warning(f"将 format_info 转换为字典失败: {e}")
-                    else:
-                        logger.warning(f"[bot.py] [问题] 消息缺少 format_info: message_id={message_id}")
-                    
-                    # 序列化为JSON字符串
-                    if additional_config_data:
-                        additional_config_str = orjson.dumps(additional_config_data).decode("utf-8")
-                except Exception as e:
-                    logger.error(f"准备 additional_config 失败: {e}")
-
-                # 创建数据库消息对象
-                db_message = DatabaseMessages(
-                    message_id=message_id,
-                    time=float(message_time),
-                    chat_id=message.chat_stream.stream_id,
-                    processed_plain_text=message.processed_plain_text,
-                    display_message=message.processed_plain_text,
-                    is_mentioned=is_mentioned,
-                    is_at=bool(message.is_at) if message.is_at is not None else None,
-                    is_emoji=bool(message.is_emoji),
-                    is_picid=bool(message.is_picid),
-                    is_command=bool(message.is_command),
-                    is_notify=bool(message.is_notify),
-                    is_public_notice=bool(message.is_public_notice),
-                    notice_type=message.notice_type,
-                    additional_config=additional_config_str,
-                    user_id=user_id,
-                    user_nickname=user_nickname,
-                    user_cardname=user_cardname,
-                    user_platform=user_platform,
-                    chat_info_stream_id=message.chat_stream.stream_id,
-                    chat_info_platform=message.chat_stream.platform,
-                    chat_info_create_time=float(message.chat_stream.create_time),
-                    chat_info_last_active_time=float(message.chat_stream.last_active_time),
-                    chat_info_user_id=chat_user_id,
-                    chat_info_user_nickname=chat_user_nickname,
-                    chat_info_user_cardname=chat_user_cardname,
-                    chat_info_user_platform=chat_user_platform,
-                    chat_info_group_id=group_id,
-                    chat_info_group_name=group_name,
-                    chat_info_group_platform=group_platform,
-                )
-
-                # 兼容历史逻辑：显式设置群聊相关属性，便于后续逻辑通过 hasattr 判断
-                if group_info:
-                    setattr(db_message, "chat_info_group_id", group_id)
-                    setattr(db_message, "chat_info_group_name", group_name)
-                    setattr(db_message, "chat_info_group_platform", group_platform)
-                else:
-                    setattr(db_message, "chat_info_group_id", None)
-                    setattr(db_message, "chat_info_group_name", None)
-                    setattr(db_message, "chat_info_group_platform", None)
 
                 # 先交给消息管理器处理，计算兴趣度等衍生数据
                 try:
