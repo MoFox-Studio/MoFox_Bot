@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import mcp.types
-from fastmcp.client import Client, StreamableHttpTransport
+from fastmcp.client import Client, StdioTransport, StreamableHttpTransport
 
 from src.common.logger import get_logger
 
@@ -169,11 +169,17 @@ class MCPClientManager:
 
             client = Client(transport, timeout=server_config.timeout)
 
-        elif transport_type == "sse":
-            from fastmcp.client import SSETransport
+        elif transport_type == "stdio":
+            # stdio 传输：通过标准输入输出与本地进程通信
+            command = server_config.transport_config.get("command")
+            args = server_config.transport_config.get("args", [])
 
-            url = server_config.transport_config["url"]
-            client = Client(SSETransport(url), timeout=server_config.timeout)
+            if not command:
+                raise ValueError("stdio 传输需要提供 'command' 参数")
+
+            # 创建 stdio 传输
+            transport = StdioTransport(command, args)
+            client = Client(transport, timeout=server_config.timeout)
 
         else:
             raise ValueError(f"不支持的传输类型: {transport_type}")
