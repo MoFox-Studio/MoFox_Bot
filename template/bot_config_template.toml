@@ -612,7 +612,7 @@ active_hours_multiplier = 0.7 # 活跃时段间隔倍数，<1表示更频繁，>
 
 # --- 冷却与限制 ---
 reply_reset_enabled = true # bot回复后是否重置定时器（避免回复后立即又主动发言）
-topic_throw_cooldown = 3600 # 抛出话题后的冷却时间（秒），期间暂停主动思考
+topic_throw_cooldown = 3600 # 主动发言后的冷却时间（秒），期间暂停主动思考，等待用户回复。0表示不暂停，继续主动思考
 max_daily_proactive = 0 # 每个聊天流每天最多主动发言次数，0表示不限制
 
 # --- 决策权重配置 ---

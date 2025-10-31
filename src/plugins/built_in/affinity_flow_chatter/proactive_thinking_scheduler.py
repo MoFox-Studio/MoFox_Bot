@@ -37,6 +37,9 @@ class ProactiveThinkingScheduler:
         self._statistics: dict[str, dict[str, Any]] = {}  # stream_id -> 统计信息
         self._daily_counts: dict[str, dict[str, int]] = {}  # stream_id -> {date: count}
         
+        # 历史决策记录：stream_id -> 上次决策信息
+        self._last_decisions: dict[str, dict[str, Any]] = {}
+        
         # 从全局配置加载（延迟导入避免循环依赖）
         from src.config.config import global_config
         self.config = global_config.proactive_thinking
@@ -492,6 +495,45 @@ class ProactiveThinkingScheduler:
         
         logger.info("")
         logger.info("=" * 60)
+    
+    def get_last_decision(self, stream_id: str) -> Optional[dict[str, Any]]:
+        """获取聊天流的上次主动思考决策
+        
+        Args:
+            stream_id: 聊天流ID
+            
+        Returns:
+            dict: 上次决策信息，包含：
+                - action: "do_nothing" | "simple_bubble" | "throw_topic"
+                - reasoning: 决策理由
+                - topic: (可选) 话题内容
+                - timestamp: 决策时间戳
+            None: 如果没有历史决策
+        """
+        return self._last_decisions.get(stream_id)
+    
+    def record_decision(
+        self,
+        stream_id: str,
+        action: str,
+        reasoning: str,
+        topic: Optional[str] = None
+    ) -> None:
+        """记录聊天流的主动思考决策
+        
+        Args:
+            stream_id: 聊天流ID
+            action: 决策动作
+            reasoning: 决策理由
+            topic: (可选) 话题内容
+        """
+        self._last_decisions[stream_id] = {
+            "action": action,
+            "reasoning": reasoning,
+            "topic": topic,
+            "timestamp": datetime.now().isoformat(),
+        }
+        logger.debug(f"已记录聊天流 {stream_id} 的决策: {action}")
 
 
 # 全局调度器实例

@@ -79,7 +79,31 @@ class ProactiveThinkingPlanner:
             individuality = Individuality()
             bot_personality = await individuality.get_personality_block()
             
-            # 4. 构建上下文
+            # 4. 获取当前心情
+            current_mood = "感觉很平静"  # 默认心情
+            try:
+                from src.mood.mood_manager import mood_manager
+                mood_obj = mood_manager.get_mood_by_chat_id(stream_id)
+                if mood_obj:
+                    await mood_obj._initialize()  # 确保已初始化
+                    current_mood = mood_obj.mood_state
+                    logger.debug(f"获取到聊天流 {stream_id} 的心情: {current_mood}")
+            except Exception as e:
+                logger.warning(f"获取心情失败，使用默认值: {e}")
+            
+            # 5. 获取上次决策
+            last_decision = None
+            try:
+                from src.plugins.built_in.affinity_flow_chatter.proactive_thinking_scheduler import (
+                    proactive_thinking_scheduler,
+                )
+                last_decision = proactive_thinking_scheduler.get_last_decision(stream_id)
+                if last_decision:
+                    logger.debug(f"获取到聊天流 {stream_id} 的上次决策: {last_decision.get('action')}")
+            except Exception as e:
+                logger.warning(f"获取上次决策失败: {e}")
+            
+            # 6. 构建上下文
             context = {
                 "stream_id": stream_id,
                 "stream_name": stream_data.get("stream_name", "未知"),
@@ -90,6 +114,8 @@ class ProactiveThinkingPlanner:
                 "recent_chat_history": recent_chat_history or "暂无最近聊天记录",
                 "bot_personality": bot_personality,
                 "current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "current_mood": current_mood,
+                "last_decision": last_decision,
             }
             
             logger.debug(f"成功搜集聊天流 {stream_id} 的上下文信息")
@@ -174,44 +200,70 @@ class ProactiveThinkingPlanner:
     
     def _build_decision_prompt(self, context: dict[str, Any]) -> str:
         """构建决策提示词"""
+        # 构建上次决策信息
+        last_decision_text = ""
+        if context.get('last_decision'):
+            last_dec = context['last_decision']
+            last_action = last_dec.get('action', '未知')
+            last_reasoning = last_dec.get('reasoning', '无')
+            last_topic = last_dec.get('topic')
+            last_time = last_dec.get('timestamp', '未知')
+            
+            last_decision_text = f"""
+【上次主动思考的决策】
+- 时间: {last_time}
+- 决策: {last_action}
+- 理由: {last_reasoning}"""
+            if last_topic:
+                last_decision_text += f"\n- 话题: {last_topic}"
+        
         return f"""你是一个有着独特个性的AI助手。你的人设是：
 {context['bot_personality']}
 
 现在是 {context['current_time']}，你正在考虑是否要主动在 "{context['stream_name']}" 中说些什么。
+
+【你当前的心情】
+{context.get('current_mood', '感觉很平静')}
 
 【聊天环境信息】
 - 整体印象: {context['stream_impression']}
 - 聊天风格: {context['chat_style']}
 - 常见话题: {context['topic_keywords'] or '暂无'}
 - 你的兴趣程度: {context['interest_score']:.2f}/1.0
+{last_decision_text}
 
 【最近的聊天记录】
 {context['recent_chat_history']}
 
-请根据以上信息，决定你现在应该做什么：
+请根据以上信息（包括你的心情和上次决策），决定你现在应该做什么：
 
 **选项1：什么都不做 (do_nothing)**
 - 适用场景：现在可能是休息时间、工作时间，或者气氛不适合说话
 - 也可能是：最近聊天很活跃不需要你主动、没什么特别想说的、此时说话会显得突兀
+- 心情影响：如果心情不好（如生气、难过），可能更倾向于保持沉默
 
 **选项2：简单冒个泡 (simple_bubble)**  
 - 适用场景：群里有点冷清，你想引起注意或活跃气氛
 - 方式：简单问个好、发个表情、说句无关紧要的话，没有深意，就是刷个存在感
+- 心情影响：心情好时可能更活跃；心情不好时也可能需要倾诉或找人陪伴
 
 **选项3：抛出一个话题 (throw_topic)**
 - 适用场景：历史消息中有未讨论完的话题、你有自己的想法、或者想深入聊某个主题
 - 方式：明确提出一个话题，希望得到回应和讨论
+- 心情影响：心情会影响你想聊的话题类型和语气
 
 请以JSON格式回复你的决策：
 {{
     "action": "do_nothing" | "simple_bubble" | "throw_topic",
-    "reasoning": "你的决策理由，说明为什么选择这个行动",
+    "reasoning": "你的决策理由，说明为什么选择这个行动（要结合你的心情和上次决策考虑）",
     "topic": "(仅当action=throw_topic时填写)你想抛出的具体话题"
 }}
 
 注意：
 1. 如果最近聊天很活跃（不到1小时），倾向于选择 do_nothing
 2. 如果你对这个环境兴趣不高(<0.4)，倾向于选择 do_nothing 或 simple_bubble
+3. 考虑你的心情：心情会影响你的行动倾向和表达方式
+4. 参考上次决策：避免重复相同的话题，也可以根据上次效果调整策略
 3. 只有在真的有话题想聊时才选择 throw_topic
 4. 符合你的人设，不要太过热情或冷淡
 """
@@ -323,6 +375,9 @@ class ProactiveThinkingPlanner:
 
 现在是 {context['current_time']}，你决定在 "{context['stream_name']}" 中简单冒个泡。
 
+【你当前的心情】
+{context.get('current_mood', '感觉很平静')}
+
 【聊天环境】
 - 整体印象: {context['stream_impression']}
 - 聊天风格: {context['chat_style']}
@@ -335,8 +390,9 @@ class ProactiveThinkingPlanner:
 2. 轻松随意，不要有明确的话题或问题
 3. 可以是：问候、表达心情、随口一句话
 4. 符合你的人设和当前聊天风格
-5. 如果有表达方式参考，在合适时自然使用
-6. 合理参考历史记录
+5. **你的心情应该影响消息的内容和语气**（比如心情好时可能更活泼，心情不好时可能更低落）
+6. 如果有表达方式参考，在合适时自然使用
+7. 合理参考历史记录
 直接输出消息内容，不要解释："""
         
         else:  # throw_topic
@@ -344,6 +400,9 @@ class ProactiveThinkingPlanner:
 {context['bot_personality']}
 
 现在是 {context['current_time']}，你决定在 "{context['stream_name']}" 中抛出一个话题。
+
+【你当前的心情】
+{context.get('current_mood', '感觉很平静')}
 
 【聊天环境】
 - 整体印象: {context['stream_impression']}
@@ -362,7 +421,8 @@ class ProactiveThinkingPlanner:
 3. 自然地引入话题，不要生硬
 4. 可以结合最近的聊天记录
 5. 符合你的人设和当前聊天风格
-6. 如果有表达方式参考，在合适时自然使用
+6. **你的心情应该影响话题的选择和表达方式**（比如心情好时可能更积极，心情不好时可能需要倾诉或寻求安慰）
+7. 如果有表达方式参考，在合适时自然使用
 
 直接输出消息内容，不要解释："""
     
@@ -484,10 +544,15 @@ async def execute_proactive_thinking(stream_id: str):
         # 3. 根据决策执行相应动作
         if action == "do_nothing":
             logger.info(f"决策：什么都不做。理由：{reasoning}")
+            # 记录决策
+            proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
             return
         
         elif action == "simple_bubble":
             logger.info(f"[主动思考] 决策：简单冒个泡。理由：{reasoning}")
+            
+            # 记录决策
+            proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
             
             # 生成简单的消息
             logger.info(f"[主动思考] 步骤3：生成冒泡回复")
@@ -506,13 +571,22 @@ async def execute_proactive_thinking(stream_id: str):
                 # 更新统计
                 if config.enable_statistics:
                     _update_statistics(stream_id, action)
+                
+                # 冒泡后暂停主动思考，等待用户回复
+                # 使用与 topic_throw 相同的冷却时间配置
+                if config.topic_throw_cooldown > 0:
+                    logger.info(f"[主动思考] 步骤5：暂停任务")
+                    await proactive_thinking_scheduler.pause_proactive_thinking(stream_id, reason="已冒泡")
+                    logger.info(f"[主动思考] 已暂停聊天流 {stream_id} 的主动思考，等待用户回复")
 
             logger.info(f"[主动思考] simple_bubble 执行完成")
-            # 冒泡后可以继续主动思考，不需要暂停
         
         elif action == "throw_topic":
             topic = decision.get("topic", "")
             logger.info(f"[主动思考] 决策：抛出话题。理由：{reasoning}，话题：{topic}")
+            
+            # 记录决策
+            proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, topic)
             
             if not topic:
                 logger.warning("[主动思考] 选择了抛出话题但未提供话题内容，降级为冒泡")
