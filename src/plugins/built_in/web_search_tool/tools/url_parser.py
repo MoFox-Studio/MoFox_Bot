@@ -34,8 +34,8 @@ class URLParserTool(BaseTool):
         ("urls", ToolParamType.STRING, "要理解的网站", True, None),
     ]
 
-    def __init__(self, plugin_config=None):
-        super().__init__(plugin_config)
+    def __init__(self, plugin_config=None, chat_stream=None):
+        super().__init__(plugin_config, chat_stream)
         self._initialize_exa_clients()
 
     def _initialize_exa_clients(self):

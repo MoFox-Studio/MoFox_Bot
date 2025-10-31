@@ -34,46 +34,51 @@ class ProactiveThinkingReplyHandler(BaseEventHandler):
         Returns:
             HandlerResult: 处理结果
         """
-        logger.info("[事件] ProactiveThinkingReplyHandler 开始执行")
+        logger.info("[主动思考事件] ProactiveThinkingReplyHandler 开始执行")
+        logger.info(f"[主动思考事件] 接收到的参数: {kwargs}")
         
         if not kwargs:
+            logger.warning("[主动思考事件] kwargs 为空，跳过处理")
             return HandlerResult(success=True, continue_process=True, message=None)
         
         stream_id = kwargs.get("stream_id")
         if not stream_id:
-            logger.warning("Reply事件缺少stream_id参数")
+            logger.warning(f"[主动思考事件] Reply事件缺少stream_id参数，kwargs={kwargs}")
             return HandlerResult(success=True, continue_process=True, message=None)
         
-        logger.info(f"[事件] 收到 AFTER_SEND 事件，stream_id={stream_id}")
+        logger.info(f"[主动思考事件] 收到 AFTER_SEND 事件，stream_id={stream_id}")
         
         try:
             from src.config.config import global_config
             
             # 检查是否启用reply重置
+            logger.info(f"[主动思考事件] reply_reset_enabled={global_config.proactive_thinking.reply_reset_enabled}")
             if not global_config.proactive_thinking.reply_reset_enabled:
+                logger.info(f"[主动思考事件] reply_reset_enabled 为 False，跳过重置")
                 return HandlerResult(success=True, continue_process=True, message=None)
             
             # 检查是否被暂停
             was_paused = await proactive_thinking_scheduler.is_paused(stream_id)
+            logger.info(f"[主动思考事件] 聊天流 {stream_id} 暂停状态: {was_paused}")
             
             if was_paused:
-                logger.info(f"检测到reply事件，聊天流 {stream_id} 之前因抛出话题而暂停，现在恢复")
+                logger.info(f"[主动思考事件] 检测到reply事件，聊天流 {stream_id} 之前因抛出话题而暂停，现在恢复")
             
             # 重置定时任务（这会自动清除暂停标记并创建新任务）
-            logger.debug(f"[事件] 准备调用 schedule_proactive_thinking")
+            logger.info(f"[主动思考事件] 准备调用 schedule_proactive_thinking，stream_id={stream_id}")
             success = await proactive_thinking_scheduler.schedule_proactive_thinking(stream_id)
-            logger.debug(f"[事件] schedule_proactive_thinking 调用完成，success={success}")
+            logger.info(f"[主动思考事件] schedule_proactive_thinking 调用完成，success={success}")
             
             if success:
                 if was_paused:
-                    logger.info(f"聊天流 {stream_id} 的主动思考已恢复并重置")
+                    logger.info(f"[主动思考事件] ✅ 聊天流 {stream_id} 的主动思考已恢复并重置")
                 else:
-                    logger.debug(f"聊天流 {stream_id} 的主动思考定时任务已重置")
+                    logger.info(f"[主动思考事件] ✅ 聊天流 {stream_id} 的主动思考定时任务已重置")
             else:
-                logger.warning(f"重置聊天流 {stream_id} 的主动思考任务失败")
+                logger.warning(f"[主动思考事件] ❌ 重置聊天流 {stream_id} 的主动思考任务失败")
             
         except Exception as e:
-            logger.error(f"处理reply事件时出错: {e}", exc_info=True)
+            logger.error(f"[主动思考事件] ❌ 处理reply事件时出错: {e}", exc_info=True)
         
         # 总是继续处理其他handler
         return HandlerResult(success=True, continue_process=True, message=None)

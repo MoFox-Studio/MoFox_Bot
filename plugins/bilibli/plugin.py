@@ -38,8 +38,8 @@ class BilibiliTool(BaseTool):
         ),
     ]
 
-    def __init__(self, plugin_config: dict | None = None):
-        super().__init__(plugin_config)
+    def __init__(self, plugin_config: dict | None = None, chat_stream=None):
+        super().__init__(plugin_config, chat_stream)
         self.analyzer = get_bilibili_analyzer()
 
     async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:

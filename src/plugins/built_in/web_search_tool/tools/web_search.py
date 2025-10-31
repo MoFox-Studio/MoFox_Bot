@@ -43,8 +43,8 @@ class WebSurfingTool(BaseTool):
         ),
     ]  # type: ignore
 
-    def __init__(self, plugin_config=None):
-        super().__init__(plugin_config)
+    def __init__(self, plugin_config=None, chat_stream=None):
+        super().__init__(plugin_config, chat_stream)
         # 初始化搜索引擎
         self.engines = {
             "exa": ExaSearchEngine(),

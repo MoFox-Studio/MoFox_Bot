@@ -191,24 +191,35 @@ class RecencyEnergyCalculator(EnergyCalculator):
 
 
 class RelationshipEnergyCalculator(EnergyCalculator):
-    """关系能量计算器"""
+    """关系能量计算器 - 基于聊天流兴趣度"""
 
     async def calculate(self, context: dict[str, Any]) -> float:
-        """基于关系计算能量"""
-        user_id = context.get("user_id")
-        if not user_id:
+        """基于聊天流兴趣度计算能量"""
+        stream_id = context.get("stream_id")
+        if not stream_id:
             return 0.3
 
-        # 使用统一的评分API获取关系分
+        # 从数据库获取聊天流兴趣分数
         try:
-            from src.plugin_system.apis.scoring_api import scoring_api
+            from src.common.database.sqlalchemy_database_api import get_db_session
+            from src.common.database.sqlalchemy_models import ChatStreams
+            from sqlalchemy import select
 
-            relationship_score = await scoring_api.get_user_relationship_score(user_id)
-            logger.debug(f"使用统一评分API计算关系分: {relationship_score:.3f}")
-            return relationship_score
+            async with get_db_session() as session:
+                stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)
+                result = await session.execute(stmt)
+                stream = result.scalar_one_or_none()
+                
+                if stream and stream.stream_interest_score is not None:
+                    interest_score = float(stream.stream_interest_score)
+                    logger.debug(f"使用聊天流兴趣度计算关系能量: {interest_score:.3f}")
+                    return interest_score
+                else:
+                    logger.debug(f"聊天流 {stream_id} 无兴趣分数，使用默认值")
+                    return 0.3
 
         except Exception as e:
-            logger.warning(f"关系分计算失败，使用默认值: {e}")
+            logger.warning(f"获取聊天流兴趣度失败，使用默认值: {e}")
             return 0.3  # 默认基础分
 
     def get_weight(self) -> float:
