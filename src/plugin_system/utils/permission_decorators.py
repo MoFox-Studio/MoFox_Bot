@@ -51,9 +51,12 @@ def require_permission(permission_node: str, deny_message: str | None = None):
 
             # 如果还没找到，检查是否是 PlusCommand 方法调用
             if chat_stream is None and args:
-                # 检查第一个参数是否有 message.chat_stream 属性（PlusCommand 实例）
                 instance = args[0]
-                if hasattr(instance, "message") and hasattr(instance.message, "chat_stream"):
+                # 检查第一个参数是否有 chat_stream 属性（PlusCommand 实例）
+                if hasattr(instance, "chat_stream"):
+                    chat_stream = instance.chat_stream
+                # 兼容旧的 message.chat_stream 属性
+                elif hasattr(instance, "message") and hasattr(instance.message, "chat_stream"):
                     chat_stream = instance.message.chat_stream
 
             if chat_stream is None:
@@ -61,6 +64,12 @@ def require_permission(permission_node: str, deny_message: str | None = None):
                 return None
 
             # 检查权限
+            if not chat_stream.user_info or not chat_stream.user_info.user_id:
+                logger.warning(f"权限检查失败：chat_stream 中缺少 user_info 或 user_id，函数: {func.__name__}")
+                if func.__name__ == "execute" and hasattr(args[0], "send_text"):
+                    return False, "无法获取用户信息", True
+                return None
+
             has_permission = await permission_api.check_permission(
                 chat_stream.platform, chat_stream.user_info.user_id, permission_node
             )
@@ -124,9 +133,12 @@ def require_master(deny_message: str | None = None):
 
             # 如果还没找到，检查是否是 PlusCommand 方法调用
             if chat_stream is None and args:
-                # 检查第一个参数是否有 message.chat_stream 属性（PlusCommand 实例）
                 instance = args[0]
-                if hasattr(instance, "message") and hasattr(instance.message, "chat_stream"):
+                # 检查第一个参数是否有 chat_stream 属性（PlusCommand 实例）
+                if hasattr(instance, "chat_stream"):
+                    chat_stream = instance.chat_stream
+                # 兼容旧的 message.chat_stream 属性
+                elif hasattr(instance, "message") and hasattr(instance.message, "chat_stream"):
                     chat_stream = instance.message.chat_stream
 
             if chat_stream is None:
@@ -134,7 +146,13 @@ def require_master(deny_message: str | None = None):
                 return None
 
             # 检查是否为Master用户
-            is_master = permission_api.is_master(chat_stream.platform, chat_stream.user_info.user_id)
+            if not chat_stream.user_info or not chat_stream.user_info.user_id:
+                logger.warning(f"Master权限检查失败：chat_stream 中缺少 user_info 或 user_id，函数: {func.__name__}")
+                if func.__name__ == "execute" and hasattr(args[0], "send_text"):
+                    return False, "无法获取用户信息", True
+                return None
+
+            is_master = await permission_api.is_master(chat_stream.platform, chat_stream.user_info.user_id)
 
             if not is_master:
                 message = deny_message or "❌ 此操作仅限Master用户执行"
@@ -173,7 +191,7 @@ class PermissionChecker:
         )
 
     @staticmethod
-    def is_master(chat_stream: ChatStream) -> bool:
+    async def is_master(chat_stream: ChatStream) -> bool:
         """
         检查用户是否为Master用户
 
@@ -183,7 +201,9 @@ class PermissionChecker:
         Returns:
             bool: 是否为Master用户
         """
-        return permission_api.is_master(chat_stream.platform, chat_stream.user_info.user_id)
+        if not chat_stream.user_info or not chat_stream.user_info.user_id:
+            return False
+        return await permission_api.is_master(chat_stream.platform, chat_stream.user_info.user_id)
 
     @staticmethod
     async def ensure_permission(chat_stream: ChatStream, permission_node: str, deny_message: str | None = None) -> bool:
@@ -198,6 +218,8 @@ class PermissionChecker:
         Returns:
             bool: 是否拥有权限
         """
+        if not chat_stream.user_info or not chat_stream.user_info.user_id:
+            return False
         has_permission = await permission_api.check_permission(
             chat_stream.platform, chat_stream.user_info.user_id, permission_node
         )
@@ -218,7 +240,7 @@ class PermissionChecker:
         Returns:
             bool: 是否为Master用户
         """
-        is_master = PermissionChecker.is_master(chat_stream)
+        is_master = await PermissionChecker.is_master(chat_stream)
 
         if not is_master:
             message = deny_message or "❌ 此操作仅限Master用户执行"

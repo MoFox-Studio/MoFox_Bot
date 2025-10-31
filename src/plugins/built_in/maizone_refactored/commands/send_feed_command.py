@@ -35,7 +35,12 @@ class SendFeedCommand(PlusCommand):
         """
 
         topic = args.get_remaining()
-        stream_id = self.message.chat_stream.stream_id
+
+        if not self.chat_stream:
+            logger.error("无法获取聊天流信息，操作中止")
+            return False, "无法获取聊天流信息", True
+
+        stream_id = self.chat_stream.stream_id
 
         await self.send_text(f"收到！正在为你生成关于“{topic or '随机'}”的说说，请稍候...")
 
