@@ -284,6 +284,9 @@ class ChatStreamImpressionTool(BaseTool):
 """
 
             # 调用LLM
+            if not self.impression_llm:
+                logger.info("未初始化impression_llm")
+                return None
             llm_response, _ = await self.impression_llm.generate_response_async(prompt=prompt)
 
             if not llm_response:
