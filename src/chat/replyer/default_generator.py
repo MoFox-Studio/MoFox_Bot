@@ -62,7 +62,7 @@ def init_prompt():
 {auth_role_prompt_block}
 
 你正在{chat_target_2},{reply_target_block}
-对这句话，你想表达，原句：{raw_reply},原因是：{reason}。你现在要思考怎么组织回复
+对这条消息，你想表达，原句：{raw_reply},原因是：{reason}。你现在要思考怎么组织回复
 你现在的心情是：{mood_state}
 你需要使用合适的语法和句法，参考聊天内容，组织一条日常且口语化的回复。请你修改你想表达的原句，符合你的表达风格和语言习惯
 {reply_style}，你可以完全重组回复，保留最基本的表达含义就好，但重组后保持语意通顺。
