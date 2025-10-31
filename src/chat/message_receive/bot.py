@@ -9,13 +9,12 @@ from maim_message import UserInfo
 from src.chat.antipromptinjector import initialize_anti_injector
 from src.chat.message_manager import message_manager
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
-from src.chat.message_receive.message import MessageRecv, MessageRecvS4U
+from src.chat.message_receive.message import MessageRecv
 from src.chat.message_receive.storage import MessageStorage
 from src.chat.utils.prompt import create_prompt_async, global_prompt_manager
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.logger import get_logger
 from src.config.config import global_config
-from src.mais4u.mais4u_chat.s4u_msg_processor import S4UMessageProcessor
 from src.mood.mood_manager import mood_manager  # 导入情绪管理器
 from src.plugin_system.base import BaseCommand, EventType
 from src.plugin_system.core import component_registry, event_manager, global_announcement_manager
@@ -73,9 +72,6 @@ class ChatBot:
         self.bot = None  # bot 实例引用
         self._started = False
         self.mood_manager = mood_manager  # 获取情绪管理器单例
-        # 亲和力流消息处理器 - 直接使用全局afc_manager
-
-        self.s4u_message_processor = S4UMessageProcessor()
 
         # 初始化反注入系统
         self._initialize_anti_injector()
@@ -364,27 +360,6 @@ class ChatBot:
         except Exception as e:
             logger.error(f"处理适配器响应时出错: {e}")
 
-    async def do_s4u(self, message_data: dict[str, Any]):
-        message = MessageRecvS4U(message_data)
-        group_info = message.message_info.group_info
-        user_info = message.message_info.user_info
-
-        get_chat_manager().register_message(message)
-        chat = await get_chat_manager().get_or_create_stream(
-            platform=message.message_info.platform,  # type: ignore
-            user_info=user_info,  # type: ignore
-            group_info=group_info,
-        )
-
-        message.update_chat_stream(chat)
-
-        # 处理消息内容
-        await message.process()
-
-        await self.s4u_message_processor.process_message(message)
-
-        return
-
     async def message_process(self, message_data: dict[str, Any]) -> None:
         """处理转化后的统一格式消息"""
         try:
@@ -418,10 +393,6 @@ class ChatBot:
                 return
 
             platform = message_info.get("platform")
-
-            if platform == "amaidesu_default":
-                await self.do_s4u(message_data)
-                return
 
             if message_info.get("group_info") is not None:
                 message_info["group_info"]["group_id"] = str(
