@@ -214,7 +214,7 @@ class ChatterActionPlanner:
             # 6. 根据执行结果更新统计信息
             self._update_stats_from_execution_result(execution_result)
 
-            # 7. Focus模式下如果执行了reply动作，切换到Normal模式
+            # 7. Focus模式下如果执行了reply动作，根据focus_energy概率切换到Normal模式
             if chat_mode == ChatMode.FOCUS and context:
                 if filtered_plan.decided_actions:
                     has_reply = any(
@@ -224,9 +224,7 @@ class ChatterActionPlanner:
                 else:
                     has_reply = False
                 if has_reply and global_config.affinity_flow.enable_normal_mode:
-                    logger.info("Focus模式: 执行了reply动作，自动切换到Normal模式")
-                    context.chat_mode = ChatMode.NORMAL
-                    await self._sync_chat_mode_to_stream(context)
+                    await self._check_enter_normal_mode(context)
 
             # 8. 清理处理标记
             if context:
@@ -369,6 +367,44 @@ class ChatterActionPlanner:
                 context.processing_message_id = None
             return [], None
 
+    async def _check_enter_normal_mode(self, context: "StreamContext | None") -> None:
+        """检查并执行进入Normal模式的判定
+
+        Args:
+            context: 流上下文
+        """
+        if not context:
+            return
+
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(self.chat_id) if chat_manager else None
+
+            if not chat_stream:
+                return
+
+            focus_energy = chat_stream.focus_energy
+            # focus_energy越高，进入normal模式的概率越高
+            # 使用正比例函数: 进入概率 = focus_energy
+            # 当focus_energy = 0.1时，进入概率 = 10%
+            # 当focus_energy = 0.5时，进入概率 = 50%
+            # 当focus_energy = 0.9时，进入概率 = 90%
+            enter_probability = focus_energy
+
+            import random
+            if random.random() < enter_probability:
+                logger.info(f"Focus模式: focus_energy={focus_energy:.3f}, 进入概率={enter_probability:.3f}, 切换到Normal模式")
+                # 切换到normal模式
+                context.chat_mode = ChatMode.NORMAL
+                await self._sync_chat_mode_to_stream(context)
+            else:
+                logger.debug(f"Focus模式: focus_energy={focus_energy:.3f}, 进入概率={enter_probability:.3f}, 保持Focus模式")
+
+        except Exception as e:
+            logger.warning(f"检查进入Normal模式失败: {e}")
+
     async def _check_exit_normal_mode(self, context: "StreamContext | None") -> None:
         """检查并执行退出Normal模式的判定
 
@@ -397,12 +433,12 @@ class ChatterActionPlanner:
 
             import random
             if random.random() < exit_probability:
-                logger.info(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 切换回focus模式")
+                logger.info(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 切换回Focus模式")
                 # 切换回focus模式
                 context.chat_mode = ChatMode.FOCUS
                 await self._sync_chat_mode_to_stream(context)
             else:
-                logger.debug(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 保持normal模式")
+                logger.debug(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 保持Normal模式")
 
         except Exception as e:
             logger.warning(f"检查退出Normal模式失败: {e}")
