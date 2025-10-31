@@ -422,6 +422,14 @@ MoFox_Bot(第三方修改版)
         except Exception as e:
             logger.error(f"注册API路由失败: {e}")
 
+        # 初始化统一调度器
+        try:
+            from src.schedule.unified_scheduler import initialize_scheduler
+
+            await initialize_scheduler()
+        except Exception as e:
+            logger.error(f"统一调度器初始化失败: {e}")
+            
         # 加载所有插件
         plugin_manager.load_all_plugins()
 
@@ -485,14 +493,6 @@ MoFox_Bot(第三方修改版)
 
         # 初始化计划相关组件
         await self._init_planning_components()
-
-        # 初始化统一调度器
-        try:
-            from src.schedule.unified_scheduler import initialize_scheduler
-
-            await initialize_scheduler()
-        except Exception as e:
-            logger.error(f"统一调度器初始化失败: {e}")
 
         # 触发启动事件
         try:

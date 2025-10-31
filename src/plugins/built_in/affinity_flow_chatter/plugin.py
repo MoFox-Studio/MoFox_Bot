@@ -68,4 +68,20 @@ class AffinityChatterPlugin(BasePlugin):
         except Exception as e:
             logger.error(f"加载 ChatStreamImpressionTool 时出错: {e}")
 
+        try:
+            # 延迟导入 ProactiveThinkingReplyHandler
+            from .proactive_thinking_event import ProactiveThinkingReplyHandler
+
+            components.append((ProactiveThinkingReplyHandler.get_handler_info(), ProactiveThinkingReplyHandler))
+        except Exception as e:
+            logger.error(f"加载 ProactiveThinkingReplyHandler 时出错: {e}")
+
+        try:
+            # 延迟导入 ProactiveThinkingMessageHandler
+            from .proactive_thinking_event import ProactiveThinkingMessageHandler
+
+            components.append((ProactiveThinkingMessageHandler.get_handler_info(), ProactiveThinkingMessageHandler))
+        except Exception as e:
+            logger.error(f"加载 ProactiveThinkingMessageHandler 时出错: {e}")
+
         return components

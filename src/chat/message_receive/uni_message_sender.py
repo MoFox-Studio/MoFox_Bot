@@ -23,6 +23,21 @@ async def send_message(message: MessageSending, show_log=True) -> bool:
         await get_global_api().send_message(message)
         if show_log:
             logger.info(f"已将消息  '{message_preview}'  发往平台'{message.message_info.platform}'")
+        
+        # 触发 AFTER_SEND 事件
+        try:
+            from src.plugin_system.core.event_manager import event_manager
+            from src.plugin_system.base.component_types import EventType
+            
+            if message.chat_stream:
+                await event_manager.trigger_event(
+                    EventType.AFTER_SEND,
+                    kwargs={"stream_id": message.chat_stream.stream_id, "message": message},
+                    trigger_source="SYSTEM",
+                )
+        except Exception as event_error:
+            logger.error(f"触发 AFTER_SEND 事件时出错: {event_error}")
+        
         return True
 
     except Exception as e:
