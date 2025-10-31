@@ -81,37 +81,55 @@ def init_prompts():
             "reasoning": "选择该动作的理由",
             "action_data": {{
                 "target_message_id": "m123",
-                "content": "你的回复内容"
+                "content": "你的回复内容",
+                "should_quote_reply": false
             }}
         }}
     ]
 }}
 ```
 
-示例（多重回复，并行）:
+示例（多重回复，并行 - 需要区分回复对象时才引用）:
 ```json
 {{
     "thinking": "在这里写下你的思绪流...",
     "actions": [
         {{
             "action_type": "reply",
-            "reasoning": "理由A",
+            "reasoning": "理由A - 这个消息较早且需要明确回复对象",
             "action_data": {{
                 "target_message_id": "m124",
-                "content": "对A的回复"
+                "content": "对A的回复",
+                "should_quote_reply": true
             }}
         }},
         {{
             "action_type": "reply",
-            "reasoning": "理由B",
+            "reasoning": "理由B - 这是对最新消息的自然接续",
             "action_data": {{
                 "target_message_id": "m125",
-                "content": "对B的回复"
+                "content": "对B的回复",
+                "should_quote_reply": false
             }}
         }}
     ]
 }}
 ```
+
+# 引用回复控制（should_quote_reply）
+在群聊中回复消息时，你可以通过 `should_quote_reply` 参数控制是否引用原消息：
+- **true**: 明确引用原消息（适用于需要明确指向特定消息时，如回答问题、回应多人之一、回复较早的消息）
+- **false**: 不引用原消息（适用于自然对话流、接续最新话题、轻松闲聊等场景）
+- **不填写**: 系统将自动决定（默认不引用，让对话更流畅）
+
+**【重要】默认策略：大多数情况下应该使用 `false` 以保持对话自然流畅**
+
+**使用建议**：
+- 当对话自然流畅、你的回复是接续最新话题时，**建议明确设为 `false`** 以避免打断对话节奏
+- 当需要明确回复某个特定用户或特定问题时，设为 `true` 以帮助定位
+- 当群聊中多人同时发言，你要回复其中一个较早的消息（非最新消息）时，设为 `true`
+- 当有人直接@你或明确向你提问时，可以考虑设为 `true` 表明你在回复他
+- 私聊场景**必须**设为 `false` 或不填（因为只有两个人，引用是多余的）
 
 # 强制规则
 - 需要目标消息的动作（reply/poke_user/set_emoji_like 等），必须提供准确的 target_message_id（来自未读历史里的 <m...> 标签）。

@@ -599,6 +599,14 @@ class ChatterPlanFilter:
                     reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                     action = "no_action"
 
+                # 从action_data中提取should_quote_reply参数
+                should_quote_reply = action_data.get("should_quote_reply", None)
+                # 将should_quote_reply转换为布尔值（如果是字符串的话）
+                if isinstance(should_quote_reply, str):
+                    should_quote_reply = should_quote_reply.lower() in ["true", "1", "yes"]
+                elif not isinstance(should_quote_reply, bool):
+                    should_quote_reply = None
+
                 parsed_actions.append(
                     ActionPlannerInfo(
                         action_type=action,
@@ -606,6 +614,7 @@ class ChatterPlanFilter:
                         action_data=action_data,
                         action_message=action_message_obj,  # 使用转换后的 DatabaseMessages 对象
                         available_actions=plan.available_actions,
+                        should_quote_reply=should_quote_reply,  # 传递should_quote_reply参数
                     )
                 )
         except Exception as e:

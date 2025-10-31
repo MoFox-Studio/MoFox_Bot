@@ -185,15 +185,24 @@ class ChatterPlanExecutor:
                     "reply_content": "",
                 }
             # 构建回复动作参数
+            action_data = action_info.action_data or {}
+            
+            # 如果action_info中有should_quote_reply且action_data中没有，则添加到action_data中
+            if action_info.should_quote_reply is not None and "should_quote_reply" not in action_data:
+                action_data["should_quote_reply"] = action_info.should_quote_reply
+            
             action_params = {
                 "chat_id": plan.chat_id,
                 "target_message": action_info.action_message,
                 "reasoning": action_info.reasoning,
-                "action_data": action_info.action_data or {},
+                "action_data": action_data,
                 "clear_unread_messages": clear_unread,
             }
 
-            logger.debug(f"📬 [PlanExecutor] 准备调用 ActionManager，target_message: {action_info.action_message}")
+            logger.debug(
+                f"📬 [PlanExecutor] 准备调用 ActionManager，target_message: {action_info.action_message}, "
+                f"should_quote_reply: {action_info.should_quote_reply}"
+            )
 
             # 通过动作管理器执行回复
             execution_result = await self.action_manager.execute_action(

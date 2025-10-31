@@ -277,6 +277,11 @@ class ChatterActionManager:
                     logger.debug(f"{log_prefix} 并行执行：回复生成任务已被取消")
                     return {"action_type": "reply", "success": False, "reply_text": "", "loop_info": None}
 
+                # 从action_data中提取should_quote_reply参数
+                should_quote_reply = None
+                if action_data and isinstance(action_data, dict):
+                    should_quote_reply = action_data.get("should_quote_reply", None)
+
                 # 发送并存储回复
                 loop_info, reply_text, cycle_timers_reply = await self._send_and_store_reply(
                     chat_stream,
@@ -286,6 +291,7 @@ class ChatterActionManager:
                     {},  # cycle_timers
                     thinking_id,
                     [],  # actions
+                    should_quote_reply,  # 传递should_quote_reply参数
                 )
 
                 # 记录回复动作到目标消息
@@ -474,6 +480,7 @@ class ChatterActionManager:
         cycle_timers: dict[str, float],
         thinking_id,
         actions,
+        should_quote_reply: bool | None = None,
     ) -> tuple[dict[str, Any], str, dict[str, float]]:
         """
         发送并存储回复信息
@@ -486,13 +493,16 @@ class ChatterActionManager:
             cycle_timers: 循环计时器
             thinking_id: 思考ID
             actions: 动作列表
+            should_quote_reply: 是否应该引用回复原消息，None表示自动决定
 
         Returns:
             Tuple[Dict[str, Any], str, Dict[str, float]]: 循环信息, 回复文本, 循环计时器
         """
         # 发送回复
         with Timer("回复发送", cycle_timers):
-            reply_text = await self.send_response(chat_stream, response_set, loop_start_time, action_message)
+            reply_text = await self.send_response(
+                chat_stream, response_set, loop_start_time, action_message, should_quote_reply
+            )
 
         # 存储reply action信息
         person_info_manager = get_person_info_manager()
@@ -551,16 +561,18 @@ class ChatterActionManager:
 
         return loop_info, reply_text, cycle_timers
 
-    async def send_response(self, chat_stream, reply_set, thinking_start_time, message_data) -> str:
+    async def send_response(
+        self, chat_stream, reply_set, thinking_start_time, message_data, should_quote_reply: bool | None = None
+    ) -> str:
         """
         发送回复内容的具体实现
 
         Args:
             chat_stream: ChatStream实例
             reply_set: 回复内容集合，包含多个回复段
-            reply_to: 回复目标
             thinking_start_time: 思考开始时间
             message_data: 消息数据
+            should_quote_reply: 是否应该引用回复原消息，None表示自动决定
 
         Returns:
             str: 完整的回复文本
@@ -614,12 +626,24 @@ class ChatterActionManager:
 
             # 发送第一段回复
             if not first_replied:
-                # 私聊场景不使用引用回复（因为只有两个人对话，引用是多余的）
-                # 群聊场景使用引用回复（帮助定位回复的目标消息）
+                # 决定是否引用回复
                 is_private_chat = not bool(chat_stream.group_info)
-                set_reply_flag = bool(message_data) and not is_private_chat
+                
+                # 如果明确指定了should_quote_reply，则使用指定值
+                if should_quote_reply is not None:
+                    set_reply_flag = should_quote_reply and bool(message_data)
+                    logger.debug(
+                        f"📤 [ActionManager] 使用planner指定的引用设置: should_quote_reply={should_quote_reply}"
+                    )
+                else:
+                    # 否则使用默认逻辑：默认不引用，让对话更流畅自然
+                    set_reply_flag = False
+                    logger.debug(
+                        f"📤 [ActionManager] 使用默认引用逻辑: 默认不引用(is_private={is_private_chat})"
+                    )
+                
                 logger.debug(
-                    f"📤 [ActionManager] 准备发送第一段回复。message_data: {message_data}, is_private: {is_private_chat}, set_reply: {set_reply_flag}"
+                    f"📤 [ActionManager] 准备发送第一段回复。message_data: {message_data}, set_reply: {set_reply_flag}"
                 )
                 await send_api.text_to_stream(
                     text=data,
