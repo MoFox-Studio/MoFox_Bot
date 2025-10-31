@@ -123,7 +123,7 @@ class RelationshipFetcher:
         # 获取用户特征点
         current_points = await person_info_manager.get_value(person_id, "points") or []
         forgotten_points = await person_info_manager.get_value(person_id, "forgotten_points") or []
-        
+
         # 确保 points 是列表类型（可能从数据库返回字符串）
         if not isinstance(current_points, list):
             current_points = []
@@ -195,25 +195,25 @@ class RelationshipFetcher:
             if relationships:
                 # db_query 返回字典列表，使用字典访问方式
                 rel_data = relationships[0]
-                
+
                 # 5.1 用户别名
                 if rel_data.get("user_aliases"):
                     aliases_list = [alias.strip() for alias in rel_data["user_aliases"].split(",") if alias.strip()]
                     if aliases_list:
                         aliases_str = "、".join(aliases_list)
                         relation_parts.append(f"{person_name}的别名有：{aliases_str}")
-                
+
                 # 5.2 关系印象文本（主观认知）
                 if rel_data.get("relationship_text"):
                     relation_parts.append(f"你对{person_name}的整体认知：{rel_data['relationship_text']}")
-                
+
                 # 5.3 用户偏好关键词
                 if rel_data.get("preference_keywords"):
                     keywords_list = [kw.strip() for kw in rel_data["preference_keywords"].split(",") if kw.strip()]
                     if keywords_list:
                         keywords_str = "、".join(keywords_list)
                         relation_parts.append(f"{person_name}的偏好和兴趣：{keywords_str}")
-                
+
                 # 5.4 关系亲密程度（好感分数）
                 if rel_data.get("relationship_score") is not None:
                     score_desc = self._get_relationship_score_description(rel_data["relationship_score"])

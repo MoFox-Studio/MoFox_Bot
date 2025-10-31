@@ -319,7 +319,7 @@ class MessageManager:
 
         # 检查上下文
         context = chat_stream.context_manager.context
-        
+
         # 只有当 Chatter 真正在处理时才检查打断
         if not context.is_chatter_processing:
             logger.debug(f"聊天流 {chat_stream.stream_id} Chatter 未在处理，跳过打断检查")
@@ -327,7 +327,7 @@ class MessageManager:
 
         # 检查是否有 stream_loop_task 在运行
         stream_loop_task = context.stream_loop_task
-        
+
         if stream_loop_task and not stream_loop_task.done():
             # 检查触发用户ID
             triggering_user_id = context.triggering_user_id
@@ -408,7 +408,7 @@ class MessageManager:
 
             # 重新创建 stream_loop 任务
             success = await stream_loop_manager.start_stream_loop(stream_id, force=True)
-            
+
             if success:
                 logger.info(f"✅ 成功重新创建流循环任务: {stream_id}")
             else:

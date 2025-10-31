@@ -5,7 +5,6 @@
 import os
 import pickle
 from collections import Counter, defaultdict
-from typing import Dict, Optional, Tuple
 
 from src.common.logger import get_logger
 
@@ -36,14 +35,14 @@ class ExpressorModel:
         self.nb = OnlineNaiveBayes(alpha=alpha, beta=beta, gamma=gamma, vocab_size=vocab_size)
 
         # 候选表达管理
-        self._candidates: Dict[str, str] = {}  # cid -> text (style)
-        self._situations: Dict[str, str] = {}  # cid -> situation (不参与计算)
+        self._candidates: dict[str, str] = {}  # cid -> text (style)
+        self._situations: dict[str, str] = {}  # cid -> situation (不参与计算)
 
         logger.info(
             f"ExpressorModel初始化完成 (alpha={alpha}, beta={beta}, gamma={gamma}, vocab_size={vocab_size}, use_jieba={use_jieba})"
         )
 
-    def add_candidate(self, cid: str, text: str, situation: Optional[str] = None):
+    def add_candidate(self, cid: str, text: str, situation: str | None = None):
         """
         添加候选文本和对应的situation
 
@@ -62,7 +61,7 @@ class ExpressorModel:
         if cid not in self.nb.token_counts:
             self.nb.token_counts[cid] = defaultdict(float)
 
-    def predict(self, text: str, k: int = None) -> Tuple[Optional[str], Dict[str, float]]:
+    def predict(self, text: str, k: int = None) -> tuple[str | None, dict[str, float]]:
         """
         直接对所有候选进行朴素贝叶斯评分
 
@@ -113,7 +112,7 @@ class ExpressorModel:
         tf = Counter(toks)
         self.nb.update_positive(tf, cid)
 
-    def decay(self, factor: Optional[float] = None):
+    def decay(self, factor: float | None = None):
         """
         应用知识衰减
 
@@ -122,7 +121,7 @@ class ExpressorModel:
         """
         self.nb.decay(factor)
 
-    def get_candidate_info(self, cid: str) -> Tuple[Optional[str], Optional[str]]:
+    def get_candidate_info(self, cid: str) -> tuple[str | None, str | None]:
         """
         获取候选信息
 
@@ -136,7 +135,7 @@ class ExpressorModel:
         situation = self._situations.get(cid)
         return style, situation
 
-    def get_all_candidates(self) -> Dict[str, Tuple[str, str]]:
+    def get_all_candidates(self) -> dict[str, tuple[str, str]]:
         """
         获取所有候选
 
@@ -205,7 +204,7 @@ class ExpressorModel:
 
         logger.info(f"模型已从 {path} 加载")
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """获取模型统计信息"""
         nb_stats = self.nb.get_stats()
         return {

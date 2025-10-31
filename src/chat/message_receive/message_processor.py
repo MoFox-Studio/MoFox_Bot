@@ -39,7 +39,7 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
     # 解析基础信息
     message_info = BaseMessageInfo.from_dict(message_dict.get("message_info", {}))
     message_segment = Seg.from_dict(message_dict.get("message_segment", {}))
-    
+
     # 初始化处理状态
     processing_state = {
         "is_emoji": False,
@@ -53,10 +53,10 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
         "priority_mode": "interest",
         "priority_info": None,
     }
-    
+
     # 异步处理消息段，生成纯文本
     processed_plain_text = await _process_message_segments(message_segment, processing_state, message_info)
-    
+
     # 解析 notice 信息
     is_notify = False
     is_public_notice = False
@@ -65,34 +65,34 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
         is_notify = message_info.additional_config.get("is_notice", False)
         is_public_notice = message_info.additional_config.get("is_public_notice", False)
         notice_type = message_info.additional_config.get("notice_type")
-    
+
     # 提取用户信息
     user_info = message_info.user_info
     user_id = str(user_info.user_id) if user_info and user_info.user_id else ""
     user_nickname = (user_info.user_nickname or "") if user_info else ""
     user_cardname = user_info.user_cardname if user_info else None
     user_platform = (user_info.platform or "") if user_info else ""
-    
+
     # 提取群组信息
     group_info = message_info.group_info
     group_id = group_info.group_id if group_info else None
     group_name = group_info.group_name if group_info else None
     group_platform = group_info.platform if group_info else None
-    
+
     # chat_id 应该直接使用 stream_id（与数据库存储格式一致）
     # stream_id 是通过 platform + user_id/group_id 的 SHA-256 哈希生成的
     chat_id = stream_id
-    
+
     # 准备 additional_config
     additional_config_str = _prepare_additional_config(message_info, is_notify, is_public_notice, notice_type)
-    
+
     # 提取 reply_to
     reply_to = _extract_reply_from_segment(message_segment)
-    
+
     # 构造 DatabaseMessages
     message_time = message_info.time if hasattr(message_info, "time") and message_info.time is not None else time.time()
     message_id = message_info.message_id or ""
-    
+
     # 处理 is_mentioned
     is_mentioned = None
     mentioned_value = processing_state.get("is_mentioned")
@@ -100,7 +100,7 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
         is_mentioned = mentioned_value
     elif isinstance(mentioned_value, (int, float)):
         is_mentioned = mentioned_value != 0
-    
+
     db_message = DatabaseMessages(
         message_id=message_id,
         time=float(message_time),
@@ -133,19 +133,19 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
         chat_info_group_name=group_name,
         chat_info_group_platform=group_platform,
     )
-    
+
     # 设置优先级信息
     if processing_state.get("priority_mode"):
         setattr(db_message, "priority_mode", processing_state["priority_mode"])
     if processing_state.get("priority_info"):
         setattr(db_message, "priority_info", processing_state["priority_info"])
-    
+
     # 设置其他运行时属性
     setattr(db_message, "is_voice", bool(processing_state.get("is_voice", False)))
     setattr(db_message, "is_video", bool(processing_state.get("is_video", False)))
     setattr(db_message, "has_emoji", bool(processing_state.get("has_emoji", False)))
     setattr(db_message, "has_picid", bool(processing_state.get("has_picid", False)))
-    
+
     return db_message
 
 
@@ -190,7 +190,7 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
             state["is_emoji"] = False
             state["is_video"] = False
             return segment.data
-            
+
         elif segment.type == "at":
             state["is_picid"] = False
             state["is_emoji"] = False
@@ -201,7 +201,7 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
                 nickname, qq_id = segment.data.split(":", 1)
                 return f"@{nickname}"
             return f"@{segment.data}" if isinstance(segment.data, str) else "@未知用户"
-            
+
         elif segment.type == "image":
             # 如果是base64图片数据
             if isinstance(segment.data, str):
@@ -213,7 +213,7 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
                 _, processed_text = await image_manager.process_image(segment.data)
                 return processed_text
             return "[发了一张图片，网卡了加载不出来]"
-            
+
         elif segment.type == "emoji":
             state["has_emoji"] = True
             state["is_emoji"] = True
@@ -223,13 +223,13 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
             if isinstance(segment.data, str):
                 return await get_image_manager().get_emoji_description(segment.data)
             return "[发了一个表情包，网卡了加载不出来]"
-            
+
         elif segment.type == "voice":
             state["is_picid"] = False
             state["is_emoji"] = False
             state["is_voice"] = True
             state["is_video"] = False
-            
+
             # 检查消息是否由机器人自己发送
             if message_info and message_info.user_info and str(message_info.user_info.user_id) == str(global_config.bot.qq_account):
                 logger.info(f"检测到机器人自身发送的语音消息 (User ID: {message_info.user_info.user_id})，尝试从缓存获取文本。")
@@ -240,12 +240,12 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
                         return f"[语音：{cached_text}]"
                     else:
                         logger.warning("机器人自身语音消息缓存未命中，将回退到标准语音识别。")
-            
+
             # 标准语音识别流程
             if isinstance(segment.data, str):
                 return await get_voice_text(segment.data)
             return "[发了一段语音，网卡了加载不出来]"
-            
+
         elif segment.type == "mention_bot":
             state["is_picid"] = False
             state["is_emoji"] = False
@@ -253,7 +253,7 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
             state["is_video"] = False
             state["is_mentioned"] = float(segment.data)
             return ""
-            
+
         elif segment.type == "priority_info":
             state["is_picid"] = False
             state["is_emoji"] = False
@@ -263,26 +263,26 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
                 state["priority_mode"] = "priority"
                 state["priority_info"] = segment.data
             return ""
-            
+
         elif segment.type == "file":
             if isinstance(segment.data, dict):
-                file_name = segment.data.get('name', '未知文件')
-                file_size = segment.data.get('size', '未知大小')
+                file_name = segment.data.get("name", "未知文件")
+                file_size = segment.data.get("size", "未知大小")
                 return f"[文件：{file_name} ({file_size}字节)]"
             return "[收到一个文件]"
-            
+
         elif segment.type == "video":
             state["is_picid"] = False
             state["is_emoji"] = False
             state["is_voice"] = False
             state["is_video"] = True
             logger.info(f"接收到视频消息，数据类型: {type(segment.data)}")
-            
+
             # 检查视频分析功能是否可用
             if not is_video_analysis_available():
                 logger.warning("⚠️ Rust视频处理模块不可用，跳过视频分析")
                 return "[视频]"
-            
+
             if global_config.video_analysis.enable:
                 logger.info("已启用视频识别,开始识别")
                 if isinstance(segment.data, dict):
@@ -290,23 +290,23 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
                         # 从Adapter接收的视频数据
                         video_base64 = segment.data.get("base64")
                         filename = segment.data.get("filename", "video.mp4")
-                        
+
                         logger.info(f"视频文件名: {filename}")
                         logger.info(f"Base64数据长度: {len(video_base64) if video_base64 else 0}")
-                        
+
                         if video_base64:
                             # 解码base64视频数据
                             video_bytes = base64.b64decode(video_base64)
                             logger.info(f"解码后视频大小: {len(video_bytes)} 字节")
-                            
+
                             # 使用video analyzer分析视频
                             video_analyzer = get_video_analyzer()
                             result = await video_analyzer.analyze_video_from_bytes(
                                 video_bytes, filename, prompt=global_config.video_analysis.batch_analysis_prompt
                             )
-                            
+
                             logger.info(f"视频分析结果: {result}")
-                            
+
                             # 返回视频分析结果
                             summary = result.get("summary", "")
                             if summary:
@@ -329,7 +329,7 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
         else:
             logger.warning(f"未知的消息段类型: {segment.type}")
             return f"[{segment.type} 消息]"
-            
+
     except Exception as e:
         logger.error(f"处理消息段失败: {e!s}, 类型: {segment.type}, 数据: {segment.data}")
         return f"[处理失败的{segment.type}消息]"
@@ -349,9 +349,9 @@ def _prepare_additional_config(message_info: BaseMessageInfo, is_notify: bool, i
     """
     try:
         additional_config_data = {}
-        
+
         # 首先获取adapter传递的additional_config
-        if hasattr(message_info, 'additional_config') and message_info.additional_config:
+        if hasattr(message_info, "additional_config") and message_info.additional_config:
             if isinstance(message_info.additional_config, dict):
                 additional_config_data = message_info.additional_config.copy()
             elif isinstance(message_info.additional_config, str):
@@ -360,28 +360,28 @@ def _prepare_additional_config(message_info: BaseMessageInfo, is_notify: bool, i
                 except Exception as e:
                     logger.warning(f"无法解析 additional_config JSON: {e}")
                     additional_config_data = {}
-        
+
         # 添加notice相关标志
         if is_notify:
             additional_config_data["is_notice"] = True
             additional_config_data["notice_type"] = notice_type or "unknown"
             additional_config_data["is_public_notice"] = bool(is_public_notice)
-        
+
         # 添加format_info到additional_config中
-        if hasattr(message_info, 'format_info') and message_info.format_info:
+        if hasattr(message_info, "format_info") and message_info.format_info:
             try:
                 format_info_dict = message_info.format_info.to_dict()
                 additional_config_data["format_info"] = format_info_dict
                 logger.debug(f"[message_processor] 嵌入 format_info 到 additional_config: {format_info_dict}")
             except Exception as e:
                 logger.warning(f"将 format_info 转换为字典失败: {e}")
-        
+
         # 序列化为JSON字符串
         if additional_config_data:
             return orjson.dumps(additional_config_data).decode("utf-8")
     except Exception as e:
         logger.error(f"准备 additional_config 失败: {e}")
-    
+
     return None
 
 
@@ -423,8 +423,8 @@ def get_message_info_from_db_message(db_message: DatabaseMessages) -> BaseMessag
     Returns:
         BaseMessageInfo: 重建的消息信息对象
     """
-    from maim_message import UserInfo, GroupInfo
-    
+    from maim_message import GroupInfo, UserInfo
+
     # 从 DatabaseMessages 的 user_info 转换为 maim_message.UserInfo
     user_info = UserInfo(
         platform=db_message.user_info.platform,
@@ -432,7 +432,7 @@ def get_message_info_from_db_message(db_message: DatabaseMessages) -> BaseMessag
         user_nickname=db_message.user_info.user_nickname,
         user_cardname=db_message.user_info.user_cardname or ""
     )
-    
+
     # 从 DatabaseMessages 的 group_info 转换为 maim_message.GroupInfo（如果存在）
     group_info = None
     if db_message.group_info:
@@ -441,7 +441,7 @@ def get_message_info_from_db_message(db_message: DatabaseMessages) -> BaseMessag
             group_id=db_message.group_info.group_id,
             group_name=db_message.group_info.group_name
         )
-    
+
     # 解析 additional_config（从 JSON 字符串到字典）
     additional_config = None
     if db_message.additional_config:
@@ -450,7 +450,7 @@ def get_message_info_from_db_message(db_message: DatabaseMessages) -> BaseMessag
         except Exception:
             # 如果解析失败，保持为字符串
             pass
-    
+
     # 创建 BaseMessageInfo
     message_info = BaseMessageInfo(
         platform=db_message.chat_info.platform,
@@ -460,7 +460,7 @@ def get_message_info_from_db_message(db_message: DatabaseMessages) -> BaseMessag
         group_info=group_info,
         additional_config=additional_config  # type: ignore
     )
-    
+
     return message_info
 
 

@@ -5,11 +5,10 @@ import traceback
 import orjson
 from sqlalchemy import desc, select, update
 
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.sqlalchemy_database_api import get_db_session
 from src.common.database.sqlalchemy_models import Images, Messages
 from src.common.logger import get_logger
-
-from src.common.data_models.database_data_model import DatabaseMessages
 
 from .chat_stream import ChatStream
 from .message import MessageSending
@@ -51,10 +50,10 @@ class MessageStorage:
                     filtered_processed_plain_text = re.sub(pattern, "", safe_processed_plain_text, flags=re.DOTALL)
                 else:
                     filtered_processed_plain_text = ""
-                
+
                 display_message = message.display_message or message.processed_plain_text or ""
                 filtered_display_message = re.sub(pattern, "", display_message, flags=re.DOTALL)
-                
+
                 # 直接从 DatabaseMessages 获取所有字段
                 msg_id = message.message_id
                 msg_time = message.time
@@ -71,13 +70,13 @@ class MessageStorage:
                 key_words = ""  # DatabaseMessages 没有 key_words
                 key_words_lite = ""
                 memorized_times = 0  # DatabaseMessages 没有 memorized_times
-                
+
                 # 使用 DatabaseMessages 中的嵌套对象信息
                 user_platform = message.user_info.platform if message.user_info else ""
                 user_id = message.user_info.user_id if message.user_info else ""
                 user_nickname = message.user_info.user_nickname if message.user_info else ""
                 user_cardname = message.user_info.user_cardname if message.user_info else None
-                
+
                 chat_info_stream_id = message.chat_info.stream_id if message.chat_info else ""
                 chat_info_platform = message.chat_info.platform if message.chat_info else ""
                 chat_info_create_time = message.chat_info.create_time if message.chat_info else 0.0
@@ -89,7 +88,7 @@ class MessageStorage:
                 chat_info_group_platform = message.group_info.group_platform if message.group_info else None
                 chat_info_group_id = message.group_info.group_id if message.group_info else None
                 chat_info_group_name = message.group_info.group_name if message.group_info else None
-                
+
             else:
                 # MessageSending 处理逻辑
                 processed_plain_text = message.processed_plain_text
@@ -145,7 +144,7 @@ class MessageStorage:
                 msg_time = float(message.message_info.time or time.time())
                 chat_id = chat_stream.stream_id
                 memorized_times = message.memorized_times
-                
+
                 # 安全地获取 group_info, 如果为 None 则视为空字典
                 group_info_from_chat = chat_info_dict.get("group_info") or {}
                 # 安全地获取 user_info, 如果为 None 则视为空字典 (以防万一)
@@ -153,12 +152,12 @@ class MessageStorage:
 
                 # 将priority_info字典序列化为JSON字符串，以便存储到数据库的Text字段
                 priority_info_json = orjson.dumps(priority_info).decode("utf-8") if priority_info else None
-                
+
                 user_platform = user_info_dict.get("platform")
                 user_id = user_info_dict.get("user_id")
                 user_nickname = user_info_dict.get("user_nickname")
                 user_cardname = user_info_dict.get("user_cardname")
-                
+
                 chat_info_stream_id = chat_info_dict.get("stream_id")
                 chat_info_platform = chat_info_dict.get("platform")
                 chat_info_create_time = float(chat_info_dict.get("create_time", 0.0))
@@ -222,11 +221,11 @@ class MessageStorage:
             # 从字典中提取信息
             message_info = message_data.get("message_info", {})
             mmc_message_id = message_info.get("message_id")
-            
+
             message_segment = message_data.get("message_segment", {})
             segment_type = message_segment.get("type") if isinstance(message_segment, dict) else None
             segment_data = message_segment.get("data", {}) if isinstance(message_segment, dict) else {}
-            
+
             qq_message_id = None
 
             logger.debug(f"尝试更新消息ID: {mmc_message_id}, 消息段类型: {segment_type}")

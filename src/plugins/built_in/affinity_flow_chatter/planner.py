@@ -17,7 +17,6 @@ from src.plugins.built_in.affinity_flow_chatter.plan_generator import ChatterPla
 
 if TYPE_CHECKING:
     from src.chat.planner_actions.action_manager import ChatterActionManager
-    from src.common.data_models.database_data_model import DatabaseMessages
     from src.common.data_models.info_data_model import Plan
     from src.common.data_models.message_manager_data_model import StreamContext
 
@@ -100,11 +99,11 @@ class ChatterActionPlanner:
                 if context:
                     context.chat_mode = ChatMode.FOCUS
                     await self._sync_chat_mode_to_stream(context)
-            
+
             # Normal模式下使用简化流程
             if chat_mode == ChatMode.NORMAL:
                 return await self._normal_mode_flow(context)
-            
+
             # 在规划前，先进行动作修改
             from src.chat.planner_actions.action_modifier import ActionModifier
             action_modifier = ActionModifier(self.action_manager, self.chat_id)
@@ -184,12 +183,12 @@ class ChatterActionPlanner:
             for action in filtered_plan.decided_actions:
                 if action.action_type in ["reply", "proactive_reply"] and action.action_message:
                     # 提取目标消息ID
-                    if hasattr(action.action_message, 'message_id'):
+                    if hasattr(action.action_message, "message_id"):
                         target_message_id = action.action_message.message_id
                     elif isinstance(action.action_message, dict):
-                        target_message_id = action.action_message.get('message_id')
+                        target_message_id = action.action_message.get("message_id")
                     break
-            
+
             # 如果找到目标消息ID，检查是否已经在处理中
             if target_message_id and context:
                 if context.processing_message_id == target_message_id:
@@ -215,7 +214,7 @@ class ChatterActionPlanner:
 
             # 6. 根据执行结果更新统计信息
             self._update_stats_from_execution_result(execution_result)
-            
+
             # 7. Focus模式下如果执行了reply动作，切换到Normal模式
             if chat_mode == ChatMode.FOCUS and context:
                 if filtered_plan.decided_actions:
@@ -233,7 +232,7 @@ class ChatterActionPlanner:
             # 8. 清理处理标记
             if context:
                 context.processing_message_id = None
-                logger.debug(f"已清理处理标记，完成规划流程")
+                logger.debug("已清理处理标记，完成规划流程")
 
             # 9. 返回结果
             return self._build_return_result(filtered_plan)
@@ -262,7 +261,7 @@ class ChatterActionPlanner:
             return await self._enhanced_plan_flow(context)
         try:
             unread_messages = context.get_unread_messages() if context else []
-            
+
             if not unread_messages:
                 logger.debug("Normal模式: 没有未读消息")
                 from src.common.data_models.info_data_model import ActionPlannerInfo
@@ -273,11 +272,11 @@ class ChatterActionPlanner:
                     action_message=None,
                 )
                 return [asdict(no_action)], None
-            
+
             # 检查是否有消息达到reply阈值
             should_reply = False
             target_message = None
-            
+
             for message in unread_messages:
                 message_should_reply = getattr(message, "should_reply", False)
                 if message_should_reply:
@@ -285,7 +284,7 @@ class ChatterActionPlanner:
                     target_message = message
                     logger.info(f"Normal模式: 消息 {message.message_id} 达到reply阈值")
                     break
-            
+
             if should_reply and target_message:
                 # 检查是否正在处理相同的目标消息，防止重复回复
                 target_message_id = target_message.message_id
@@ -302,26 +301,26 @@ class ChatterActionPlanner:
                         action_message=None,
                     )
                     return [asdict(no_action)], None
-                
+
                 # 记录当前正在处理的消息ID
                 if context:
                     context.processing_message_id = target_message_id
                     logger.debug(f"Normal模式: 开始处理目标消息: {target_message_id}")
-                
+
                 # 达到reply阈值，直接进入回复流程
                 from src.common.data_models.info_data_model import ActionPlannerInfo, Plan
                 from src.plugin_system.base.component_types import ChatType
-                
+
                 # 构建目标消息字典 - 使用 flatten() 方法获取扁平化的字典
                 target_message_dict = target_message.flatten()
-                
+
                 reply_action = ActionPlannerInfo(
                     action_type="reply",
                     reasoning="Normal模式: 兴趣度达到阈值，直接回复",
                     action_data={"target_message_id": target_message.message_id},
                     action_message=target_message,
                 )
-                
+
                 # Normal模式下直接构建最小化的Plan，跳过generator和action_modifier
                 # 这样可以显著降低延迟
                 minimal_plan = Plan(
@@ -330,25 +329,25 @@ class ChatterActionPlanner:
                     mode=ChatMode.NORMAL,
                     decided_actions=[reply_action],
                 )
-                
+
                 # 执行reply动作
                 execution_result = await self.executor.execute(minimal_plan)
                 self._update_stats_from_execution_result(execution_result)
-                
+
                 logger.info("Normal模式: 执行reply动作完成")
-                
+
                 # 清理处理标记
                 if context:
                     context.processing_message_id = None
-                    logger.debug(f"Normal模式: 已清理处理标记")
-                
+                    logger.debug("Normal模式: 已清理处理标记")
+
                 # 无论是否回复，都进行退出normal模式的判定
                 await self._check_exit_normal_mode(context)
-                
+
                 return [asdict(reply_action)], target_message_dict
             else:
                 # 未达到reply阈值
-                logger.debug(f"Normal模式: 未达到reply阈值")
+                logger.debug("Normal模式: 未达到reply阈值")
                 from src.common.data_models.info_data_model import ActionPlannerInfo
                 no_action = ActionPlannerInfo(
                     action_type="no_action",
@@ -356,12 +355,12 @@ class ChatterActionPlanner:
                     action_data={},
                     action_message=None,
                 )
-                
+
                 # 无论是否回复，都进行退出normal模式的判定
                 await self._check_exit_normal_mode(context)
-                
+
                 return [asdict(no_action)], None
-                
+
         except Exception as e:
             logger.error(f"Normal模式流程出错: {e}")
             self.planner_stats["failed_plans"] += 1
@@ -378,16 +377,16 @@ class ChatterActionPlanner:
         """
         if not context:
             return
-            
+
         try:
             from src.chat.message_receive.chat_stream import get_chat_manager
-            
+
             chat_manager = get_chat_manager()
             chat_stream = await chat_manager.get_stream(self.chat_id) if chat_manager else None
-            
+
             if not chat_stream:
                 return
-            
+
             focus_energy = chat_stream.focus_energy
             # focus_energy越低，退出normal模式的概率越高
             # 使用反比例函数: 退出概率 = 1 - focus_energy
@@ -395,7 +394,7 @@ class ChatterActionPlanner:
             # 当focus_energy = 0.5时，退出概率 = 50%
             # 当focus_energy = 0.9时，退出概率 = 10%
             exit_probability = 1.0 - focus_energy
-            
+
             import random
             if random.random() < exit_probability:
                 logger.info(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 切换回focus模式")
@@ -404,7 +403,7 @@ class ChatterActionPlanner:
                 await self._sync_chat_mode_to_stream(context)
             else:
                 logger.debug(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 保持normal模式")
-                
+
         except Exception as e:
             logger.warning(f"检查退出Normal模式失败: {e}")
 
@@ -412,7 +411,7 @@ class ChatterActionPlanner:
         """同步chat_mode到ChatStream"""
         try:
             from src.chat.message_receive.chat_stream import get_chat_manager
-            
+
             chat_manager = get_chat_manager()
             if chat_manager:
                 chat_stream = await chat_manager.get_stream(context.stream_id)

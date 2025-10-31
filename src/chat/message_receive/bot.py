@@ -10,7 +10,7 @@ from src.chat.antipromptinjector import initialize_anti_injector
 from src.chat.message_manager import message_manager
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.message_receive.storage import MessageStorage
-from src.chat.utils.prompt import create_prompt_async, global_prompt_manager
+from src.chat.utils.prompt import global_prompt_manager
 from src.chat.utils.utils import is_mentioned_bot_in_message
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
@@ -181,7 +181,7 @@ class ChatBot:
 
             # 创建PlusCommand实例
             plus_command_instance = plus_command_class(message, plugin_config)
-            
+
             # 为插件实例设置 chat_stream 运行时属性
             setattr(plus_command_instance, "chat_stream", chat)
 
@@ -257,7 +257,7 @@ class ChatBot:
                 # 创建命令实例
                 command_instance: BaseCommand = command_class(message, plugin_config)
                 command_instance.set_matched_groups(matched_groups)
-                
+
                 # 为插件实例设置 chat_stream 运行时属性
                 setattr(command_instance, "chat_stream", chat)
 
@@ -340,7 +340,7 @@ class ChatBot:
                 )
             # print(message_data)
             # logger.debug(str(message_data))
-            
+
             # 先提取基础信息检查是否是自身消息上报
             from maim_message import BaseMessageInfo
             temp_message_info = BaseMessageInfo.from_dict(message_data.get("message_info", {}))
@@ -350,7 +350,7 @@ class ChatBot:
                     # 直接使用消息字典更新，不再需要创建 MessageRecv
                     await MessageStorage.update_message(message_data)
                     return
-            
+
             group_info = temp_message_info.group_info
             user_info = temp_message_info.user_info
 
@@ -368,14 +368,14 @@ class ChatBot:
                 stream_id=chat.stream_id,
                 platform=chat.platform
             )
-            
+
             # 填充聊天流时间信息
             message.chat_info.create_time = chat.create_time
             message.chat_info.last_active_time = chat.last_active_time
-            
+
             # 注册消息到聊天管理器
             get_chat_manager().register_message(message)
-            
+
             # 检测是否提及机器人
             message.is_mentioned, _ = is_mentioned_bot_in_message(message)
 

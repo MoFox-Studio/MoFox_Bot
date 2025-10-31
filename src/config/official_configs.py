@@ -188,7 +188,7 @@ class ExpressionConfig(ValidatedConfigBase):
     """表达配置类"""
 
     mode: Literal["classic", "exp_model"] = Field(
-        default="classic", 
+        default="classic",
         description="表达方式选择模式: classic=经典LLM评估, exp_model=机器学习模型预测"
     )
     rules: list[ExpressionRule] = Field(default_factory=list, description="表达学习规则")
@@ -761,35 +761,35 @@ class ProactiveThinkingConfig(ValidatedConfigBase):
     cold_start_cooldown: int = Field(
         default=86400, description="冷启动后，该私聊的下一次主动思考需要等待的最小时间（秒）"
     )
-    
+
     # --- 新增：间隔配置 ---
     base_interval: int = Field(default=1800, ge=60, description="基础触发间隔（秒），默认30分钟")
     min_interval: int = Field(default=600, ge=60, description="最小触发间隔（秒），默认10分钟。兴趣分数高时会接近此值")
     max_interval: int = Field(default=7200, ge=60, description="最大触发间隔（秒），默认2小时。兴趣分数低时会接近此值")
-    
+
     # --- 新增：动态调整配置 ---
     use_interest_score: bool = Field(default=True, description="是否根据兴趣分数动态调整间隔。关闭则使用固定base_interval")
     interest_score_factor: float = Field(default=2.0, ge=1.0, le=3.0, description="兴趣分数影响因子。公式: interval = base * (factor - score)")
-    
+
     # --- 新增：黑白名单配置 ---
     whitelist_mode: bool = Field(default=False, description="是否启用白名单模式。启用后只对白名单中的聊天流生效")
     blacklist_mode: bool = Field(default=False, description="是否启用黑名单模式。启用后排除黑名单中的聊天流")
-    
+
     whitelist_private: list[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description='私聊白名单，格式: ["platform:user_id:private", "qq:12345:private"]'
     )
     whitelist_group: list[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description='群聊白名单，格式: ["platform:group_id:group", "qq:123456:group"]'
     )
-    
+
     blacklist_private: list[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description='私聊黑名单，格式: ["platform:user_id:private", "qq:12345:private"]'
     )
     blacklist_group: list[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description='群聊黑名单，格式: ["platform:group_id:group", "qq:123456:group"]'
     )
 
@@ -802,17 +802,17 @@ class ProactiveThinkingConfig(ValidatedConfigBase):
     quiet_hours_start: str = Field(default="00:00", description='安静时段开始时间，格式: "HH:MM"')
     quiet_hours_end: str = Field(default="07:00", description='安静时段结束时间，格式: "HH:MM"')
     active_hours_multiplier: float = Field(default=0.7, ge=0.1, le=2.0, description="活跃时段间隔倍数，<1表示更频繁，>1表示更稀疏")
-    
+
     # --- 新增：冷却与限制 ---
     reply_reset_enabled: bool = Field(default=True, description="bot回复后是否重置定时器（避免回复后立即又主动发言）")
     topic_throw_cooldown: int = Field(default=3600, ge=0, description="抛出话题后的冷却时间（秒），期间暂停主动思考")
     max_daily_proactive: int = Field(default=0, ge=0, description="每个聊天流每天最多主动发言次数，0表示不限制")
-    
+
     # --- 新增：决策权重配置 ---
     do_nothing_weight: float = Field(default=0.4, ge=0.0, le=1.0, description="do_nothing动作的基础权重")
     simple_bubble_weight: float = Field(default=0.3, ge=0.0, le=1.0, description="simple_bubble动作的基础权重")
     throw_topic_weight: float = Field(default=0.3, ge=0.0, le=1.0, description="throw_topic动作的基础权重")
-    
+
     # --- 新增：调试与监控 ---
     enable_statistics: bool = Field(default=True, description="是否启用统计功能（记录触发次数、决策分布等）")
     log_decisions: bool = Field(default=False, description="是否记录每次决策的详细日志（用于调试）")

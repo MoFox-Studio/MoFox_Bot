@@ -1112,14 +1112,14 @@ class Prompt:
         # 使用关系提取器构建用户关系信息和聊天流印象
         user_relation_info = await relationship_fetcher.build_relation_info(person_id, points_num=5)
         stream_impression = await relationship_fetcher.build_chat_stream_impression(chat_id)
-        
+
         # 组合两部分信息
         info_parts = []
         if user_relation_info:
             info_parts.append(user_relation_info)
         if stream_impression:
             info_parts.append(stream_impression)
-        
+
         return "\n\n".join(info_parts) if info_parts else ""
 
     def _get_default_result_for_task(self, task_name: str) -> dict[str, Any]:

@@ -169,6 +169,7 @@ class BotInterestManager:
 2. 每个标签都有权重（0.1-1.0），表示对该兴趣的喜好程度
 3. 生成15-25个不等的标签
 4. 标签应该是具体的关键词，而不是抽象概念
+5. 每个标签的长度不超过10个字符
 
 请以JSON格式返回，格式如下：
 {{
@@ -206,6 +207,11 @@ class BotInterestManager:
             for i, tag_data in enumerate(interests_list):
                 tag_name = tag_data.get("name", f"标签_{i}")
                 weight = tag_data.get("weight", 0.5)
+
+                # 检查标签长度，如果过长则截断
+                if len(tag_name) > 10:
+                    logger.warning(f"⚠️ 标签 '{tag_name}' 过长，将截断为10个字符")
+                    tag_name = tag_name[:10]
 
                 tag = BotInterestTag(tag_name=tag_name, weight=weight)
                 bot_interests.interest_tags.append(tag)
@@ -355,6 +361,8 @@ class BotInterestManager:
 
         # 使用LLMRequest获取embedding
         logger.debug(f"🔄 正在获取embedding: '{text[:30]}...'")
+        if not self.embedding_request:
+            raise RuntimeError("❌ Embedding客户端未初始化")
         embedding, model_name = await self.embedding_request.get_embedding(text)
 
         if embedding and len(embedding) > 0:
@@ -504,7 +512,7 @@ class BotInterestManager:
         )
 
         # 添加直接关键词匹配奖励
-        keyword_bonus = self._calculate_keyword_match_bonus(keywords, result.matched_tags)
+        keyword_bonus = self._calculate_keyword_match_bonus(keywords or [], result.matched_tags)
         logger.debug(f"🎯 关键词直接匹配奖励: {keyword_bonus}")
 
         # 应用关键词奖励到匹配分数
@@ -616,17 +624,18 @@ class BotInterestManager:
     def _calculate_cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """计算余弦相似度"""
         try:
-            vec1 = np.array(vec1)
-            vec2 = np.array(vec2)
+            np_vec1 = np.array(vec1)
+            np_vec2 = np.array(vec2)
 
-            dot_product = np.dot(vec1, vec2)
-            norm1 = np.linalg.norm(vec1)
-            norm2 = np.linalg.norm(vec2)
+            dot_product = np.dot(np_vec1, np_vec2)
+            norm1 = np.linalg.norm(np_vec1)
+            norm2 = np.linalg.norm(np_vec2)
 
             if norm1 == 0 or norm2 == 0:
                 return 0.0
 
-            return dot_product / (norm1 * norm2)
+            similarity = dot_product / (norm1 * norm2)
+            return float(similarity)
 
         except Exception as e:
             logger.error(f"计算余弦相似度失败: {e}")
@@ -758,7 +767,7 @@ class BotInterestManager:
                 if existing_record:
                     # 更新现有记录
                     logger.info("🔄 更新现有的兴趣标签配置")
-                    existing_record.interest_tags = json_data
+                    existing_record.interest_tags = json_data.decode("utf-8")
                     existing_record.personality_description = interests.personality_description
                     existing_record.embedding_model = interests.embedding_model
                     existing_record.version = interests.version
@@ -772,7 +781,7 @@ class BotInterestManager:
                     new_record = DBBotPersonalityInterests(
                         personality_id=interests.personality_id,
                         personality_description=interests.personality_description,
-                        interest_tags=json_data,
+                        interest_tags=json_data.decode("utf-8"),
                         embedding_model=interests.embedding_model,
                         version=interests.version,
                         last_updated=interests.last_updated,

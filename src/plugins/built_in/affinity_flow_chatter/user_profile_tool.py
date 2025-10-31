@@ -4,10 +4,10 @@
 通过LLM二步调用机制更新用户画像信息，包括别名、主观印象、偏好关键词和好感分数
 """
 
-import orjson
 import time
 from typing import Any
 
+import orjson
 from sqlalchemy import select
 
 from src.common.database.sqlalchemy_database_api import get_db_session
@@ -42,7 +42,7 @@ class UserProfileTool(BaseTool):
 
     def __init__(self, plugin_config: dict | None = None, chat_stream: Any = None):
         super().__init__(plugin_config, chat_stream)
-        
+
         # 初始化用于二步调用的LLM
         try:
             self.profile_llm = LLMRequest(
@@ -84,24 +84,24 @@ class UserProfileTool(BaseTool):
                     "id": "user_profile_update",
                     "content": "错误：必须提供目标用户ID"
                 }
-            
+
             # 从LLM传入的参数
             new_aliases = function_args.get("user_aliases", "")
             new_impression = function_args.get("impression_description", "")
             new_keywords = function_args.get("preference_keywords", "")
             new_score = function_args.get("affection_score")
-            
+
             # 从数据库获取现有用户画像
             existing_profile = await self._get_user_profile(target_user_id)
-            
+
             # 如果LLM没有传入任何有效参数，返回提示
             if not any([new_aliases, new_impression, new_keywords, new_score is not None]):
                 return {
                     "type": "info",
                     "id": target_user_id,
-                    "content": f"提示：需要提供至少一项更新内容（别名、印象描述、偏好关键词或好感分数）"
+                    "content": "提示：需要提供至少一项更新内容（别名、印象描述、偏好关键词或好感分数）"
                 }
-            
+
             # 调用LLM进行二步决策
             if self.profile_llm is None:
                 logger.error("LLM未正确初始化，无法执行二步调用")
@@ -110,7 +110,7 @@ class UserProfileTool(BaseTool):
                     "id": target_user_id,
                     "content": "系统错误：LLM未正确初始化"
                 }
-            
+
             final_profile = await self._llm_decide_final_profile(
                 target_user_id=target_user_id,
                 existing_profile=existing_profile,
@@ -119,17 +119,17 @@ class UserProfileTool(BaseTool):
                 new_keywords=new_keywords,
                 new_score=new_score
             )
-            
+
             if not final_profile:
                 return {
                     "type": "error",
                     "id": target_user_id,
                     "content": "LLM决策失败，无法更新用户画像"
                 }
-            
+
             # 更新数据库
             await self._update_user_profile_in_db(target_user_id, final_profile)
-            
+
             # 构建返回信息
             updates = []
             if final_profile.get("user_aliases"):
@@ -140,22 +140,22 @@ class UserProfileTool(BaseTool):
                 updates.append(f"偏好: {final_profile['preference_keywords']}")
             if final_profile.get("relationship_score") is not None:
                 updates.append(f"好感分: {final_profile['relationship_score']:.2f}")
-            
+
             result_text = f"已更新用户 {target_user_id} 的画像：\n" + "\n".join(updates)
             logger.info(f"用户画像更新成功: {target_user_id}")
-            
+
             return {
                 "type": "user_profile_update",
                 "id": target_user_id,
                 "content": result_text
             }
-            
+
         except Exception as e:
             logger.error(f"用户画像更新失败: {e}", exc_info=True)
             return {
                 "type": "error",
                 "id": function_args.get("target_user_id", "unknown"),
-                "content": f"用户画像更新失败: {str(e)}"
+                "content": f"用户画像更新失败: {e!s}"
             }
 
     async def _get_user_profile(self, user_id: str) -> dict[str, Any]:
@@ -172,7 +172,7 @@ class UserProfileTool(BaseTool):
                 stmt = select(UserRelationships).where(UserRelationships.user_id == user_id)
                 result = await session.execute(stmt)
                 profile = result.scalar_one_or_none()
-                
+
                 if profile:
                     return {
                         "user_name": profile.user_name or user_id,
@@ -227,7 +227,7 @@ class UserProfileTool(BaseTool):
             from src.individuality.individuality import Individuality
             individuality = Individuality()
             bot_personality = await individuality.get_personality_block()
-            
+
             prompt = f"""
 你现在是一个有着特定性格和身份的AI助手。你的人设是：{bot_personality}
 
@@ -261,18 +261,18 @@ class UserProfileTool(BaseTool):
     "reasoning": "你的决策理由"
 }}
 """
-            
+
             # 调用LLM
             llm_response, _ = await self.profile_llm.generate_response_async(prompt=prompt)
-            
+
             if not llm_response:
                 logger.warning("LLM未返回有效响应")
                 return None
-            
+
             # 清理并解析响应
             cleaned_response = self._clean_llm_json_response(llm_response)
             response_data = orjson.loads(cleaned_response)
-            
+
             # 提取最终决定的数据
             final_profile = {
                 "user_aliases": response_data.get("user_aliases", existing_profile.get("user_aliases", "")),
@@ -280,12 +280,12 @@ class UserProfileTool(BaseTool):
                 "preference_keywords": response_data.get("preference_keywords", existing_profile.get("preference_keywords", "")),
                 "relationship_score": max(0.0, min(1.0, float(response_data.get("relationship_score", existing_profile.get("relationship_score", 0.3))))),
             }
-            
+
             logger.info(f"LLM决策完成: {target_user_id}")
             logger.debug(f"决策理由: {response_data.get('reasoning', '无')}")
-            
+
             return final_profile
-            
+
         except orjson.JSONDecodeError as e:
             logger.error(f"LLM响应JSON解析失败: {e}")
             logger.debug(f"LLM原始响应: {llm_response if 'llm_response' in locals() else 'N/A'}")
@@ -303,12 +303,12 @@ class UserProfileTool(BaseTool):
         """
         try:
             current_time = time.time()
-            
+
             async with get_db_session() as session:
                 stmt = select(UserRelationships).where(UserRelationships.user_id == user_id)
                 result = await session.execute(stmt)
                 existing = result.scalar_one_or_none()
-                
+
                 if existing:
                     # 更新现有记录
                     existing.user_aliases = profile.get("user_aliases", "")
@@ -328,10 +328,10 @@ class UserProfileTool(BaseTool):
                         last_updated=current_time
                     )
                     session.add(new_profile)
-                
+
                 await session.commit()
                 logger.info(f"用户画像已更新到数据库: {user_id}")
-                
+
         except Exception as e:
             logger.error(f"更新用户画像到数据库失败: {e}", exc_info=True)
             raise
@@ -347,24 +347,24 @@ class UserProfileTool(BaseTool):
         """
         try:
             import re
-            
+
             cleaned = response.strip()
-            
+
             # 移除 ```json 或 ``` 等标记
             cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.MULTILINE | re.IGNORECASE)
             cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
-            
+
             # 尝试找到JSON对象的开始和结束
             json_start = cleaned.find("{")
             json_end = cleaned.rfind("}")
-            
+
             if json_start != -1 and json_end != -1 and json_end > json_start:
                 cleaned = cleaned[json_start:json_end + 1]
-            
+
             cleaned = cleaned.strip()
-            
+
             return cleaned
-            
+
         except Exception as e:
             logger.warning(f"清理LLM响应失败: {e}")
             return response

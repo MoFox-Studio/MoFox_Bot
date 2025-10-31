@@ -2,7 +2,6 @@
 情境提取器
 从聊天历史中提取当前的情境（situation），用于 StyleLearner 预测
 """
-from typing import Optional
 
 from src.chat.utils.prompt import Prompt, global_prompt_manager
 from src.common.logger import get_logger
@@ -41,17 +40,17 @@ def init_prompt():
 
 class SituationExtractor:
     """情境提取器，从聊天历史中提取当前情境"""
-    
+
     def __init__(self):
         self.llm_model = LLMRequest(
             model_set=model_config.model_task_config.utils_small,
             request_type="expression.situation_extractor"
         )
-    
+
     async def extract_situations(
         self,
         chat_history: list | str,
-        target_message: Optional[str] = None,
+        target_message: str | None = None,
         max_situations: int = 3
     ) -> list[str]:
         """
@@ -68,18 +67,18 @@ class SituationExtractor:
         # 转换chat_history为字符串
         if isinstance(chat_history, list):
             chat_info = "\n".join([
-                f"{msg.get('sender', 'Unknown')}: {msg.get('content', '')}" 
+                f"{msg.get('sender', 'Unknown')}: {msg.get('content', '')}"
                 for msg in chat_history
             ])
         else:
             chat_info = chat_history
-        
+
         # 构建目标消息信息
         if target_message:
             target_message_info = f"，现在你想要回复消息：{target_message}"
         else:
             target_message_info = ""
-        
+
         # 构建 prompt
         try:
             prompt = (await global_prompt_manager.get_prompt_async("situation_extraction_prompt")).format(
@@ -87,31 +86,31 @@ class SituationExtractor:
                 chat_history=chat_info,
                 target_message_info=target_message_info
             )
-            
+
             # 调用 LLM
             response, _ = await self.llm_model.generate_response_async(
                 prompt=prompt,
                 temperature=0.3
             )
-            
+
             if not response or not response.strip():
                 logger.warning("LLM返回空响应，无法提取情境")
                 return []
-            
+
             # 解析响应
             situations = self._parse_situations(response, max_situations)
-            
+
             if situations:
                 logger.debug(f"提取到 {len(situations)} 个情境: {situations}")
             else:
                 logger.warning(f"无法从LLM响应中解析出情境。响应:\n{response}")
-            
+
             return situations
-            
+
         except Exception as e:
             logger.error(f"提取情境失败: {e}")
             return []
-    
+
     @staticmethod
     def _parse_situations(response: str, max_situations: int) -> list[str]:
         """
@@ -125,33 +124,33 @@ class SituationExtractor:
             情境描述列表
         """
         situations = []
-        
+
         for line in response.splitlines():
             line = line.strip()
             if not line:
                 continue
-            
+
             # 移除可能的序号、引号等
             line = line.lstrip('0123456789.、-*>）)】] \t"\'""''')
             line = line.rstrip('"\'""''')
             line = line.strip()
-            
+
             if not line:
                 continue
-            
+
             # 过滤掉明显不是情境描述的内容
             if len(line) > 30:  # 太长
                 continue
             if len(line) < 2:   # 太短
                 continue
-            if any(keyword in line.lower() for keyword in ['例如', '注意', '请', '分析', '总结']):
+            if any(keyword in line.lower() for keyword in ["例如", "注意", "请", "分析", "总结"]):
                 continue
-            
+
             situations.append(line)
-            
+
             if len(situations) >= max_situations:
                 break
-        
+
         return situations
 
 
