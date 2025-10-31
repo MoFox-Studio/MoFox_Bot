@@ -230,11 +230,10 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         is_mentioned = getattr(message, "is_mentioned", False)
         processed_plain_text = getattr(message, "processed_plain_text", "")
 
-        # 判断是否为私聊
-        chat_info_group_id = getattr(message, "chat_info_group_id", None)
-        is_private_chat = not chat_info_group_id  # 如果没有group_id则是私聊
+        # 判断是否为私聊 - 通过 group_info 对象判断
+        is_private_chat = not message.group_info  # 如果没有group_info则是私聊
 
-        logger.debug(f"[提及分计算] is_mentioned={is_mentioned}, is_private_chat={is_private_chat}")
+        logger.debug(f"[提及分计算] is_mentioned={is_mentioned}, is_private_chat={is_private_chat}, group_info={message.group_info}")
 
         # 检查是否被提及（包括文本匹配）
         bot_aliases = [bot_nickname, *global_config.bot.alias_names]
