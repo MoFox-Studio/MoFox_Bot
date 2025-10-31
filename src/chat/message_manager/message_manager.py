@@ -275,8 +275,20 @@ class MessageManager:
                     inactive_streams.append(stream_id)
             for stream_id in inactive_streams:
                 try:
+                    # 在使用之前重新从 chat_manager 中获取 chat_stream，避免引用未定义或过期的变量
+                    chat_stream = chat_manager.streams.get(stream_id)
+                    if not chat_stream:
+                        logger.debug(f"聊天流 {stream_id} 在清理时已不存在，跳过")
+                        continue
+
                     await chat_stream.context_manager.clear_context()
-                    del chat_manager.streams[stream_id]
+
+                    # 安全删除流（若已被其他地方删除则捕获）
+                    try:
+                        del chat_manager.streams[stream_id]
+                    except KeyError:
+                        logger.debug(f"删除聊天流 {stream_id} 时未找到，可能已被移除")
+
                     logger.info(f"清理不活跃聊天流: {stream_id}")
                 except Exception as e:
                     logger.error(f"清理聊天流 {stream_id} 失败: {e}")
@@ -342,7 +354,16 @@ class MessageManager:
                 # 取消 stream_loop_task，子任务会通过 try-catch 自动取消
                 try:
                     stream_loop_task.cancel()
-                    logger.info(f"已取消流循环任务: {chat_stream.stream_id}")
+                    logger.info(f"已发送取消信号到流循环任务: {chat_stream.stream_id}")
+                    
+                    # 等待任务真正结束（设置超时避免死锁）
+                    try:
+                        await asyncio.wait_for(stream_loop_task, timeout=2.0)
+                        logger.info(f"流循环任务已完全结束: {chat_stream.stream_id}")
+                    except asyncio.TimeoutError:
+                        logger.warning(f"等待流循环任务结束超时: {chat_stream.stream_id}")
+                    except asyncio.CancelledError:
+                        logger.info(f"流循环任务已被取消: {chat_stream.stream_id}")
                 except Exception as e:
                     logger.warning(f"取消流循环任务失败: {chat_stream.stream_id} - {e}")
 

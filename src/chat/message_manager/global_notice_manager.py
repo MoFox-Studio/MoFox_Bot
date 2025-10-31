@@ -205,9 +205,9 @@ class GlobalNoticeManager:
 
                 # 格式化notice消息
                 if notice_type:
-                    notice_line = f"[{notice_type}] {message.processed_plain_text or message.raw_message}"
+                    notice_line = f"[{notice_type}] {message.processed_plain_text}"
                 else:
-                    notice_line = f"[通知] {message.processed_plain_text or message.raw_message}"
+                    notice_line = f"[通知] {message.processed_plain_text}"
 
                 # 添加时间信息（相对时间）
                 time_diff = int(time.time() - notice.timestamp)

@@ -544,7 +544,6 @@ class ChatterPlanFilter:
                             target_message_dict = self._get_latest_message(message_id_list)
 
                     if target_message_dict:
-                        # 直接使用字典作为action_message，避免DatabaseMessages对象创建失败
                         target_message_obj = target_message_dict
                         # 替换action_data中的临时ID为真实ID
                         if "target_message_id" in action_data:
@@ -559,10 +558,25 @@ class ChatterPlanFilter:
                             action = "no_action"
                             reasoning = f"无法找到目标消息进行回复。原始理由: {reasoning}"
 
+                # 转换为 DatabaseMessages 对象
+                from src.common.data_models.database_data_model import DatabaseMessages
+
+                action_message_obj = None
                 if target_message_obj:
-                    # 确保 action_message 中始终有 message_id 字段
+                    # 确保字典中有 message_id 字段
                     if "message_id" not in target_message_obj and "id" in target_message_obj:
                         target_message_obj["message_id"] = target_message_obj["id"]
+                    
+                    try:
+                        # 使用 ** 解包字典传入构造函数
+                        action_message_obj = DatabaseMessages(**target_message_obj)
+                        logger.debug(f"[{action}] 成功转换目标消息为 DatabaseMessages 对象: {action_message_obj.message_id}")
+                    except Exception as e:
+                        logger.warning(f"[{action}] 无法将目标消息转换为 DatabaseMessages 对象: {e}", exc_info=True)
+                        # 如果转换失败，对于必需目标消息的动作降级为 no_action
+                        if action == "reply":
+                            action = "no_action"
+                            reasoning = f"目标消息转换失败: {e}。原始理由: {reasoning}"
                 else:
                     # 如果找不到目标消息，对于reply动作来说这是必需的，应该记录警告
                     if action == "reply":
@@ -579,22 +593,13 @@ class ChatterPlanFilter:
                 ):
                     reasoning = f"LLM 返回了当前不可用的动作 '{action}'。原始理由: {reasoning}"
                     action = "no_action"
-                #TODO:把逻辑迁移到DatabaseMessages(如果没人做下个星期我自己来)
-                #from src.common.data_models.database_data_model import DatabaseMessages
-
-                #action_message_obj = None
-                #if target_message_obj:
-                    #try:
-                        #action_message_obj = DatabaseMessages(**target_message_obj)
-                    #except Exception:
-                        #logger.warning("无法将目标消息转换为DatabaseMessages对象")
 
                 parsed_actions.append(
                     ActionPlannerInfo(
                         action_type=action,
                         reasoning=reasoning,
                         action_data=action_data,
-                        action_message=target_message_obj,
+                        action_message=action_message_obj,  # 使用转换后的 DatabaseMessages 对象
                         available_actions=plan.available_actions,
                     )
                 )
