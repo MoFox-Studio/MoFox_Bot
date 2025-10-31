@@ -13,7 +13,7 @@ from typing import Any
 
 from src.chat.express.expression_selector import expression_selector
 from src.chat.message_receive.chat_stream import ChatStream
-from src.chat.message_receive.message import MessageRecv, MessageSending, Seg, UserInfo
+from src.chat.message_receive.message import MessageSending, Seg, UserInfo
 from src.chat.message_receive.uni_message_sender import HeartFCSender
 from src.chat.utils.chat_message_builder import (
     build_readable_messages,
@@ -32,10 +32,8 @@ from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.individuality.individuality import get_individuality
 from src.llm_models.utils_model import LLMRequest
-from src.mais4u.mai_think import mai_thinking_manager
 
-# 旧记忆系统已被移除
-# 旧记忆系统已被移除
+
 from src.mood.mood_manager import mood_manager
 from src.person_info.person_info import get_person_info_manager
 from src.plugin_system.apis import llm_api
@@ -945,40 +943,24 @@ class DefaultReplyer:
             chat_stream = await chat_manager.get_stream(chat_id)
             if chat_stream:
                 stream_context = chat_stream.context_manager
-                # 使用真正的已读和未读消息
-                read_messages = stream_context.context.history_messages  # 已读消息
+                
+                # 确保历史消息已从数据库加载
+                await stream_context.ensure_history_initialized()
+                
+                # 直接使用内存中的已读和未读消息，无需再查询数据库
+                read_messages = stream_context.context.history_messages  # 已读消息（已从数据库加载）
                 unread_messages = stream_context.get_unread_messages()  # 未读消息
 
                 # 构建已读历史消息 prompt
                 read_history_prompt = ""
-                # 总是从数据库加载历史记录，并与会话历史合并
-                logger.info("正在从数据库加载上下文并与会话历史合并...")
-                db_messages_raw = await get_raw_msg_before_timestamp_with_chat(
-                    chat_id=chat_id,
-                    timestamp=time.time(),
-                    limit=global_config.chat.max_context_size,
-                )
-
-                # 合并和去重
-                combined_messages = {}
-                # 首先添加数据库消息
-                for msg in db_messages_raw:
-                    if msg.get("message_id"):
-                        combined_messages[msg["message_id"]] = msg
-                
-                # 然后用会话消息覆盖/添加，以确保它们是最新的
-                for msg_obj in read_messages:
-                    msg_dict = msg_obj.flatten()
-                    if msg_dict.get("message_id"):
-                        combined_messages[msg_dict["message_id"]] = msg_dict
-                
-                # 按时间排序
-                sorted_messages = sorted(combined_messages.values(), key=lambda x: x.get("time", 0))
-
-                read_history_prompt = ""
-                if sorted_messages:
-                    # 限制最终用于prompt的历史消息数量
-                    final_history = sorted_messages[-50:]
+                if read_messages:
+                    # 将 DatabaseMessages 对象转换为字典格式，以便使用 build_readable_messages
+                    read_messages_dicts = [msg.flatten() for msg in read_messages]
+                    
+                    # 按时间排序并限制数量
+                    sorted_messages = sorted(read_messages_dicts, key=lambda x: x.get("time", 0))
+                    final_history = sorted_messages[-50:]  # 限制最多50条
+                    
                     read_content = await build_readable_messages(
                         final_history,
                         replace_bot_name=True,
@@ -986,8 +968,10 @@ class DefaultReplyer:
                         truncate=True,
                     )
                     read_history_prompt = f"这是已读历史消息，仅作为当前聊天情景的参考：\n{read_content}"
+                    logger.debug(f"使用内存中的 {len(final_history)} 条历史消息构建prompt")
                 else:
                     read_history_prompt = "暂无已读历史消息"
+                    logger.debug("内存中没有历史消息")
 
                 # 构建未读历史消息 prompt
                 unread_history_prompt = ""
@@ -1161,50 +1145,6 @@ class DefaultReplyer:
 
         return interest_scores
 
-    def build_mai_think_context(
-        self,
-        chat_id: str,
-        memory_block: str,
-        relation_info: str,
-        time_block: str,
-        chat_target_1: str,
-        chat_target_2: str,
-        mood_prompt: str,
-        identity_block: str,
-        sender: str,
-        target: str,
-        chat_info: str,
-    ) -> Any:
-        """构建 mai_think 上下文信息
-
-        Args:
-            chat_id: 聊天ID
-            memory_block: 记忆块内容
-            relation_info: 关系信息
-            time_block: 时间块内容
-            chat_target_1: 聊天目标1
-            chat_target_2: 聊天目标2
-            mood_prompt: 情绪提示
-            identity_block: 身份块内容
-            sender: 发送者名称
-            target: 目标消息内容
-            chat_info: 聊天信息
-
-        Returns:
-            Any: mai_think 实例
-        """
-        mai_think = mai_thinking_manager.get_mai_think(chat_id)
-        mai_think.memory_block = memory_block
-        mai_think.relation_info_block = relation_info
-        mai_think.time_block = time_block
-        mai_think.chat_target = chat_target_1
-        mai_think.chat_target_2 = chat_target_2
-        mai_think.chat_info = chat_info
-        mai_think.mood_state = mood_prompt
-        mai_think.identity = identity_block
-        mai_think.sender = sender
-        mai_think.target = target
-        return mai_think
 
     async def build_prompt_reply_context(
         self,
@@ -1320,17 +1260,41 @@ class DefaultReplyer:
                 action_descriptions += f"- {action_name}: {action_description}\n"
             action_descriptions += "\n"
 
-        message_list_before_now_long = await get_raw_msg_before_timestamp_with_chat(
-            chat_id=chat_id,
-            timestamp=time.time(),
-            limit=global_config.chat.max_context_size * 2,
-        )
-
-        message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
-            chat_id=chat_id,
-            timestamp=time.time(),
-            limit=int(global_config.chat.max_context_size * 0.33),
-        )
+        # 从内存获取历史消息，避免重复查询数据库
+        from src.plugin_system.apis.chat_api import get_chat_manager
+        
+        chat_manager = get_chat_manager()
+        chat_stream_obj = await chat_manager.get_stream(chat_id)
+        
+        if chat_stream_obj:
+            # 确保历史消息已初始化
+            await chat_stream_obj.context_manager.ensure_history_initialized()
+            
+            # 获取所有消息（历史+未读）
+            all_messages = (
+                chat_stream_obj.context_manager.context.history_messages +
+                chat_stream_obj.context_manager.get_unread_messages()
+            )
+            
+            # 转换为字典格式
+            message_list_before_now_long = [msg.flatten() for msg in all_messages[-(global_config.chat.max_context_size * 2):]]
+            message_list_before_short = [msg.flatten() for msg in all_messages[-int(global_config.chat.max_context_size * 0.33):]]
+            
+            logger.debug(f"使用内存中的消息: long={len(message_list_before_now_long)}, short={len(message_list_before_short)}")
+        else:
+            # 回退到数据库查询
+            logger.warning(f"无法获取chat_stream，回退到数据库查询: {chat_id}")
+            message_list_before_now_long = await get_raw_msg_before_timestamp_with_chat(
+                chat_id=chat_id,
+                timestamp=time.time(),
+                limit=global_config.chat.max_context_size * 2,
+            )
+            message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
+                chat_id=chat_id,
+                timestamp=time.time(),
+                limit=int(global_config.chat.max_context_size * 0.33),
+            )
+        
         chat_talking_prompt_short = await build_readable_messages(
             message_list_before_short,
             replace_bot_name=True,
@@ -1668,11 +1632,36 @@ class DefaultReplyer:
         else:
             mood_prompt = ""
 
-        message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
-            chat_id=chat_id,
-            timestamp=time.time(),
-            limit=min(int(global_config.chat.max_context_size * 0.33), 15),
-        )
+        # 从内存获取历史消息，避免重复查询数据库
+        from src.plugin_system.apis.chat_api import get_chat_manager
+        
+        chat_manager = get_chat_manager()
+        chat_stream_obj = await chat_manager.get_stream(chat_id)
+        
+        if chat_stream_obj:
+            # 确保历史消息已初始化
+            await chat_stream_obj.context_manager.ensure_history_initialized()
+            
+            # 获取所有消息（历史+未读）
+            all_messages = (
+                chat_stream_obj.context_manager.context.history_messages +
+                chat_stream_obj.context_manager.get_unread_messages()
+            )
+            
+            # 转换为字典格式，限制数量
+            limit = min(int(global_config.chat.max_context_size * 0.33), 15)
+            message_list_before_now_half = [msg.flatten() for msg in all_messages[-limit:]]
+            
+            logger.debug(f"Rewrite使用内存中的 {len(message_list_before_now_half)} 条消息")
+        else:
+            # 回退到数据库查询
+            logger.warning(f"无法获取chat_stream，回退到数据库查询: {chat_id}")
+            message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
+                chat_id=chat_id,
+                timestamp=time.time(),
+                limit=min(int(global_config.chat.max_context_size * 0.33), 15),
+            )
+        
         chat_talking_prompt_half = await build_readable_messages(
             message_list_before_now_half,
             replace_bot_name=True,
@@ -1779,7 +1768,7 @@ class DefaultReplyer:
         is_emoji: bool,
         thinking_start_time: float,
         display_message: str,
-        anchor_message: MessageRecv | None = None,
+        anchor_message: DatabaseMessages | None = None,
     ) -> MessageSending:
         """构建单个发送消息"""
 
@@ -1789,8 +1778,11 @@ class DefaultReplyer:
             platform=self.chat_stream.platform,
         )
 
-        # await anchor_message.process()
-        sender_info = anchor_message.message_info.user_info if anchor_message else None
+        # 从 DatabaseMessages 获取 sender_info
+        if anchor_message:
+            sender_info = anchor_message.user_info
+        else:
+            sender_info = None
 
         return MessageSending(
             message_id=message_id,  # 使用片段的唯一ID
@@ -2083,12 +2075,35 @@ class DefaultReplyer:
 
             memory_context = {key: value for key, value in memory_context.items() if value}
 
-            # 构建聊天历史用于存储
-            message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
-                chat_id=stream.stream_id,
-                timestamp=time.time(),
-                limit=int(global_config.chat.max_context_size * 0.33),
-            )
+            # 从内存获取聊天历史用于存储，避免重复查询数据库
+            from src.plugin_system.apis.chat_api import get_chat_manager
+            
+            chat_manager = get_chat_manager()
+            chat_stream_obj = await chat_manager.get_stream(stream.stream_id)
+            
+            if chat_stream_obj:
+                # 确保历史消息已初始化
+                await chat_stream_obj.context_manager.ensure_history_initialized()
+                
+                # 获取所有消息（历史+未读）
+                all_messages = (
+                    chat_stream_obj.context_manager.context.history_messages +
+                    chat_stream_obj.context_manager.get_unread_messages()
+                )
+                
+                # 转换为字典格式，限制数量
+                limit = int(global_config.chat.max_context_size * 0.33)
+                message_list_before_short = [msg.flatten() for msg in all_messages[-limit:]]
+                
+                logger.debug(f"记忆存储使用内存中的 {len(message_list_before_short)} 条消息")
+            else:
+                # 回退到数据库查询
+                logger.warning(f"记忆存储：无法获取chat_stream，回退到数据库查询: {stream.stream_id}")
+                message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
+                    chat_id=stream.stream_id,
+                    timestamp=time.time(),
+                    limit=int(global_config.chat.max_context_size * 0.33),
+                )
             chat_history = await build_readable_messages(
                 message_list_before_short,
                 replace_bot_name=True,

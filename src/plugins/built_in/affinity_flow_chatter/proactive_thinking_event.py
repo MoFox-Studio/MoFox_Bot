@@ -96,7 +96,7 @@ class ProactiveThinkingMessageHandler(BaseEventHandler):
         """处理消息事件
         
         Args:
-            kwargs: 事件参数，格式为 {"message": MessageRecv}
+            kwargs: 事件参数，格式为 {"message": DatabaseMessages}
             
         Returns:
             HandlerResult: 处理结果
@@ -104,7 +104,7 @@ class ProactiveThinkingMessageHandler(BaseEventHandler):
         if not kwargs:
             return HandlerResult(success=True, continue_process=True, message=None)
         
-        # 从 kwargs 中获取 MessageRecv 对象
+        # 从 kwargs 中获取 DatabaseMessages 对象
         message = kwargs.get("message")
         if not message or not hasattr(message, "chat_stream"):
             return HandlerResult(success=True, continue_process=True, message=None)

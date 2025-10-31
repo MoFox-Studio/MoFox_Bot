@@ -27,6 +27,6 @@
   "venvPath": ".",
   "venv": ".venv",
   "executionEnvironments": [
-    {"root": "src"}
+    {"root": "."}
   ]
 }

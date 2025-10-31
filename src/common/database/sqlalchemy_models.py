@@ -780,12 +780,8 @@ async def initialize_database() -> tuple["AsyncEngine", async_sessionmaker[Async
         _SessionLocal = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
 
         # 迁移
-        try:
-            from src.common.database.db_migration import check_and_migrate_database
-            await check_and_migrate_database(existing_engine=_engine)
-        except TypeError:
-            from src.common.database.db_migration import check_and_migrate_database as _legacy_migrate
-            await _legacy_migrate()
+        from src.common.database.db_migration import check_and_migrate_database
+        await check_and_migrate_database(existing_engine=_engine)
 
         if config.database_type == "sqlite":
             await enable_sqlite_wal_mode(_engine)

@@ -11,7 +11,7 @@ import rjieba
 from maim_message import UserInfo
 
 from src.chat.message_receive.chat_stream import get_chat_manager
-from src.chat.message_receive.message import MessageRecv
+# MessageRecv 已被移除，现在使用 DatabaseMessages
 from src.common.logger import get_logger
 from src.common.message_repository import count_messages, find_messages
 from src.config.config import global_config, model_config
@@ -41,34 +41,58 @@ def db_message_to_str(message_dict: dict) -> str:
     return result
 
 
-def is_mentioned_bot_in_message(message: MessageRecv) -> tuple[bool, float]:
-    """检查消息是否提到了机器人"""
+def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
+    """检查消息是否提到了机器人
+    
+    Args:
+        message: DatabaseMessages 消息对象
+        
+    Returns:
+        tuple[bool, float]: (是否提及, 提及概率)
+    """ 
     keywords = [global_config.bot.nickname]
     nicknames = global_config.bot.alias_names
     reply_probability = 0.0
     is_at = False
     is_mentioned = False
-    if message.is_mentioned is not None:
-        return bool(message.is_mentioned), message.is_mentioned
-    if (
-        message.message_info.additional_config is not None
-        and message.message_info.additional_config.get("is_mentioned") is not None
-    ):
+    
+    # 检查 is_mentioned 属性
+    mentioned_attr = getattr(message, "is_mentioned", None)
+    if mentioned_attr is not None:
         try:
-            reply_probability = float(message.message_info.additional_config.get("is_mentioned"))  # type: ignore
+            return bool(mentioned_attr), float(mentioned_attr)
+        except (ValueError, TypeError):
+            pass
+    
+    # 检查 additional_config
+    additional_config = None
+
+    # DatabaseMessages: additional_config 是 JSON 字符串
+    if message.additional_config:
+        try:
+            import orjson
+            additional_config = orjson.loads(message.additional_config)
+        except Exception:
+            pass
+
+    if additional_config and additional_config.get("is_mentioned") is not None:
+        try:
+            reply_probability = float(additional_config.get("is_mentioned"))  # type: ignore
             is_mentioned = True
             return is_mentioned, reply_probability
         except Exception as e:
             logger.warning(str(e))
             logger.warning(
-                f"消息中包含不合理的设置 is_mentioned: {message.message_info.additional_config.get('is_mentioned')}"
+                f"消息中包含不合理的设置 is_mentioned: {additional_config.get('is_mentioned')}"
             )
 
-    if global_config.bot.nickname in message.processed_plain_text:
+    # 检查消息文本内容
+    processed_text = message.processed_plain_text or ""
+    if global_config.bot.nickname in processed_text:
         is_mentioned = True
 
     for alias_name in global_config.bot.alias_names:
-        if alias_name in message.processed_plain_text:
+        if alias_name in processed_text:
             is_mentioned = True
 
     # 判断是否被@
@@ -109,7 +133,6 @@ def is_mentioned_bot_in_message(message: MessageRecv) -> tuple[bool, float]:
             reply_probability = 1.0
             logger.debug("被提及，回复概率设置为100%")
     return is_mentioned, reply_probability
-
 
 async def get_embedding(text, request_type="embedding") -> list[float] | None:
     """获取文本的embedding向量"""

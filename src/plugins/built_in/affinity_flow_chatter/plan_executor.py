@@ -410,11 +410,9 @@ class ChatterPlanExecutor:
             )
 
             # 添加到chat_stream的已读消息中
-            if hasattr(chat_stream, "stream_context") and chat_stream.stream_context:
-                chat_stream.stream_context.history_messages.append(bot_message)
-                logger.debug(f"机器人回复已添加到已读消息: {reply_content[:50]}...")
-            else:
-                logger.warning("chat_stream没有stream_context，无法添加已读消息")
+            chat_stream.context_manager.context.history_messages.append(bot_message)
+            logger.debug(f"机器人回复已添加到已读消息: {reply_content[:50]}...")
+
 
         except Exception as e:
             logger.error(f"添加机器人回复到已读消息时出错: {e}")

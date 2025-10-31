@@ -1739,9 +1739,7 @@ def get_memory_system() -> MemorySystem:
     if memory_system is None:
         logger.warning("Global memory_system is None. Creating new uninitialized instance. This might be a problem.")
         memory_system = MemorySystem()
-    logger.info(f"get_memory_system() called, returning instance with id: {id(memory_system)}")
     return memory_system
-
 
 async def initialize_memory_system(llm_model: LLMRequest | None = None):
     """初始化全局记忆系统"""

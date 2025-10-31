@@ -9,15 +9,18 @@ from src.common.logger import get_logger
 logger = get_logger("db_migration")
 
 
-async def check_and_migrate_database():
+async def check_and_migrate_database(existing_engine=None):
     """
     异步检查数据库结构并自动迁移。
     - 自动创建不存在的表。
     - 自动为现有表添加缺失的列。
     - 自动为现有表创建缺失的索引。
+    
+    Args:
+        existing_engine: 可选的已存在的数据库引擎。如果提供，将使用该引擎；否则获取全局引擎。
     """
     logger.info("正在检查数据库结构并执行自动迁移...")
-    engine = await get_engine()
+    engine = existing_engine if existing_engine is not None else await get_engine()
 
     async with engine.connect() as connection:
         # 在同步上下文中运行inspector操作
