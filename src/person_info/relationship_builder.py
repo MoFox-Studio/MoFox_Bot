@@ -403,7 +403,7 @@ class RelationshipBuilder:
             # 异步执行关系构建
             import asyncio
 
-            asyncio.create_task(self.update_impression_on_segments(person_id, self.chat_id, segments))
+            asyncio.create_task(self.update_impression_on_segments(person_id, self.chat_id, segments))  # noqa: RUF006
             # 移除已处理的用户缓存
             del self.person_engaged_cache[person_id]
             self._save_cache()

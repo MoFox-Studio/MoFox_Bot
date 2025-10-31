@@ -196,7 +196,7 @@ class ActionModifier:
     ) -> list[tuple[str, str]]:
         """
         根据激活类型过滤，返回需要停用的动作列表及原因
-        
+
         新的实现：调用每个 Action 类的 go_activate 方法来判断是否激活
 
         Args:
@@ -271,8 +271,7 @@ class ActionModifier:
             except Exception as e:
                 logger.error(f"{self.log_prefix}并行激活判断失败: {e}")
                 # 如果并行执行失败，为所有任务默认不激活
-                for action_name in task_action_names:
-                    deactivated_actions.append((action_name, f"并行判断失败: {e}"))
+                deactivated_actions.extend((action_name, f"并行判断失败: {e}") for action_name in task_action_names)
 
         return deactivated_actions
 

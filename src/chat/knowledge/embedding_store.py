@@ -306,10 +306,8 @@ class EmbeddingStore:
 
     def save_to_file(self) -> None:
         """保存到文件"""
-        data = []
         logger.info(f"正在保存{self.namespace}嵌入库到文件{self.embedding_file_path}")
-        for item in self.store.values():
-            data.append(item.to_dict())
+        data = [item.to_dict() for item in self.store.values()]
         data_frame = pd.DataFrame(data)
 
         if not os.path.exists(self.dir):

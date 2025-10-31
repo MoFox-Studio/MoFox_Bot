@@ -5,7 +5,7 @@
 """
 
 import json
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy import select
 
@@ -29,7 +29,7 @@ class ChatStreamImpressionTool(BaseTool):
 
     name = "update_chat_stream_impression"
     description = "当你通过观察聊天记录对当前聊天环境（群聊或私聊）产生了整体印象或认识时使用此工具，更新对这个聊天流的看法。包括：环境氛围、聊天风格、常见话题、你的兴趣程度。调用时机：当你发现这个聊天环境有明显的氛围特点（如很活跃、很专业、很闲聊）、群成员经常讨论某类话题、或者你对这个环境的感受发生变化时。注意：这是对整个聊天环境的印象，而非对单个用户。"
-    parameters = [
+    parameters: ClassVar = [
         (
             "impression_description",
             ToolParamType.STRING,
@@ -73,7 +73,7 @@ class ChatStreamImpressionTool(BaseTool):
             )
         except AttributeError:
             # 降级处理
-            available_models = [
+            available_models: ClassVar = [
                 attr
                 for attr in dir(model_config.model_task_config)
                 if not attr.startswith("_") and attr != "model_dump"
@@ -153,7 +153,7 @@ class ChatStreamImpressionTool(BaseTool):
             await self._update_stream_impression_in_db(stream_id, final_impression)
 
             # 构建返回信息
-            updates = []
+            updates: ClassVar = []
             if final_impression.get("stream_impression_text"):
                 updates.append(f"印象: {final_impression['stream_impression_text'][:50]}...")
             if final_impression.get("stream_chat_style"):

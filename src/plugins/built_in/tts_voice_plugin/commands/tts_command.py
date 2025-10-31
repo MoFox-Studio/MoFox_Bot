@@ -1,6 +1,8 @@
 """
 TTS 语音合成命令
 """
+from typing import ClassVar
+
 from src.common.logger import get_logger
 from src.plugin_system.base.command_args import CommandArgs
 from src.plugin_system.base.plus_command import PlusCommand
@@ -18,7 +20,7 @@ class TTSVoiceCommand(PlusCommand):
 
     command_name: str = "tts"
     command_description: str = "使用GPT-SoVITS将文本转换为语音并发送"
-    command_aliases = ["语音合成", "说"]
+    command_aliases: ClassVar[list[str]] = ["语音合成", "说"]
     command_usage = "/tts <要说的文本> [风格]"
 
     def __init__(self, *args, **kwargs):

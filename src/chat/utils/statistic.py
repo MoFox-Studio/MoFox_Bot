@@ -234,7 +234,7 @@ class StatisticOutputTask(AsyncTask):
                 logger.exception(f"后台统计数据输出过程中发生异常：{e}")
 
         # 创建后台任务，立即返回
-        asyncio.create_task(_async_collect_and_output())
+        asyncio.create_task(_async_collect_and_output())  # noqa: RUF006
 
     # -- 以下为统计数据收集方法 --
 

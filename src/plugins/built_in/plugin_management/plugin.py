@@ -1,4 +1,5 @@
 import asyncio
+from typing import ClassVar
 
 from src.plugin_system import (
     BasePlugin,
@@ -21,7 +22,7 @@ class ManagementCommand(PlusCommand):
 
     command_name = "pm"
     command_description = "插件管理命令，支持插件和组件的管理操作"
-    command_aliases = ["pluginmanage", "插件管理"]
+    command_aliases: ClassVar[list[str]] = ["pluginmanage", "插件管理"]
     priority = 10
     chat_type_allow = ChatType.ALL
     intercept_message = True
@@ -273,6 +274,7 @@ class ManagementCommand(PlusCommand):
     def _fetch_all_registered_components() -> list[ComponentInfo]:
         all_plugin_info = component_manage_api.get_all_plugin_info()
         if not all_plugin_info:
+
             return []
 
         components_info: list[ComponentInfo] = []
@@ -486,10 +488,10 @@ class ManagementCommand(PlusCommand):
 class PluginManagementPlugin(BasePlugin):
     plugin_name: str = "plugin_management_plugin"
     enable_plugin: bool = True
-    dependencies: list[str] = []
-    python_dependencies: list[str] = []
+    dependencies: ClassVar[list[str]] = []
+    python_dependencies: ClassVar[list[str]] = []
     config_file_name: str = "config.toml"
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {
             "enabled": ConfigField(bool, default=False, description="是否启用插件"),
             "config_version": ConfigField(type=str, default="1.1.0", description="配置文件版本"),

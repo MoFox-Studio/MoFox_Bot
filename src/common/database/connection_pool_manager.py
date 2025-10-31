@@ -190,11 +190,10 @@ class ConnectionPoolManager:
     async def _cleanup_expired_connections_locked(self):
         """清理过期连接（需要在锁内调用）"""
         time.time()
-        expired_connections = []
-
-        for connection_info in list(self._connections):
-            if connection_info.is_expired(self.max_lifetime, self.max_idle) and not connection_info.in_use:
-                expired_connections.append(connection_info)
+        expired_connections = [
+            connection_info for connection_info in list(self._connections)
+            if connection_info.is_expired(self.max_lifetime, self.max_idle) and not connection_info.in_use
+        ]
 
         for connection_info in expired_connections:
             await connection_info.close()

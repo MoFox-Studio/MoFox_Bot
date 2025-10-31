@@ -1,5 +1,6 @@
 import random
 import re
+from typing import ClassVar
 
 from src.chat.emoji_system.emoji_history import add_emoji_to_history, get_recent_emojis
 from src.chat.emoji_system.emoji_manager import MaiEmoji, get_emoji_manager
@@ -20,14 +21,14 @@ logger = get_logger("emoji")
 
 class EmojiAction(BaseAction):
     """表情动作 - 发送表情包
-    
+
     注意：此 Action 使用旧的激活类型配置方式（已废弃但仍然兼容）。
     BaseAction.go_activate() 的默认实现会自动处理这些旧配置。
-    
+
     推荐的新写法（迁移示例）：
     ----------------------------------------
     # 移除下面的 activation_type 相关配置，改为重写 go_activate 方法：
-    
+
     async def go_activate(self, chat_content: str = "", llm_judge_model=None) -> bool:
         # 根据配置选择激活方式
         if global_config.emoji.emoji_activate_type == "llm":
@@ -75,17 +76,17 @@ class EmojiAction(BaseAction):
     """
 
     # 动作参数定义
-    action_parameters = {}
+    action_parameters: ClassVar = {}
 
     # 动作使用场景
-    action_require = [
+    action_require: ClassVar = [
         "发送表情包辅助表达情绪",
         "表达情绪时可以选择使用",
         "不要连续发送，如果你已经发过[表情包]，就不要选择此动作",
     ]
 
     # 关联类型
-    associated_types = ["emoji"]
+    associated_types: ClassVar[list[str]] = ["emoji"]
 
     async def execute(self) -> tuple[bool, str]:
         """执行表情动作"""
@@ -119,8 +120,8 @@ class EmojiAction(BaseAction):
                 logger.error(f"{self.log_prefix} 获取或处理表情发送历史时出错: {e}")
 
             # 4. 准备情感数据和后备列表
-            emotion_map = {}
-            all_emojis_data = []
+            emotion_map: ClassVar = {}
+            all_emojis_data: ClassVar = []
 
             for emoji in all_emojis_obj:
                 b64 = image_path_to_base64(emoji.full_path)

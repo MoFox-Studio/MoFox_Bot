@@ -6,6 +6,7 @@
 """
 
 import re
+from typing import ClassVar
 
 from src.plugin_system.apis.logging_api import get_logger
 from src.plugin_system.apis.permission_api import permission_api
@@ -29,7 +30,7 @@ class PermissionCommand(PlusCommand):
 
     command_name = "permission"
     command_description = "权限管理命令，支持授权、撤销、查询等功能"
-    command_aliases = ["perm", "权限"]
+    command_aliases: ClassVar[list[str]] = ["perm", "权限"]
     priority = 10
     chat_type_allow = ChatType.ALL
     intercept_message = True
@@ -37,7 +38,7 @@ class PermissionCommand(PlusCommand):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    permission_nodes: list[PermissionNodeField] = [
+    permission_nodes: ClassVar[list[PermissionNodeField]] = [
         PermissionNodeField(
             node_name="manage",
             description="权限管理：可以授权和撤销其他用户的权限",
@@ -382,10 +383,10 @@ class PermissionCommand(PlusCommand):
 class PermissionManagerPlugin(BasePlugin):
     plugin_name: str = "permission_manager_plugin"
     enable_plugin: bool = True
-    dependencies: list[str] = []
-    python_dependencies: list[str] = []
+    dependencies: ClassVar[list[str]] = []
+    python_dependencies: ClassVar[list[str]] = []
     config_file_name: str = "config.toml"
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {
             "enabled": ConfigField(bool, default=True, description="是否启用插件"),
             "config_version": ConfigField(type=str, default="1.1.0", description="配置文件版本"),

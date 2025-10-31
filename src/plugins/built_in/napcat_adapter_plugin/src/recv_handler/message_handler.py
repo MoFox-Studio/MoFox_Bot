@@ -1,45 +1,43 @@
-from ...event_types import NapcatEvent
-from src.plugin_system.core.event_manager import event_manager
+import base64
+import json
+import time
+import uuid
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import websockets as Server
+from maim_message import (
+    BaseMessageInfo,
+    FormatInfo,
+    GroupInfo,
+    MessageBase,
+    Seg,
+    TemplateInfo,
+    UserInfo,
+)
+
 from src.common.logger import get_logger
-from ...CONSTS import PLUGIN_NAME
-
-logger = get_logger("napcat_adapter")
-
 from src.plugin_system.apis import config_api
+from src.plugin_system.core.event_manager import event_manager
+
+from ...CONSTS import PLUGIN_NAME
+from ...event_types import NapcatEvent
+from ..response_pool import get_response
 from ..utils import (
     get_group_info,
-    get_member_info,
     get_image_base64,
+    get_member_info,
+    get_message_detail,
     get_record_detail,
     get_self_info,
-    get_message_detail,
 )
-from .qq_emoji_list import qq_face
-from .message_sending import message_send_instance
-from . import RealMessageType, MessageType, ACCEPT_FORMAT
 from ..video_handler import get_video_downloader
 from ..websocket_manager import websocket_manager
+from . import ACCEPT_FORMAT, MessageType, RealMessageType
+from .message_sending import message_send_instance
+from .qq_emoji_list import qq_face
 
-import time
-import json
-import websockets as Server
-import base64
-from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
-import uuid
-
-from maim_message import (
-    UserInfo,
-    GroupInfo,
-    Seg,
-    BaseMessageInfo,
-    MessageBase,
-    TemplateInfo,
-    FormatInfo,
-)
-
-
-from ..response_pool import get_response
+logger = get_logger("napcat_adapter")
 
 
 class MessageHandler:

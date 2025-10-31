@@ -125,7 +125,7 @@ class ChatStream:
 
     async def set_context(self, message: DatabaseMessages):
         """设置聊天消息上下文
-        
+
         Args:
             message: DatabaseMessages 对象，直接使用不需要转换
         """

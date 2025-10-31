@@ -42,6 +42,7 @@ class TavilySearchEngine(BaseSearchEngine):
     async def search(self, args: dict[str, Any]) -> list[dict[str, Any]]:
         """执行Tavily搜索"""
         if not self.is_available():
+
             return []
 
         query = args["query"]
@@ -76,15 +77,15 @@ class TavilySearchEngine(BaseSearchEngine):
 
             results = []
             if search_response and "results" in search_response:
-                for res in search_response["results"]:
-                    results.append(
-                        {
-                            "title": res.get("title", "无标题"),
-                            "url": res.get("url", ""),
-                            "snippet": res.get("content", "")[:300] + "..." if res.get("content") else "无摘要",
-                            "provider": "Tavily",
-                        }
-                    )
+                results.extend(
+                    {
+                        "title": res.get("title", "无标题"),
+                        "url": res.get("url", ""),
+                        "snippet": res.get("content", "")[:300] + "..." if res.get("content") else "无摘要",
+                        "provider": "Tavily",
+                    }
+                    for res in search_response["results"]
+                )
 
             return results
 

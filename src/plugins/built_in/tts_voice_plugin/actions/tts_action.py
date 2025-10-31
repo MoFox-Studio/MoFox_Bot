@@ -3,6 +3,7 @@ TTS 语音合成 Action
 """
 
 from pathlib import Path
+from typing import ClassVar
 
 import toml
 
@@ -32,6 +33,7 @@ def _get_available_styles() -> list[str]:
 
         styles_config = config.get("tts_styles", [])
         if not isinstance(styles_config, list):
+
             return ["default"]
 
         # 使用显式循环和类型检查来提取 style_name，以确保 Pylance 类型检查通过
@@ -65,7 +67,7 @@ class TTSVoiceAction(BaseAction):
     mode_enable = ChatMode.ALL
     parallel_action = False
 
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "text": {
             "type": "string",
             "description": "需要转换为语音并发送的完整、自然、适合口语的文本内容。",
@@ -97,7 +99,7 @@ class TTSVoiceAction(BaseAction):
         }
     }
 
-    action_require = [
+    action_require: ClassVar[list] = [
         "在调用此动作时，你必须在 'text' 参数中提供要合成语音的完整回复内容。这是强制性的。",
         "当用户明确请求使用语音进行回复时，例如‘发个语音听听’、‘用语音说’等。",
         "当对话内容适合用语音表达，例如讲故事、念诗、撒嬌或进行角色扮演时。",

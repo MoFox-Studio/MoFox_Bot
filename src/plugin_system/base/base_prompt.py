@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
@@ -27,7 +27,7 @@ class BasePrompt(ABC):
     # 定义此组件希望如何注入到核心Prompt中
     # 这是一个 InjectionRule 对象的列表，可以实现复杂的注入逻辑
     # 例如: [InjectionRule(target_prompt="planner_prompt", injection_type=InjectionType.APPEND, priority=50)]
-    injection_rules: list[InjectionRule] = []
+    injection_rules: ClassVar[list[InjectionRule] ] = []
     """定义注入规则的列表"""
 
     # 旧的注入点定义，用于向后兼容。如果定义了这个，它将被自动转换为 injection_rules。

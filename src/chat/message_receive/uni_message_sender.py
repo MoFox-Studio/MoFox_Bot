@@ -47,7 +47,7 @@ async def send_message(message: MessageSending, show_log=True) -> bool:
                         logger.error(f"[事件触发] 异步触发事件失败: {e}", exc_info=True)
 
                 # 创建异步任务，不等待完成
-                asyncio.create_task(trigger_event_async())
+                asyncio.create_task(trigger_event_async())  # noqa: RUF006
                 logger.info("[发送完成] AFTER_SEND 事件已提交到异步任务")
         except Exception as event_error:
             logger.error(f"触发 AFTER_SEND 事件时出错: {event_error}", exc_info=True)

@@ -391,7 +391,7 @@ class StyleLearnerManager:
             是否全部保存成功
         """
         success = True
-        for chat_id, learner in self.learners.items():
+        for learner in self.learners.values():
             if not learner.save(self.model_save_path):
                 success = False
 

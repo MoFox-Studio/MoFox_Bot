@@ -251,14 +251,14 @@ class ExpressionSelector:
     ) -> list[dict[str, Any]]:
         """
         统一的表达方式选择入口，根据配置自动选择模式
-        
+
         Args:
             chat_id: 聊天ID
             chat_history: 聊天历史（列表或字符串）
             target_message: 目标消息
             max_num: 最多返回数量
             min_num: 最少返回数量
-            
+
         Returns:
             选中的表达方式列表
         """
@@ -403,12 +403,12 @@ class ExpressionSelector:
     ) -> list[dict[str, Any]]:
         """
         根据StyleLearner预测的风格获取表达方式
-        
+
         Args:
             chat_id: 聊天ID
             predicted_styles: 预测的风格列表，格式: [(style, score), ...]
             max_num: 最多返回数量
-            
+
         Returns:
             表达方式列表
         """
@@ -430,7 +430,7 @@ class ExpressionSelector:
                 .where(Expression.type == "style")
                 .distinct()
             )
-            db_chat_ids = [cid for cid in db_chat_ids_result.scalars()]
+            db_chat_ids = list(db_chat_ids_result.scalars())
             logger.info(f"数据库中有表达方式的chat_ids ({len(db_chat_ids)}个): {db_chat_ids}")
 
             # 获取所有相关 chat_id 的表达方式（用于模糊匹配）
@@ -509,15 +509,16 @@ class ExpressionSelector:
             )
 
             # 转换为字典格式
-            expressions = []
-            for expr in expressions_objs:
-                expressions.append({
+            expressions = [
+                {
                     "situation": expr.situation or "",
                     "style": expr.style or "",
                     "type": expr.type or "style",
                     "count": float(expr.count) if expr.count else 0.0,
                     "last_active_time": expr.last_active_time or 0.0
-                })
+                }
+                for expr in expressions_objs
+            ]
 
             logger.debug(f"从数据库获取了 {len(expressions)} 个表达方式")
             return expressions
@@ -617,7 +618,7 @@ class ExpressionSelector:
 
             # 对选中的所有表达方式，一次性更新count数
             if valid_expressions:
-                asyncio.create_task(self.update_expressions_count_batch(valid_expressions, 0.006))
+                asyncio.create_task(self.update_expressions_count_batch(valid_expressions, 0.006))  # noqa: RUF006
 
             # logger.info(f"LLM从{len(all_expressions)}个情境中选择了{len(valid_expressions)}个")
             return valid_expressions

@@ -55,12 +55,12 @@ class SituationExtractor:
     ) -> list[str]:
         """
         从聊天历史中提取情境
-        
+
         Args:
             chat_history: 聊天历史（列表或字符串）
             target_message: 目标消息（可选）
             max_situations: 最多提取的情境数量
-            
+
         Returns:
             情境描述列表
         """
@@ -115,11 +115,11 @@ class SituationExtractor:
     def _parse_situations(response: str, max_situations: int) -> list[str]:
         """
         解析 LLM 返回的情境描述
-        
+
         Args:
             response: LLM 响应
             max_situations: 最多返回的情境数量
-            
+
         Returns:
             情境描述列表
         """

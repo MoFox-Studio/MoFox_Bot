@@ -1,11 +1,13 @@
 import asyncio
 
+from maim_message import MessageBase, Router
+
 from src.common.logger import get_logger
-from ..message_chunker import chunker
 from src.plugin_system.apis import config_api
 
+from ..message_chunker import chunker
+
 logger = get_logger("napcat_adapter")
-from maim_message import MessageBase, Router
 
 
 class MessageSending:

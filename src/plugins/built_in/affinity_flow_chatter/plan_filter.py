@@ -117,9 +117,11 @@ class ChatterPlanFilter:
                             elif isinstance(actions_obj, list):
                                 actions_to_process_for_log.extend(actions_obj)
 
-                            for single_action in actions_to_process_for_log:
-                                if isinstance(single_action, dict):
-                                    action_types_to_log.append(single_action.get("action_type", "no_action"))
+                            action_types_to_log = [
+                                single_action.get("action_type", "no_action")
+                                for single_action in actions_to_process_for_log
+                                if isinstance(single_action, dict)
+                            ]
 
                             if thinking != "未提供思考过程" and action_types_to_log:
                                 await self._add_decision_to_history(plan, thinking, ", ".join(action_types_to_log))

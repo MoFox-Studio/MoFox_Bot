@@ -7,7 +7,6 @@ from threading import Lock
 from typing import Any, Optional
 
 from src.common.logger import get_logger
-from src.plugin_system import BaseEventHandler
 from src.plugin_system.base.base_event import BaseEvent, HandlerResultsCollection
 from src.plugin_system.base.base_events_handler import BaseEventHandler
 from src.plugin_system.base.component_types import EventType
@@ -176,10 +175,10 @@ class EventManager:
 
         # 处理init_subscribe，缓存失败的订阅
         if self._event_handlers[handler_name].init_subscribe:
-            failed_subscriptions = []
-            for event_name in self._event_handlers[handler_name].init_subscribe:
-                if not self.subscribe_handler_to_event(handler_name, event_name):
-                    failed_subscriptions.append(event_name)
+            failed_subscriptions = [
+                event_name for event_name in self._event_handlers[handler_name].init_subscribe
+                if not self.subscribe_handler_to_event(handler_name, event_name)
+            ]
 
             # 缓存失败的订阅
             if failed_subscriptions:

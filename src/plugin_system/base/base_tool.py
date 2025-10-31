@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from rich.traceback import install
 
@@ -18,7 +18,7 @@ class BaseTool(ABC):
     """工具的名称"""
     description: str = ""
     """工具的描述"""
-    parameters: list[tuple[str, ToolParamType, str, bool, list[str] | None]] = []
+    parameters: ClassVar[list[tuple[str, ToolParamType, str, bool, list[str] | None]] ] = []
     """工具的参数定义，为[("param_name", param_type, "description", required, enum_values)]格式
        param_name: 参数名称
        param_type: 参数类型
@@ -44,7 +44,7 @@ class BaseTool(ABC):
     """是否为二步工具。如果为True，工具将分两步调用：第一步展示工具信息，第二步执行具体操作"""
     step_one_description: str = ""
     """第一步的描述，用于向LLM展示工具的基本功能"""
-    sub_tools: list[tuple[str, str, list[tuple[str, ToolParamType, str, bool, list[str] | None]]]] = []
+    sub_tools: ClassVar[list[tuple[str, str, list[tuple[str, ToolParamType, str, bool, list[str] | None]]]] ] = []
     """子工具列表，格式为[(子工具名, 子工具描述, 子工具参数)]。仅在二步工具中使用"""
 
     def __init__(self, plugin_config: dict | None = None, chat_stream: Any = None):
@@ -112,7 +112,7 @@ class BaseTool(ABC):
         if not cls.is_two_step_tool:
             return []
 
-        definitions = []
+        definitions: ClassVar = []
         for sub_name, sub_desc, sub_params in cls.sub_tools:
             definitions.append({"name": f"{cls.name}_{sub_name}", "description": sub_desc, "parameters": sub_params})
         return definitions

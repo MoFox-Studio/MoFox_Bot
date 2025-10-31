@@ -355,7 +355,7 @@ class MessageManager:
                 try:
                     stream_loop_task.cancel()
                     logger.info(f"已发送取消信号到流循环任务: {chat_stream.stream_id}")
-                    
+
                     # 等待任务真正结束（设置超时避免死锁）
                     try:
                         await asyncio.wait_for(stream_loop_task, timeout=2.0)
@@ -625,7 +625,7 @@ class MessageManager:
 
     def _determine_notice_scope(self, message: DatabaseMessages, stream_id: str) -> NoticeScope:
         """确定notice的作用域
-        
+
         作用域完全由 additional_config 中的 is_public_notice 字段决定：
         - is_public_notice=True: 公共notice，所有聊天流可见
         - is_public_notice=False 或未设置: 特定聊天流notice

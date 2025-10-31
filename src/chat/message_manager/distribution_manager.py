@@ -115,7 +115,7 @@ class StreamLoopManager:
         if not force and context.stream_loop_task and not context.stream_loop_task.done():
             logger.debug(f"流 {stream_id} 循环已在运行")
             return True
-        
+
         # 如果是强制启动且任务仍在运行，先取消旧任务
         if force and context.stream_loop_task and not context.stream_loop_task.done():
             logger.info(f"强制启动模式：先取消现有流循环任务: {stream_id}")
@@ -438,7 +438,7 @@ class StreamLoopManager:
 
     async def _update_stream_energy(self, stream_id: str, context: Any) -> None:
         """更新流的能量值
-        
+
         Args:
             stream_id: 流ID
             context: 流上下文 (StreamContext)

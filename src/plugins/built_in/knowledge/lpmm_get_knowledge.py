@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, ClassVar
 
 from src.chat.knowledge.knowledge_lib import qa_manager
 from src.common.logger import get_logger
@@ -13,7 +13,7 @@ class SearchKnowledgeFromLPMMTool(BaseTool):
 
     name = "lpmm_search_knowledge"
     description = "从知识库中搜索相关信息，如果你需要知识，就使用这个工具"
-    parameters = [
+    parameters: ClassVar = [
         ("query", ToolParamType.STRING, "搜索查询关键词", True, None),
         ("threshold", ToolParamType.FLOAT, "相似度阈值，0.0到1.0之间", False, None),
     ]
@@ -44,7 +44,7 @@ class SearchKnowledgeFromLPMMTool(BaseTool):
             logger.debug(f"知识库查询结果: {knowledge_info}")
 
             if knowledge_info and knowledge_info.get("knowledge_items"):
-                knowledge_parts = []
+                knowledge_parts: ClassVar = []
                 for i, item in enumerate(knowledge_info["knowledge_items"]):
                     knowledge_parts.append(f"- {item.get('content', 'N/A')}")
 

@@ -87,8 +87,8 @@ class ComponentRegistry:
         self._tool_registry: dict[str, type["BaseTool"]] = {}  # 工具名 -> 工具类
         self._llm_available_tools: dict[str, type["BaseTool"]] = {}  # llm可用的工具名 -> 工具类
 
-        # MCP 工具注册表（运行时动态加载）
-        self._mcp_tools: list["BaseTool"] = []  # MCP 工具适配器实例列表
+        # MCP 工具注册表(运行时动态加载)
+        self._mcp_tools: list[Any] = []  # MCP 工具适配器实例列表
         self._mcp_tools_loaded = False  # MCP 工具是否已加载
 
         # EventHandler特定注册表

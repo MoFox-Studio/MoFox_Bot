@@ -118,7 +118,6 @@ class ChatterActionPlanner:
             # 2. 使用新的兴趣度管理系统进行评分
             max_message_interest = 0.0
             reply_not_available = True
-            interest_updates: list[dict[str, Any]] = []
             aggregate_should_act = False
 
             if unread_messages:
@@ -247,7 +246,7 @@ class ChatterActionPlanner:
 
     async def _normal_mode_flow(self, context: "StreamContext | None") -> tuple[list[dict[str, Any]], Any | None]:
         """Normal模式下的简化plan流程
-        
+
         只计算兴趣值并判断是否达到reply阈值，不执行完整的plan流程。
         根据focus_energy决定退出normal模式回到focus模式的概率。
         """
@@ -372,7 +371,7 @@ class ChatterActionPlanner:
 
     async def _check_exit_normal_mode(self, context: "StreamContext | None") -> None:
         """检查并执行退出Normal模式的判定
-        
+
         Args:
             context: 流上下文
         """

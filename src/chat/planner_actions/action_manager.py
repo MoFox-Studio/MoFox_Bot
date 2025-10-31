@@ -204,7 +204,7 @@ class ChatterActionManager:
                         action_prompt_display=reason,
                     )
                 else:
-                    asyncio.create_task(
+                    asyncio.create_task(  # noqa: RUF006
                         database_api.store_action_info(
                             chat_stream=chat_stream,
                             action_build_into_prompt=False,
@@ -217,7 +217,7 @@ class ChatterActionManager:
                     )
 
                 # 自动清空所有未读消息
-                asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "no_reply"))
+                asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "no_reply"))  # noqa: RUF006
 
                 return {"action_type": "no_reply", "success": True, "reply_text": "", "command": ""}
 
@@ -235,14 +235,14 @@ class ChatterActionManager:
 
                 # 记录执行的动作到目标消息
                 if success:
-                    asyncio.create_task(
+                    asyncio.create_task(  # noqa: RUF006
                         self._record_action_to_message(chat_stream, action_name, target_message, action_data)
                     )
                     # 自动清空所有未读消息
                     if clear_unread_messages:
-                        asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, action_name))
+                        asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, action_name))  # noqa: RUF006
                     # 重置打断计数
-                    asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))
+                    asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))  # noqa: RUF006
 
                 return {
                     "action_type": action_name,
@@ -295,13 +295,13 @@ class ChatterActionManager:
                 )
 
                 # 记录回复动作到目标消息
-                asyncio.create_task(self._record_action_to_message(chat_stream, "reply", target_message, action_data))
+                asyncio.create_task(self._record_action_to_message(chat_stream, "reply", target_message, action_data))  # noqa: RUF006
 
                 if clear_unread_messages:
-                    asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "reply"))
+                    asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "reply"))  # noqa: RUF006
 
                 # 回复成功，重置打断计数
-                asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))
+                asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))  # noqa: RUF006
 
                 return {"action_type": "reply", "success": True, "reply_text": reply_text, "loop_info": loop_info}
 

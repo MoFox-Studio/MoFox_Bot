@@ -63,12 +63,12 @@ async def check_database():
         null_situation = await session.execute(
             select(func.count())
             .select_from(Expression)
-            .where(Expression.situation == None)
+            .where(Expression.situation is None)
         )
         null_style = await session.execute(
             select(func.count())
             .select_from(Expression)
-            .where(Expression.style == None)
+            .where(Expression.style is None)
         )
 
         null_sit_count = null_situation.scalar()
@@ -102,7 +102,7 @@ async def check_database():
             .limit(20)
         )
 
-        styles = [s for s in unique_styles.scalars()]
+        styles = list(unique_styles.scalars())
         for style in styles:
             print(f"  - {style}")
 

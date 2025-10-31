@@ -61,7 +61,7 @@ class ExpressorModel:
         if cid not in self.nb.token_counts:
             self.nb.token_counts[cid] = defaultdict(float)
 
-    def predict(self, text: str, k: int = None) -> tuple[str | None, dict[str, float]]:
+    def predict(self, text: str, k: int | None = None) -> tuple[str | None, dict[str, float]]:
         """
         直接对所有候选进行朴素贝叶斯评分
 

@@ -4,6 +4,7 @@ MaiZone（麦麦空间）- 重构版
 
 import asyncio
 from pathlib import Path
+from typing import ClassVar
 
 from src.common.logger import get_logger
 from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
@@ -33,10 +34,10 @@ class MaiZoneRefactoredPlugin(BasePlugin):
     plugin_description: str = "重构版的MaiZone插件"
     config_file_name: str = "config.toml"
     enable_plugin: bool = True
-    dependencies: list[str] = []
-    python_dependencies: list[str] = []
+    dependencies: ClassVar[list[str] ] = []
+    python_dependencies: ClassVar[list[str] ] = []
 
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {"enable": ConfigField(type=bool, default=True, description="是否启用插件")},
         "models": {
             "text_model": ConfigField(type=str, default="maizone", description="生成文本的模型名称"),
@@ -83,7 +84,7 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         },
     }
 
-    permission_nodes: list[PermissionNodeField] = [
+    permission_nodes: ClassVar[list[PermissionNodeField]] = [
         PermissionNodeField(node_name="send_feed", description="是否可以使用机器人发送QQ空间说说"),
         PermissionNodeField(node_name="read_feed", description="是否可以使用机器人读取QQ空间说说"),
     ]

@@ -7,7 +7,7 @@ import asyncio
 import time
 import traceback
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from src.chat.express.expression_learner import expression_learner_manager
 from src.chat.planner_actions.action_manager import ChatterActionManager
@@ -29,7 +29,7 @@ class AffinityChatter(BaseChatter):
 
     chatter_name: str = "AffinityChatter"
     chatter_description: str = "基于亲和力模型的智能聊天处理器，支持多种聊天类型"
-    chat_types: list[ChatType] = [ChatType.ALL]  # 支持所有聊天类型
+    chat_types: ClassVar[list[ChatType]] = [ChatType.ALL]  # 支持所有聊天类型
 
     def __init__(self, stream_id: str, action_manager: ChatterActionManager):
         """
@@ -68,7 +68,7 @@ class AffinityChatter(BaseChatter):
             try:
                 # 触发表达学习
                 learner = await expression_learner_manager.get_expression_learner(self.stream_id)
-                asyncio.create_task(learner.trigger_learning_for_chat())
+                asyncio.create_task(learner.trigger_learning_for_chat())  # noqa: RUF006
 
                 unread_messages = context.get_unread_messages()
 
@@ -87,7 +87,7 @@ class AffinityChatter(BaseChatter):
                 self.stats["successful_executions"] += 1
                 self.last_activity_time = time.time()
 
-                result = {
+                result: ClassVar = {
                     "success": True,
                     "stream_id": self.stream_id,
                     "plan_created": True,

@@ -1,21 +1,16 @@
-import time
-import json
 import asyncio
+import json
+import time
+from typing import ClassVar, Optional, Tuple
+
 import websockets as Server
-from typing import Tuple, Optional
+from maim_message import BaseMessageInfo, FormatInfo, GroupInfo, MessageBase, Seg, UserInfo
 
 from src.common.logger import get_logger
-
-logger = get_logger("napcat_adapter")
-
 from src.plugin_system.apis import config_api
-from ..database import BanUser, napcat_db, is_identical
-from . import NoticeType, ACCEPT_FORMAT
-from .message_sending import message_send_instance
-from .message_handler import message_handler
-from maim_message import FormatInfo, UserInfo, GroupInfo, Seg, BaseMessageInfo, MessageBase
-from ..websocket_manager import websocket_manager
 
+from ...CONSTS import PLUGIN_NAME, QQ_FACE
+from ..database import BanUser, is_identical, napcat_db
 from ..utils import (
     get_group_info,
     get_member_info,
@@ -23,16 +18,20 @@ from ..utils import (
     get_stranger_info,
     read_ban_list,
 )
+from ..websocket_manager import websocket_manager
+from . import ACCEPT_FORMAT, NoticeType
+from .message_handler import message_handler
+from .message_sending import message_send_instance
 
-from ...CONSTS import PLUGIN_NAME, QQ_FACE
+logger = get_logger("napcat_adapter")
 
 notice_queue: asyncio.Queue[MessageBase] = asyncio.Queue(maxsize=100)
 unsuccessful_notice_queue: asyncio.Queue[MessageBase] = asyncio.Queue(maxsize=3)
 
 
 class NoticeHandler:
-    banned_list: list[BanUser] = []  # 当前仍在禁言中的用户列表
-    lifted_list: list[BanUser] = []  # 已经自然解除禁言
+    banned_list: ClassVar[list[BanUser]] = []  # 当前仍在禁言中的用户列表
+    lifted_list: ClassVar[list[BanUser]] = []  # 已经自然解除禁言
 
     def __init__(self):
         self.server_connection: Server.ServerConnection | None = None
@@ -131,6 +130,7 @@ class NoticeHandler:
                             logger.warning("戳一戳消息被禁用，取消戳一戳处理")
                     case NoticeType.Notify.input_status:
                         from src.plugin_system.core.event_manager import event_manager
+
                         from ...event_types import NapcatEvent
 
                         await event_manager.trigger_event(NapcatEvent.ON_RECEIVED.FRIEND_INPUT, permission_group=PLUGIN_NAME)
@@ -357,6 +357,7 @@ class NoticeHandler:
             logger.debug("无法获取表情回复对方的用户昵称")
         
         from src.plugin_system.core.event_manager import event_manager
+
         from ...event_types import NapcatEvent
 
         target_message = await event_manager.trigger_event(NapcatEvent.MESSAGE.GET_MSG,message_id=raw_message.get("message_id",""))
