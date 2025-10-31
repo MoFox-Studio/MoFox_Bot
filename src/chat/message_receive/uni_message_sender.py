@@ -32,8 +32,9 @@ async def send_message(message: MessageSending, show_log=True) -> bool:
             if message.chat_stream:
                 await event_manager.trigger_event(
                     EventType.AFTER_SEND,
-                    kwargs={"stream_id": message.chat_stream.stream_id, "message": message},
-                    trigger_source="SYSTEM",
+                    permission_group="SYSTEM",
+                    stream_id=message.chat_stream.stream_id,
+                    message=message,
                 )
         except Exception as event_error:
             logger.error(f"触发 AFTER_SEND 事件时出错: {event_error}")
