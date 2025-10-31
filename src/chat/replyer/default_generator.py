@@ -257,6 +257,8 @@ class DefaultReplyer:
         if not master_config or not master_config.enable:
             return ""
 
+        if not self.chat_stream.user_info:
+            return ""
         platform, user_id = self.chat_stream.platform, self.chat_stream.user_info.user_id
         try:
             if user_id:
@@ -312,7 +314,7 @@ class DefaultReplyer:
                     extra_info=extra_info,
                     available_actions=available_actions,
                     enable_tool=enable_tool,
-                    reply_message=reply_message,
+                    reply_message=DatabaseMessages(**reply_message) if isinstance(reply_message, dict) else reply_message,
                 )
 
             if not prompt:
@@ -976,7 +978,6 @@ class DefaultReplyer:
                 if unread_messages:
                     unread_lines = []
                     for msg in unread_messages:
-                        msg_id = msg.message_id
                         msg_time = time.strftime("%H:%M:%S", time.localtime(msg.time))
                         msg_content = msg.processed_plain_text
 
@@ -1077,7 +1078,7 @@ class DefaultReplyer:
         if unread_messages:
             unread_lines = []
             for msg in unread_messages:
-                msg_id = msg.get("message_id", "")
+                msg.get("message_id", "")
                 msg_time = time.strftime("%H:%M:%S", time.localtime(msg.get("time", time.time())))
                 msg_content = msg.get("processed_plain_text", "")
 
@@ -1150,7 +1151,7 @@ class DefaultReplyer:
         extra_info: str = "",
         available_actions: dict[str, ActionInfo] | None = None,
         enable_tool: bool = True,
-        reply_message: dict[str, Any] | DatabaseMessages | None = None,
+        reply_message: DatabaseMessages | None = None,
     ) -> str:
         """
         构建回复器上下文
@@ -1612,16 +1613,10 @@ class DefaultReplyer:
             target = "(无消息内容)"
 
         # 添加情绪状态获取
+        mood_prompt = ""
         if global_config.mood.enable_mood:
             chat_mood = mood_manager.get_mood_by_chat_id(chat_id)
             mood_prompt = chat_mood.mood_state
-
-            # 检查是否有愤怒状态的补充提示词
-            angry_prompt_addition = mood_manager.get_angry_prompt_addition(chat_id)
-            if angry_prompt_addition:
-                mood_prompt = f"{mood_prompt}。{angry_prompt_addition}"
-        else:
-            mood_prompt = ""
 
         # 从内存获取历史消息，避免重复查询数据库
         from src.plugin_system.apis.chat_api import get_chat_manager
@@ -1769,11 +1764,16 @@ class DefaultReplyer:
             platform=self.chat_stream.platform,
         )
 
-        # 从 DatabaseMessages 获取 sender_info
-        if anchor_message:
-            sender_info = anchor_message.user_info
-        else:
-            sender_info = None
+        # 从 DatabaseMessages 获取 sender_info 并转换为 UserInfo
+        sender_info = None
+        if anchor_message and anchor_message.user_info:
+            db_user_info = anchor_message.user_info
+            sender_info = UserInfo(
+                platform=db_user_info.platform,
+                user_id=db_user_info.user_id,
+                user_nickname=db_user_info.user_nickname,
+                user_cardname=db_user_info.user_cardname,
+            )
 
         return MessageSending(
             message_id=message_id,  # 使用片段的唯一ID
