@@ -111,10 +111,23 @@ class StreamLoopManager:
             logger.warning(f"无法获取流上下文: {stream_id}")
             return False
 
-        # 快速路径：如果流已存在，无需处理
-        if context.stream_loop_task and not context.stream_loop_task.done():
+        # 快速路径：如果流已存在且不是强制启动，无需处理
+        if not force and context.stream_loop_task and not context.stream_loop_task.done():
             logger.debug(f"流 {stream_id} 循环已在运行")
             return True
+        
+        # 如果是强制启动且任务仍在运行，先取消旧任务
+        if force and context.stream_loop_task and not context.stream_loop_task.done():
+            logger.info(f"强制启动模式：先取消现有流循环任务: {stream_id}")
+            old_task = context.stream_loop_task
+            old_task.cancel()
+            try:
+                await asyncio.wait_for(old_task, timeout=2.0)
+                logger.info(f"旧流循环任务已结束: {stream_id}")
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                logger.debug(f"旧流循环任务已取消或超时: {stream_id}")
+            except Exception as e:
+                logger.warning(f"等待旧任务结束时出错: {e}")
 
         # 创建流循环任务
         try:

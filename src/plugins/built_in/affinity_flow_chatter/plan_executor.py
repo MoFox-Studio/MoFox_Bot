@@ -124,11 +124,7 @@ class ChatterPlanExecutor:
             target_message = action_info.action_message
             message_id = None
             if target_message:
-                # 兼容 Pydantic 对象和字典两种情况
-                if hasattr(target_message, "message_id"):
-                    message_id = getattr(target_message, "message_id", None)
-                elif isinstance(target_message, dict):
-                    message_id = target_message.get("message_id")
+                message_id = target_message.message_id
 
             if message_id:
                 if message_id not in replied_message_ids:
@@ -175,22 +171,10 @@ class ChatterPlanExecutor:
         try:
             logger.info(f"执行回复动作: {action_info.action_type} (原因: {action_info.reasoning})")
 
-            # 获取用户ID - 兼容对象和字典
-            if action_info.action_message:
-                # DatabaseMessages对象情况
-                user_id = action_info.action_message.user_info.user_id
-            if not user_id:
-                logger.error("在action_message里面找不到userid,无法执行回复")
-                return {
-                    "action_type": action_info.action_type,
-                    "success": False,
-                    "error_message": "在action_message里面找不到userid",
-                    "execution_time": 0,
-                    "reasoning": action_info.reasoning,
-                    "reply_content": "",
-                }
+            # 获取用户ID
+            user_id = action_info.action_message.user_info.user_id if action_info.action_message else None
 
-            if user_id == str(global_config.bot.qq_account):
+            if user_id and user_id == str(global_config.bot.qq_account):
                 logger.warning("尝试回复自己，跳过此动作以防止死循环。")
                 return {
                     "action_type": action_info.action_type,
@@ -217,13 +201,8 @@ class ChatterPlanExecutor:
             )
 
             # 从返回结果中提取真正的回复文本
-            if isinstance(execution_result, dict):
-                reply_content = execution_result.get("reply_text", "")
-                success = execution_result.get("success", False)
-            else:
-                # 兼容旧的返回值（虽然可能性不大）
-                reply_content = str(execution_result) if execution_result else ""
-                success = bool(reply_content)
+            reply_content = execution_result.get("reply_text", "")
+            success = execution_result.get("success", False)
 
             if success:
                 logger.info(f"回复动作 '{action_info.action_type}' 执行成功。")
@@ -291,6 +270,28 @@ class ChatterPlanExecutor:
             logger.info(f"执行其他动作: {action_info.action_type} (原因: {action_info.reasoning})")
 
             action_data = action_info.action_data or {}
+
+            # 针对 poke_user 动作，特殊处理
+            if action_info.action_type == "poke_user":
+                target_message = action_info.action_message
+                if target_message:
+                    user_id = target_message.user_info.user_id
+                    user_name = target_message.user_info.user_nickname
+                    message_id = target_message.message_id
+
+                    if user_id:
+                        action_data["user_id"] = user_id
+                        logger.info(f"检测到戳一戳动作，目标用户ID: {user_id}")
+                    elif user_name:
+                        action_data["user_name"] = user_name
+                        logger.info(f"检测到戳一戳动作，目标用户: {user_name}")
+                    else:
+                        logger.warning("无法从戳一戳消息中获取用户ID或昵称。")
+
+                    # 传递原始消息ID以支持引用
+                    if message_id:
+                        action_data["target_message_id"] = message_id
+
             # 构建动作参数
             action_params = {
                 "chat_id": plan.chat_id,
