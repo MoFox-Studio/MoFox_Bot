@@ -330,13 +330,13 @@ class ProactiveThinkingPlanner:
 【最近的聊天记录】
 {context['recent_chat_history']}
 {expression_habits}
-请生成一条简短的消息，用于活跃气氛或刷存在感。要求：
+请生成一条简短的消息，用于水群。要求：
 1. 非常简短（5-15字）
 2. 轻松随意，不要有明确的话题或问题
 3. 可以是：问候、表达心情、随口一句话
 4. 符合你的人设和当前聊天风格
 5. 如果有表达方式参考，在合适时自然使用
-
+6. 合理参考历史记录
 直接输出消息内容，不要解释："""
         
         else:  # throw_topic
@@ -438,7 +438,7 @@ async def execute_proactive_thinking(stream_id: str):
     
     config = global_config.proactive_thinking
     
-    logger.info(f"开始为聊天流 {stream_id} 执行主动思考")
+    logger.info(f"[主动思考] 开始为聊天流 {stream_id} 执行主动思考")
     
     try:
         # 0. 前置检查
@@ -453,22 +453,26 @@ async def execute_proactive_thinking(stream_id: str):
             return
         
         # 1. 搜集信息
+        logger.info(f"[主动思考] 步骤1：搜集上下文信息")
         context = await _planner.gather_context(stream_id)
         if not context:
-            logger.warning(f"无法搜集聊天流 {stream_id} 的上下文，跳过本次主动思考")
+            logger.warning(f"[主动思考] 无法搜集聊天流 {stream_id} 的上下文，跳过本次主动思考")
             return
-        
+        logger.info(f"[主动思考] 上下文搜集完成")
+
         # 检查兴趣分数阈值
         interest_score = context.get('interest_score', 0.5)
         if not proactive_thinking_scheduler._check_interest_score_threshold(interest_score):
-            logger.info(f"聊天流 {stream_id} 兴趣分数不在阈值范围内")
+            logger.info(f"[主动思考] 聊天流 {stream_id} 兴趣分数不在阈值范围内")
             return
         
         # 2. 进行决策
+        logger.info(f"[主动思考] 步骤2：LLM决策")
         decision = await _planner.make_decision(context)
         if not decision:
-            logger.warning(f"决策失败，跳过本次主动思考")
+            logger.warning(f"[主动思考] 决策失败，跳过本次主动思考")
             return
+        logger.info(f"[主动思考] 决策完成")
         
         action = decision.get("action", "do_nothing")
         reasoning = decision.get("reasoning", "无")
@@ -483,13 +487,18 @@ async def execute_proactive_thinking(stream_id: str):
             return
         
         elif action == "simple_bubble":
-            logger.info(f"决策：简单冒个泡。理由：{reasoning}")
+            logger.info(f"[主动思考] 决策：简单冒个泡。理由：{reasoning}")
             
             # 生成简单的消息
+            logger.info(f"[主动思考] 步骤3：生成冒泡回复")
             reply = await _planner.generate_reply(context, "simple_bubble")
             if reply:
-                await send_api.text_to_stream(stream_id=stream_id, text=reply)
-                logger.info(f"已发送冒泡消息到 {stream_id}")
+                logger.info(f"[主动思考] 步骤4：发送消息")
+                await send_api.text_to_stream(
+                    stream_id=stream_id,
+                    text=reply,
+                )
+                logger.info(f"[主动思考] 已发送冒泡消息到 {stream_id}")
                 
                 # 增加每日计数
                 proactive_thinking_scheduler._increment_daily_count(stream_id)
@@ -497,23 +506,30 @@ async def execute_proactive_thinking(stream_id: str):
                 # 更新统计
                 if config.enable_statistics:
                     _update_statistics(stream_id, action)
-            
+
+            logger.info(f"[主动思考] simple_bubble 执行完成")
             # 冒泡后可以继续主动思考，不需要暂停
         
         elif action == "throw_topic":
             topic = decision.get("topic", "")
-            logger.info(f"决策：抛出话题。理由：{reasoning}，话题：{topic}")
+            logger.info(f"[主动思考] 决策：抛出话题。理由：{reasoning}，话题：{topic}")
             
             if not topic:
-                logger.warning("选择了抛出话题但未提供话题内容，降级为冒泡")
+                logger.warning("[主动思考] 选择了抛出话题但未提供话题内容，降级为冒泡")
+                logger.info(f"[主动思考] 步骤3：生成降级冒泡回复")
                 reply = await _planner.generate_reply(context, "simple_bubble")
             else:
                 # 生成基于话题的消息
+                logger.info(f"[主动思考] 步骤3：生成话题回复")
                 reply = await _planner.generate_reply(context, "throw_topic", topic)
             
             if reply:
-                await send_api.text_to_stream(stream_id=stream_id, text=reply)
-                logger.info(f"已发送话题消息到 {stream_id}")
+                logger.info(f"[主动思考] 步骤4：发送消息")
+                await send_api.text_to_stream(
+                    stream_id=stream_id,
+                    text=reply,
+                )
+                logger.info(f"[主动思考] 已发送话题消息到 {stream_id}")
                 
                 # 增加每日计数
                 proactive_thinking_scheduler._increment_daily_count(stream_id)
@@ -524,15 +540,13 @@ async def execute_proactive_thinking(stream_id: str):
                 
                 # 抛出话题后暂停主动思考（如果配置了冷却时间）
                 if config.topic_throw_cooldown > 0:
+                    logger.info(f"[主动思考] 步骤5：暂停任务")
                     await proactive_thinking_scheduler.pause_proactive_thinking(stream_id, reason="已抛出话题")
-                    
-                    # 设置定时恢复（在reply_reset_enabled关闭时使用）
-                    if not config.reply_reset_enabled:
-                        import asyncio
-                        async def resume_after_cooldown():
-                            await asyncio.sleep(config.topic_throw_cooldown)
-                            await proactive_thinking_scheduler.schedule_proactive_thinking(stream_id)
-                        asyncio.create_task(resume_after_cooldown())
+                    logger.info(f"[主动思考] 已暂停聊天流 {stream_id} 的主动思考，等待用户回复")
+
+            logger.info(f"[主动思考] throw_topic 执行完成")
+
+        logger.info(f"[主动思考] 聊天流 {stream_id} 的主动思考执行完成")
         
     except Exception as e:
-        logger.error(f"执行主动思考失败: {e}", exc_info=True)
+        logger.error(f"[主动思考] 执行主动思考失败: {e}", exc_info=True)

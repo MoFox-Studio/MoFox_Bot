@@ -34,6 +34,8 @@ class ProactiveThinkingReplyHandler(BaseEventHandler):
         Returns:
             HandlerResult: 处理结果
         """
+        logger.info("[事件] ProactiveThinkingReplyHandler 开始执行")
+        
         if not kwargs:
             return HandlerResult(success=True, continue_process=True, message=None)
         
@@ -41,6 +43,8 @@ class ProactiveThinkingReplyHandler(BaseEventHandler):
         if not stream_id:
             logger.warning("Reply事件缺少stream_id参数")
             return HandlerResult(success=True, continue_process=True, message=None)
+        
+        logger.info(f"[事件] 收到 AFTER_SEND 事件，stream_id={stream_id}")
         
         try:
             from src.config.config import global_config
@@ -56,7 +60,9 @@ class ProactiveThinkingReplyHandler(BaseEventHandler):
                 logger.info(f"检测到reply事件，聊天流 {stream_id} 之前因抛出话题而暂停，现在恢复")
             
             # 重置定时任务（这会自动清除暂停标记并创建新任务）
+            logger.debug(f"[事件] 准备调用 schedule_proactive_thinking")
             success = await proactive_thinking_scheduler.schedule_proactive_thinking(stream_id)
+            logger.debug(f"[事件] schedule_proactive_thinking 调用完成，success={success}")
             
             if success:
                 if was_paused:
