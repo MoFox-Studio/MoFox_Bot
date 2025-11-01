@@ -293,3 +293,37 @@ async def has_active_plans(month: str) -> bool:
         except Exception as e:
             logger.error(f"检查 {month} 的有效月度计划时发生错误: {e}")
             return False
+
+
+async def delete_plans_older_than(month: str):
+    """
+    删除指定月份之前的所有月度计划。
+
+    :param month: 目标月份，格式为 "YYYY-MM"。早于此月份的计划都将被删除。
+    """
+    async with get_db_session() as session:
+        try:
+            # 首先，查询要删除的计划，用于日志记录
+            result = await session.execute(select(MonthlyPlan).where(MonthlyPlan.target_month < month))
+            plans_to_delete = result.scalars().all()
+
+            if not plans_to_delete:
+                logger.info(f"没有找到比 {month} 更早的月度计划需要删除。")
+                return 0
+
+            plan_months = sorted(list(set(p.target_month for p in plans_to_delete)))
+            logger.info(f"将删除 {len(plans_to_delete)} 条早于 {month} 的月度计划 (涉及月份: {', '.join(plan_months)})。")
+
+            # 然后，执行删除操作
+            delete_stmt = delete(MonthlyPlan).where(MonthlyPlan.target_month < month)
+            delete_result = await session.execute(delete_stmt)
+            deleted_count = delete_result.rowcount
+            await session.commit()
+
+            logger.info(f"成功删除了 {deleted_count} 条旧的月度计划。")
+            return deleted_count
+
+        except Exception as e:
+            logger.error(f"删除早于 {month} 的月度计划时发生错误: {e}")
+            await session.rollback()
+            raise

@@ -1,9 +1,12 @@
 import asyncio
 from datetime import datetime, timedelta
 
+from dateutil.relativedelta import relativedelta
+
 from src.common.logger import get_logger
 from src.manager.async_task_manager import AsyncTask, async_task_manager
 
+from . import database
 from .plan_manager import PlanManager
 
 logger = get_logger("monthly_plan_manager")
@@ -28,6 +31,13 @@ class MonthlyPlanManager:
         会启动一个每月的后台任务来自动生成计划。
         """
         logger.info("正在初始化月度计划管理器...")
+
+        # 在启动时清理两个月前的旧计划
+        two_months_ago = datetime.now() - relativedelta(months=2)
+        cleanup_month_str = two_months_ago.strftime("%Y-%m")
+        logger.info(f"执行启动时月度计划清理任务，将删除 {cleanup_month_str} 之前的计划...")
+        await database.delete_plans_older_than(cleanup_month_str)
+
         await self.start_monthly_plan_generation()
         logger.info("月度计划管理器初始化成功")
 
@@ -90,7 +100,7 @@ class MonthlyPlanGenerationTask(AsyncTask):
                     next_month = datetime(now.year + 1, 1, 1)
                 else:
                     next_month = datetime(now.year, now.month + 1, 1)
-
+                
                 sleep_seconds = (next_month - now).total_seconds()
                 logger.info(
                     f" 下一次月度计划生成任务将在 {sleep_seconds:.2f} 秒后运行 (北京时间 {next_month.strftime('%Y-%m-%d %H:%M:%S')})"
@@ -100,7 +110,7 @@ class MonthlyPlanGenerationTask(AsyncTask):
                 # 到达月初，先归档上个月的计划
                 last_month = (next_month - timedelta(days=1)).strftime("%Y-%m")
                 await self.monthly_plan_manager.plan_manager.archive_current_month_plans(last_month)
-
+                
                 # 为当前月生成新计划
                 current_month = next_month.strftime("%Y-%m")
                 logger.info(f" 到达月初，开始生成 {current_month} 的月度计划...")
