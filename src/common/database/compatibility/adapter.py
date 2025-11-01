@@ -17,6 +17,9 @@ from src.common.database.api import (
 )
 from src.common.database.core.models import (
     ActionRecords,
+    AntiInjectionStats,
+    BanUser,
+    BotPersonalityInterests,
     CacheEntries,
     ChatStreams,
     Emoji,
@@ -29,6 +32,7 @@ from src.common.database.core.models import (
     MaiZoneScheduleStatus,
     Memory,
     Messages,
+    MonthlyPlan,
     OnlineTime,
     PersonInfo,
     PermissionNodes,
@@ -36,6 +40,7 @@ from src.common.database.core.models import (
     ThinkingLog,
     UserPermissions,
     UserRelationships,
+    Videos,
 )
 from src.common.database.core.session import get_db_session
 from src.common.logger import get_logger
@@ -52,6 +57,7 @@ MODEL_MAPPING = {
     "Emoji": Emoji,
     "Images": Images,
     "ImageDescriptions": ImageDescriptions,
+    "Videos": Videos,
     "OnlineTime": OnlineTime,
     "Memory": Memory,
     "Expression": Expression,
@@ -60,6 +66,10 @@ MODEL_MAPPING = {
     "GraphEdges": GraphEdges,
     "Schedule": Schedule,
     "MaiZoneScheduleStatus": MaiZoneScheduleStatus,
+    "BotPersonalityInterests": BotPersonalityInterests,
+    "BanUser": BanUser,
+    "AntiInjectionStats": AntiInjectionStats,
+    "MonthlyPlan": MonthlyPlan,
     "CacheEntries": CacheEntries,
     "UserRelationships": UserRelationships,
     "PermissionNodes": PermissionNodes,
@@ -294,8 +304,8 @@ async def db_save(
         if not crud:
             crud = CRUDBase(model_class)
         
-        # 使用get_or_create
-        instance = await crud.get_or_create(
+        # 使用get_or_create (返回tuple[T, bool])
+        instance, created = await crud.get_or_create(
             defaults=data,
             **{key_field: key_value},
         )
