@@ -102,8 +102,9 @@ class OnlineTimeRecordTask(AsyncTask):
                     )
                 else:
                     # 创建新记录
-                    new_record = await db_save(
+                    new_record = await db_query(
                         model_class=OnlineTime,
+                        query_type="create",
                         data={
                             "timestamp": str(current_time),
                             "duration": 5,  # 初始时长为5分钟
