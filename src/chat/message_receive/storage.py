@@ -308,7 +308,7 @@ class MessageStorageBatcher:
 
 # 全局批处理器实例
 _message_storage_batcher: Optional[MessageStorageBatcher] = None
-_message_update_batcher: Optional[MessageUpdateBatcher] = None
+_message_update_batcher: Optional["MessageUpdateBatcher"] = None
 
 
 def get_message_storage_batcher() -> MessageStorageBatcher:
