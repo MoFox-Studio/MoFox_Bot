@@ -89,7 +89,7 @@ async def store_action_info(
             )
         
         # 使用get_or_create保存记录
-        saved_record = await _action_records_crud.get_or_create(
+        saved_record, created = await _action_records_crud.get_or_create(
             defaults=record_data,
             action_id=action_id,
         )
@@ -183,7 +183,7 @@ async def get_or_create_person(
     platform: str,
     person_id: str,
     defaults: Optional[dict[str, Any]] = None,
-) -> Optional[PersonInfo]:
+) -> tuple[Optional[PersonInfo], bool]:
     """获取或创建人员信息
     
     Args:
@@ -192,7 +192,7 @@ async def get_or_create_person(
         defaults: 默认值
         
     Returns:
-        人员信息实例
+        (人员信息实例, 是否新创建)
     """
     return await _person_info_crud.get_or_create(
         defaults=defaults or {},
@@ -247,7 +247,7 @@ async def get_or_create_chat_stream(
     stream_id: str,
     platform: str,
     defaults: Optional[dict[str, Any]] = None,
-) -> Optional[ChatStreams]:
+) -> tuple[Optional[ChatStreams], bool]:
     """获取或创建聊天流
     
     Args:
@@ -256,7 +256,7 @@ async def get_or_create_chat_stream(
         defaults: 默认值
         
     Returns:
-        聊天流实例
+        (聊天流实例, 是否新创建)
     """
     return await _chat_streams_crud.get_or_create(
         defaults=defaults or {},
@@ -434,7 +434,7 @@ async def update_relationship_affinity(
     """
     try:
         # 获取或创建关系
-        relationship = await _user_relationships_crud.get_or_create(
+        relationship, created = await _user_relationships_crud.get_or_create(
             defaults={"affinity": 0.0, "interaction_count": 0},
             platform=platform,
             user_id=user_id,
