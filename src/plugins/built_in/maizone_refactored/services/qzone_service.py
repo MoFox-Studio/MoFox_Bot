@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import aiofiles
 import aiohttp
 import bs4
 import json5
@@ -397,8 +398,8 @@ class QZoneService:
                 }
                 # 成功获取后，异步写入本地文件作为备份
                 try:
-                    with open(cookie_file_path, "wb") as f:
-                        f.write(orjson.dumps(parsed_cookies))
+                    async with aiofiles.open(cookie_file_path, "wb") as f:
+                        await f.write(orjson.dumps(parsed_cookies))
                     logger.info(f"通过Napcat服务成功更新Cookie，并已保存至: {cookie_file_path}")
                 except Exception as e:
                     logger.warning(f"保存Cookie到文件时出错: {e}")
@@ -413,8 +414,9 @@ class QZoneService:
         logger.info("尝试从本地Cookie文件加载...")
         if cookie_file_path.exists():
             try:
-                with open(cookie_file_path, "rb") as f:
-                    cookies = orjson.loads(f.read())
+                async with aiofiles.open(cookie_file_path, "rb") as f:
+                    content = await f.read()
+                    cookies = orjson.loads(content)
                     logger.info(f"成功从本地文件加载Cookie: {cookie_file_path}")
                     return cookies
             except Exception as e:

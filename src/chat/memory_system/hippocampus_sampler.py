@@ -25,6 +25,9 @@ from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger(__name__)
 
+# 全局背景任务集合
+_background_tasks = set()
+
 
 @dataclass
 class HippocampusSampleConfig:
@@ -89,7 +92,9 @@ class HippocampusSampler:
             task_config = getattr(model_config.model_task_config, "utils", None)
             if task_config:
                 self.memory_builder_model = LLMRequest(model_set=task_config, request_type="memory.hippocampus_build")
-                asyncio.create_task(self.start_background_sampling())
+                task = asyncio.create_task(self.start_background_sampling())
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
                 logger.info("✅ 海马体采样器初始化成功")
             else:
                 raise RuntimeError("未找到记忆构建模型配置")

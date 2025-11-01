@@ -3,6 +3,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
+import aiofiles
+
 from src.common.database.compatibility import db_get, db_query
 from src.common.database.core.models import LLMUsage, Messages, OnlineTime
 from src.common.logger import get_logger
@@ -1002,8 +1004,8 @@ class StatisticOutputTask(AsyncTask):
         """
         )
 
-        with open(self.record_file_path, "w", encoding="utf-8") as f:
-            f.write(html_template)
+        async with aiofiles.open(self.record_file_path, "w", encoding="utf-8") as f:
+            await f.write(html_template)
 
     async def _generate_chart_data(self, stat: dict[str, Any]) -> dict:
         """生成图表数据 (异步)"""

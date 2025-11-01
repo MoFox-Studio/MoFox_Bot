@@ -7,6 +7,7 @@ import base64
 from collections.abc import Callable
 from pathlib import Path
 
+import aiofiles
 import aiohttp
 
 from src.common.logger import get_logger
@@ -86,8 +87,8 @@ class ImageService:
                             if b64_json:
                                 image_bytes = base64.b64decode(b64_json)
                                 file_path = Path(image_dir) / f"image_{i + 1}.png"
-                                with open(file_path, "wb") as f:
-                                    f.write(image_bytes)
+                                async with aiofiles.open(file_path, "wb") as f:
+                                    await f.write(image_bytes)
                                 logger.info(f"成功保存AI图片到: {file_path}")
                         return True
                     else:

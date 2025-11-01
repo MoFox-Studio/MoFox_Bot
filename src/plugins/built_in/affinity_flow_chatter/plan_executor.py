@@ -14,6 +14,9 @@ from src.config.config import global_config
 
 logger = get_logger("plan_executor")
 
+# 全局背景任务集合
+_background_tasks = set()
+
 
 class ChatterPlanExecutor:
     """
@@ -89,7 +92,9 @@ class ChatterPlanExecutor:
 
         # 将其他动作放入后台任务执行，避免阻塞主流程
         if other_actions:
-            asyncio.create_task(self._execute_other_actions(other_actions, plan))
+            task = asyncio.create_task(self._execute_other_actions(other_actions, plan))
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
             logger.info(f"已将 {len(other_actions)} 个其他动作放入后台任务执行。")
             # 注意：后台任务的结果不会立即计入本次返回的统计数据
 

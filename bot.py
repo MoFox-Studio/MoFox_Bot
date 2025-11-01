@@ -612,9 +612,9 @@ async def wait_for_user_input():
         # 在非生产环境下，使用异步方式等待输入
         if os.getenv("ENVIRONMENT") != "production":
             logger.info("程序执行完成，按 Ctrl+C 退出...")
-            # 简单的异步等待，避免阻塞事件循环
-            while True:
-                await asyncio.sleep(1)
+            # 使用 Event 替代 sleep 循环，避免阻塞事件循环
+            shutdown_event = asyncio.Event()
+            await shutdown_event.wait()
     except KeyboardInterrupt:
         logger.info("用户中断程序")
         return True
