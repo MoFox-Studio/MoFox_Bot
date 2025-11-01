@@ -444,10 +444,13 @@ class ChatManager:
                 return stream
 
             # 使用优化后的API查询（带缓存）
+            current_time = time.time()
             model_instance, _ = await get_or_create_chat_stream(
                 stream_id=stream_id,
                 platform=platform,
                 defaults={
+                    "create_time": current_time,
+                    "last_active_time": current_time,
                     "user_platform": user_info.platform if user_info else platform,
                     "user_id": user_info.user_id if user_info else "",
                     "user_nickname": user_info.user_nickname if user_info else "",
