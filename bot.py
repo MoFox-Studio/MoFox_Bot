@@ -122,7 +122,7 @@ class EULAManager:
         confirm_logger.critical("  - EULA.md (用户许可协议)")
         confirm_logger.critical("  - PRIVACY.md (隐私条款)")
         confirm_logger.critical(
-            f"然后编辑 .env 文件，将 'EULA_CONFIRMED=false' 改为 'EULA_CONFIRMED=true'"
+            "然后编辑 .env 文件，将 'EULA_CONFIRMED=false' 改为 'EULA_CONFIRMED=true'"
         )
 
         attempts = 0
