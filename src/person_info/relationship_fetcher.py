@@ -256,8 +256,9 @@ class RelationshipFetcher:
             str: 格式化后的聊天流印象字符串
         """
         try:
-            from src.common.database.api.specialized import get_or_create_chat_stream
             import time
+
+            from src.common.database.api.specialized import get_or_create_chat_stream
 
             # 使用优化后的API（带缓存）
             # 从stream_id解析platform，或使用默认值
@@ -289,7 +290,7 @@ class RelationshipFetcher:
             except Exception as e:
                 logger.warning(f"访问stream对象属性失败: {e}")
                 stream_data = {}
-            
+
             impression_parts = []
 
             # 1. 聊天环境基本信息

@@ -150,7 +150,7 @@ class ConnectionPoolManager:
                 logger.debug(f"🆕 创建连接 (池大小: {len(self._connections)})")
 
             yield connection_info.session
-            
+
             # 🔧 修复：正常退出时提交事务
             # 这对SQLite至关重要，因为SQLite没有autocommit
             if connection_info and connection_info.session:
@@ -249,7 +249,7 @@ class ConnectionPoolManager:
         """获取连接池统计信息"""
         total_requests = self._stats["pool_hits"] + self._stats["pool_misses"]
         pool_efficiency = (self._stats["pool_hits"] / max(1, total_requests)) * 100 if total_requests > 0 else 0
-        
+
         return {
             **self._stats,
             "active_connections": len(self._connections),

@@ -16,7 +16,7 @@ models_file = os.path.join(
 print(f"正在清理文件: {models_file}")
 
 # 读取文件
-with open(models_file, "r", encoding="utf-8") as f:
+with open(models_file, encoding="utf-8") as f:
     lines = f.readlines()
 
 # 找到最后一个模型类的结束位置（MonthlyPlan的 __table_args__ 结束）
@@ -26,7 +26,7 @@ found_end = False
 
 for i, line in enumerate(lines, 1):
     keep_lines.append(line)
-    
+
     # 检查是否到达 MonthlyPlan 的 __table_args__ 结束
     if i > 580 and line.strip() == ")":
         # 再检查前一行是否有 Index 相关内容
@@ -43,7 +43,7 @@ if not found_end:
 with open(models_file, "w", encoding="utf-8") as f:
     f.writelines(keep_lines)
 
-print(f"✅ 文件清理完成")
+print("✅ 文件清理完成")
 print(f"保留行数: {len(keep_lines)}")
 print(f"原始行数: {len(lines)}")
 print(f"删除行数: {len(lines) - len(keep_lines)}")

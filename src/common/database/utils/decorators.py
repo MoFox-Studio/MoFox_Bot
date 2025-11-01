@@ -10,9 +10,11 @@ import asyncio
 import functools
 import hashlib
 import time
-from typing import Any, Awaitable, Callable, Optional, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Any, TypeVar
 
-from sqlalchemy.exc import DBAPIError, OperationalError, TimeoutError as SQLTimeoutError
+from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.exc import TimeoutError as SQLTimeoutError
 
 from src.common.logger import get_logger
 
@@ -25,33 +27,33 @@ def generate_cache_key(
     **kwargs: Any,
 ) -> str:
     """生成与@cached装饰器相同的缓存键
-    
+
     用于手动缓存失效等操作
-    
+
     Args:
         key_prefix: 缓存键前缀
         *args: 位置参数
         **kwargs: 关键字参数
-        
+
     Returns:
         缓存键字符串
-        
+
     Example:
         cache_key = generate_cache_key("person_info", platform, person_id)
         await cache.delete(cache_key)
     """
     cache_key_parts = [key_prefix]
-    
+
     if args:
         args_str = ",".join(str(arg) for arg in args)
         args_hash = hashlib.md5(args_str.encode()).hexdigest()[:8]
         cache_key_parts.append(f"args:{args_hash}")
-    
+
     if kwargs:
         kwargs_str = ",".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
         kwargs_hash = hashlib.md5(kwargs_str.encode()).hexdigest()[:8]
         cache_key_parts.append(f"kwargs:{kwargs_hash}")
-    
+
     return ":".join(cache_key_parts)
 
 T = TypeVar("T")
@@ -65,15 +67,15 @@ def retry(
     exceptions: tuple[type[Exception], ...] = (OperationalError, DBAPIError, SQLTimeoutError),
 ):
     """重试装饰器
-    
+
     自动重试失败的数据库操作，适用于临时性错误
-    
+
     Args:
         max_attempts: 最大尝试次数
         delay: 初始延迟时间（秒）
         backoff: 延迟倍数（指数退避）
         exceptions: 需要重试的异常类型
-        
+
     Example:
         @retry(max_attempts=3, delay=1.0)
         async def query_data():
@@ -114,12 +116,12 @@ def retry(
 
 def timeout(seconds: float):
     """超时装饰器
-    
+
     为数据库操作添加超时控制
-    
+
     Args:
         seconds: 超时时间（秒）
-        
+
     Example:
         @timeout(30.0)
         async def long_query():
@@ -141,21 +143,21 @@ def timeout(seconds: float):
 
 
 def cached(
-    ttl: Optional[int] = 300,
-    key_prefix: Optional[str] = None,
+    ttl: int | None = 300,
+    key_prefix: str | None = None,
     use_args: bool = True,
     use_kwargs: bool = True,
 ):
     """缓存装饰器
-    
+
     自动缓存函数返回值
-    
+
     Args:
         ttl: 缓存过期时间（秒），None表示永不过期
         key_prefix: 缓存键前缀，默认使用函数名
         use_args: 是否将位置参数包含在缓存键中
         use_kwargs: 是否将关键字参数包含在缓存键中
-        
+
     Example:
         @cached(ttl=60, key_prefix="user_data")
         async def get_user_info(user_id: str) -> dict:
@@ -167,7 +169,7 @@ def cached(
         async def wrapper(*args: Any, **kwargs: Any) -> T:
             # 延迟导入避免循环依赖
             from src.common.database.optimization import get_cache
-            
+
             # 生成缓存键
             cache_key_parts = [key_prefix or func.__name__]
 
@@ -207,14 +209,14 @@ def cached(
     return decorator
 
 
-def measure_time(log_slow: Optional[float] = None):
+def measure_time(log_slow: float | None = None):
     """性能测量装饰器
-    
+
     测量函数执行时间，可选择性记录慢查询
-    
+
     Args:
         log_slow: 慢查询阈值（秒），超过此时间会记录warning日志
-        
+
     Example:
         @measure_time(log_slow=1.0)
         async def complex_query():
@@ -246,19 +248,19 @@ def measure_time(log_slow: Optional[float] = None):
 
 def transactional(auto_commit: bool = True, auto_rollback: bool = True):
     """事务装饰器
-    
+
     自动管理事务的提交和回滚
-    
+
     Args:
         auto_commit: 是否自动提交
         auto_rollback: 发生异常时是否自动回滚
-        
+
     Example:
         @transactional()
         async def update_multiple_records(session):
             await session.execute(stmt1)
             await session.execute(stmt2)
-    
+
     Note:
         函数需要接受session参数
     """
@@ -306,20 +308,20 @@ def transactional(auto_commit: bool = True, auto_rollback: bool = True):
 # 组合装饰器示例
 def db_operation(
     retry_attempts: int = 3,
-    timeout_seconds: Optional[float] = None,
-    cache_ttl: Optional[int] = None,
+    timeout_seconds: float | None = None,
+    cache_ttl: int | None = None,
     measure: bool = True,
 ):
     """组合装饰器
-    
+
     组合多个装饰器，提供完整的数据库操作保护
-    
+
     Args:
         retry_attempts: 重试次数
         timeout_seconds: 超时时间
         cache_ttl: 缓存时间
         measure: 是否测量性能
-        
+
     Example:
         @db_operation(retry_attempts=3, timeout_seconds=30, cache_ttl=60)
         async def important_query():

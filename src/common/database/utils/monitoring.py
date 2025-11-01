@@ -4,7 +4,6 @@
 """
 
 import time
-from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -22,7 +21,7 @@ class OperationMetrics:
     min_time: float = float("inf")
     max_time: float = 0.0
     error_count: int = 0
-    last_execution_time: Optional[float] = None
+    last_execution_time: float | None = None
 
     @property
     def avg_time(self) -> float:
@@ -91,7 +90,7 @@ class DatabaseMetrics:
 
 class DatabaseMonitor:
     """数据库监控器
-    
+
     单例模式，收集和报告数据库性能指标
     """
 
@@ -285,7 +284,7 @@ class DatabaseMonitor:
 
 
 # 全局监控器实例
-_monitor: Optional[DatabaseMonitor] = None
+_monitor: DatabaseMonitor | None = None
 
 
 def get_monitor() -> DatabaseMonitor:

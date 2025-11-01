@@ -64,7 +64,7 @@ class ProactiveThinkingReplyHandler(BaseEventHandler):
                 from src.chat.message_receive.chat_stream import get_chat_manager
                 chat_manager = get_chat_manager()
                 chat_stream = await chat_manager.get_stream(stream_id)
-                
+
                 if chat_stream:
                     stream_config = chat_stream.get_raw_id()
                     if not proactive_thinking_scheduler._check_whitelist_blacklist(stream_config):

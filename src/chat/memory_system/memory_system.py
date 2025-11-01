@@ -728,7 +728,6 @@ class MemorySystem:
         context = context or {}
 
         # 所有记忆完全共享，统一使用 global 作用域，不区分用户
-        resolved_user_id = GLOBAL_MEMORY_SCOPE
 
         self.status = MemorySystemStatus.RETRIEVING
         start_time = time.time()

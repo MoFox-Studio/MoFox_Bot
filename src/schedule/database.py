@@ -3,8 +3,8 @@
 
 from sqlalchemy import delete, func, select, update
 
-from src.common.database.core.models import MonthlyPlan
 from src.common.database.core import get_db_session
+from src.common.database.core.models import MonthlyPlan
 from src.common.logger import get_logger
 from src.config.config import global_config
 
@@ -312,7 +312,7 @@ async def delete_plans_older_than(month: str):
                 logger.info(f"没有找到比 {month} 更早的月度计划需要删除。")
                 return 0
 
-            plan_months = sorted(list(set(p.target_month for p in plans_to_delete)))
+            plan_months = sorted({p.target_month for p in plans_to_delete})
             logger.info(f"将删除 {len(plans_to_delete)} 条早于 {month} 的月度计划 (涉及月份: {', '.join(plan_months)})。")
 
             # 然后，执行删除操作

@@ -9,6 +9,37 @@
 """
 
 # ===== 核心层 =====
+# ===== API层 =====
+from src.common.database.api import (
+    AggregateQuery,
+    CRUDBase,
+    QueryBuilder,
+    # ChatStreams API
+    get_active_streams,
+    # Messages API
+    get_chat_history,
+    get_message_count,
+    # PersonInfo API
+    get_or_create_person,
+    # ActionRecords API
+    get_recent_actions,
+    # LLMUsage API
+    get_usage_statistics,
+    record_llm_usage,
+    # 业务API
+    save_message,
+    store_action_info,
+    update_person_affinity,
+)
+
+# ===== 兼容层（向后兼容旧API）=====
+from src.common.database.compatibility import (
+    MODEL_MAPPING,
+    build_filters,
+    db_get,
+    db_query,
+    db_save,
+)
 from src.common.database.core import (
     Base,
     check_and_migrate_database,
@@ -27,29 +58,6 @@ from src.common.database.optimization import (
     get_preloader,
 )
 
-# ===== API层 =====
-from src.common.database.api import (
-    AggregateQuery,
-    CRUDBase,
-    QueryBuilder,
-    # ActionRecords API
-    get_recent_actions,
-    # ChatStreams API
-    get_active_streams,
-    # Messages API
-    get_chat_history,
-    get_message_count,
-    # PersonInfo API
-    get_or_create_person,
-    # LLMUsage API
-    get_usage_statistics,
-    record_llm_usage,
-    # 业务API
-    save_message,
-    store_action_info,
-    update_person_affinity,
-)
-
 # ===== Utils层 =====
 from src.common.database.utils import (
     cached,
@@ -66,61 +74,52 @@ from src.common.database.utils import (
     transactional,
 )
 
-# ===== 兼容层（向后兼容旧API）=====
-from src.common.database.compatibility import (
-    MODEL_MAPPING,
-    build_filters,
-    db_get,
-    db_query,
-    db_save,
-)
-
 __all__ = [
-    # 核心层
-    "Base",
-    "get_engine",
-    "get_session_factory",
-    "get_db_session",
-    "check_and_migrate_database",
-    # 优化层
-    "MultiLevelCache",
-    "DataPreloader",
-    "AdaptiveBatchScheduler",
-    "get_cache",
-    "get_preloader",
-    "get_batch_scheduler",
-    # API层 - 基础类
-    "CRUDBase",
-    "QueryBuilder",
-    "AggregateQuery",
-    # API层 - 业务API
-    "store_action_info",
-    "get_recent_actions",
-    "get_chat_history",
-    "get_message_count",
-    "save_message",
-    "get_or_create_person",
-    "update_person_affinity",
-    "get_active_streams",
-    "record_llm_usage",
-    "get_usage_statistics",
-    # Utils层
-    "retry",
-    "timeout",
-    "cached",
-    "measure_time",
-    "transactional",
-    "db_operation",
-    "get_monitor",
-    "record_operation",
-    "record_cache_hit",
-    "record_cache_miss",
-    "print_stats",
-    "reset_stats",
     # 兼容层
     "MODEL_MAPPING",
+    "AdaptiveBatchScheduler",
+    "AggregateQuery",
+    # 核心层
+    "Base",
+    # API层 - 基础类
+    "CRUDBase",
+    "DataPreloader",
+    # 优化层
+    "MultiLevelCache",
+    "QueryBuilder",
     "build_filters",
+    "cached",
+    "check_and_migrate_database",
+    "db_get",
+    "db_operation",
     "db_query",
     "db_save",
-    "db_get",
+    "get_active_streams",
+    "get_batch_scheduler",
+    "get_cache",
+    "get_chat_history",
+    "get_db_session",
+    "get_engine",
+    "get_message_count",
+    "get_monitor",
+    "get_or_create_person",
+    "get_preloader",
+    "get_recent_actions",
+    "get_session_factory",
+    "get_usage_statistics",
+    "measure_time",
+    "print_stats",
+    "record_cache_hit",
+    "record_cache_miss",
+    "record_llm_usage",
+    "record_operation",
+    "reset_stats",
+    # Utils层
+    "retry",
+    "save_message",
+    # API层 - 业务API
+    "store_action_info",
+    "timeout",
+    "transactional",
+    "update_person_affinity",
 ]

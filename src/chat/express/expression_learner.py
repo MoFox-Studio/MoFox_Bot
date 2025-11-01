@@ -236,12 +236,12 @@ class ExpressionLearner:
         """
         获取指定chat_id的style和grammar表达方式（带10分钟缓存）
         返回的每个表达方式字典中都包含了source_id, 用于后续的更新操作
-        
+
         优化: 使用CRUD和缓存，减少数据库访问
         """
         # 使用静态方法以正确处理缓存键
         return await self._get_expressions_by_chat_id_cached(self.chat_id)
-    
+
     @staticmethod
     @cached(ttl=600, key_prefix="chat_expressions")
     async def _get_expressions_by_chat_id_cached(chat_id: str) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
@@ -278,7 +278,7 @@ class ExpressionLearner:
     async def _apply_global_decay_to_database(self, current_time: float) -> None:
         """
         对数据库中的所有表达方式应用全局衰减
-        
+
         优化: 使用CRUD批量处理所有更改，最后统一提交
         """
         try:
@@ -288,7 +288,7 @@ class ExpressionLearner:
 
             updated_count = 0
             deleted_count = 0
-            
+
             # 需要手动操作的情况下使用session
             async with get_db_session() as session:
                 # 批量处理所有修改
@@ -391,7 +391,7 @@ class ExpressionLearner:
         current_time = time.time()
 
         # 存储到数据库 Expression 表
-        crud = CRUDBase(Expression)
+        CRUDBase(Expression)
         for chat_id, expr_list in chat_dict.items():
             async with get_db_session() as session:
                 for new_expr in expr_list:
@@ -437,10 +437,10 @@ class ExpressionLearner:
                     # 删除count最小的多余表达方式
                     for expr in exprs[: len(exprs) - MAX_EXPRESSION_COUNT]:
                         await session.delete(expr)
-                
+
                 # 提交后清除相关缓存
                 await session.commit()
-                
+
             # 清除该chat_id的表达方式缓存
             from src.common.database.optimization.cache_manager import get_cache
             from src.common.database.utils.decorators import generate_cache_key

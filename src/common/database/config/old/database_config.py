@@ -5,7 +5,7 @@
 
 import os
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import quote_plus
 
 from src.common.logger import get_logger
@@ -16,50 +16,50 @@ logger = get_logger("database_config")
 @dataclass
 class DatabaseConfig:
     """数据库配置"""
-    
+
     # 基础配置
     db_type: str  # "sqlite" 或 "mysql"
     url: str  # 数据库连接URL
-    
+
     # 引擎配置
     engine_kwargs: dict[str, Any]
-    
+
     # SQLite特定配置
-    sqlite_path: Optional[str] = None
-    
+    sqlite_path: str | None = None
+
     # MySQL特定配置
-    mysql_host: Optional[str] = None
-    mysql_port: Optional[int] = None
-    mysql_user: Optional[str] = None
-    mysql_password: Optional[str] = None
-    mysql_database: Optional[str] = None
+    mysql_host: str | None = None
+    mysql_port: int | None = None
+    mysql_user: str | None = None
+    mysql_password: str | None = None
+    mysql_database: str | None = None
     mysql_charset: str = "utf8mb4"
-    mysql_unix_socket: Optional[str] = None
+    mysql_unix_socket: str | None = None
 
 
-_database_config: Optional[DatabaseConfig] = None
+_database_config: DatabaseConfig | None = None
 
 
 def get_database_config() -> DatabaseConfig:
     """获取数据库配置
-    
+
     从全局配置中读取数据库设置并构建配置对象
     """
     global _database_config
-    
+
     if _database_config is not None:
         return _database_config
-    
+
     from src.config.config import global_config
-    
+
     config = global_config.database
-    
+
     # 构建数据库URL
     if config.database_type == "mysql":
         # MySQL配置
         encoded_user = quote_plus(config.mysql_user)
         encoded_password = quote_plus(config.mysql_password)
-        
+
         if config.mysql_unix_socket:
             # Unix socket连接
             encoded_socket = quote_plus(config.mysql_unix_socket)
@@ -75,7 +75,7 @@ def get_database_config() -> DatabaseConfig:
                 f"@{config.mysql_host}:{config.mysql_port}/{config.mysql_database}"
                 f"?charset={config.mysql_charset}"
             )
-        
+
         engine_kwargs = {
             "echo": False,
             "future": True,
@@ -90,7 +90,7 @@ def get_database_config() -> DatabaseConfig:
                 "connect_timeout": config.connection_timeout,
             },
         }
-        
+
         _database_config = DatabaseConfig(
             db_type="mysql",
             url=url,
@@ -103,12 +103,12 @@ def get_database_config() -> DatabaseConfig:
             mysql_charset=config.mysql_charset,
             mysql_unix_socket=config.mysql_unix_socket,
         )
-        
+
         logger.info(
             f"MySQL配置已加载: "
             f"{config.mysql_user}@{config.mysql_host}:{config.mysql_port}/{config.mysql_database}"
         )
-    
+
     else:
         # SQLite配置
         if not os.path.isabs(config.sqlite_path):
@@ -116,12 +116,12 @@ def get_database_config() -> DatabaseConfig:
             db_path = os.path.join(ROOT_PATH, config.sqlite_path)
         else:
             db_path = config.sqlite_path
-        
+
         # 确保数据库目录存在
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        
+
         url = f"sqlite+aiosqlite:///{db_path}"
-        
+
         engine_kwargs = {
             "echo": False,
             "future": True,
@@ -130,16 +130,16 @@ def get_database_config() -> DatabaseConfig:
                 "timeout": 60,
             },
         }
-        
+
         _database_config = DatabaseConfig(
             db_type="sqlite",
             url=url,
             engine_kwargs=engine_kwargs,
             sqlite_path=db_path,
         )
-        
+
         logger.info(f"SQLite配置已加载: {db_path}")
-    
+
     return _database_config
 
 

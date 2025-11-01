@@ -100,7 +100,7 @@ class MonthlyPlanGenerationTask(AsyncTask):
                     next_month = datetime(now.year + 1, 1, 1)
                 else:
                     next_month = datetime(now.year, now.month + 1, 1)
-                
+
                 sleep_seconds = (next_month - now).total_seconds()
                 logger.info(
                     f" 下一次月度计划生成任务将在 {sleep_seconds:.2f} 秒后运行 (北京时间 {next_month.strftime('%Y-%m-%d %H:%M:%S')})"
@@ -110,7 +110,7 @@ class MonthlyPlanGenerationTask(AsyncTask):
                 # 到达月初，先归档上个月的计划
                 last_month = (next_month - timedelta(days=1)).strftime("%Y-%m")
                 await self.monthly_plan_manager.plan_manager.archive_current_month_plans(last_month)
-                
+
                 # 为当前月生成新计划
                 current_month = next_month.strftime("%Y-%m")
                 logger.info(f" 到达月初，开始生成 {current_month} 的月度计划...")

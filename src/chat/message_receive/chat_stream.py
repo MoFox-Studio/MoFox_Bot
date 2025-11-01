@@ -4,15 +4,14 @@ import time
 
 from maim_message import GroupInfo, UserInfo
 from rich.traceback import install
-from sqlalchemy import select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.common.data_models.database_data_model import DatabaseMessages
+from src.common.database.api.crud import CRUDBase
+from src.common.database.api.specialized import get_or_create_chat_stream
 from src.common.database.compatibility import get_db_session
 from src.common.database.core.models import ChatStreams  # 新增导入
-from src.common.database.api.specialized import get_or_create_chat_stream
-from src.common.database.api.crud import CRUDBase
 from src.common.logger import get_logger
 from src.config.config import global_config  # 新增导入
 
@@ -708,7 +707,7 @@ class ChatManager:
             # 使用CRUD批量查询
             crud = CRUDBase(ChatStreams)
             all_streams = await crud.get_multi(limit=100000)  # 获取所有聊天流
-            
+
             for model_instance in all_streams:
                     user_info_data = {
                         "platform": model_instance.user_platform,

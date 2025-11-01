@@ -7,13 +7,10 @@ import json
 from datetime import datetime
 from typing import Any, Literal
 
-from sqlalchemy import select
-
 from src.chat.express.expression_selector import expression_selector
 from src.chat.utils.prompt import Prompt
-from src.common.database.compatibility import get_db_session
-from src.common.database.core.models import ChatStreams
 from src.common.database.api.crud import CRUDBase
+from src.common.database.core.models import ChatStreams
 from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
@@ -208,7 +205,7 @@ class ProactiveThinkingPlanner:
             # 3. 获取bot人设和时间信息
             individuality = Individuality()
             bot_personality = await individuality.get_personality_block()
-            
+
             # 构建时间信息块
             time_block = f"当前时间是 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
@@ -554,11 +551,11 @@ async def execute_proactive_thinking(stream_id: str):
             from src.chat.message_receive.chat_stream import get_chat_manager
             chat_manager = get_chat_manager()
             chat_stream = await chat_manager.get_stream(stream_id)
-            
+
             if chat_stream:
                 # 使用 ChatStream 的 get_raw_id() 方法获取配置字符串
                 stream_config = chat_stream.get_raw_id()
-                
+
                 # 执行白名单/黑名单检查
                 if not proactive_thinking_scheduler._check_whitelist_blacklist(stream_config):
                     logger.debug(f"聊天流 {stream_id} ({stream_config}) 未通过白名单/黑名单检查，跳过主动思考")
@@ -567,7 +564,7 @@ async def execute_proactive_thinking(stream_id: str):
                 logger.warning(f"无法获取聊天流 {stream_id} 的信息，跳过白名单检查")
         except Exception as e:
             logger.warning(f"白名单检查时出错: {e}，继续执行")
-        
+
         # 0.2 检查安静时段
         if proactive_thinking_scheduler._is_in_quiet_hours():
             logger.debug("安静时段，跳过")
