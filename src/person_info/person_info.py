@@ -9,9 +9,9 @@ import orjson
 from json_repair import repair_json
 from sqlalchemy import select
 
+from src.common.database.api.crud import CRUDBase
 from src.common.database.compatibility import get_db_session
 from src.common.database.core.models import PersonInfo
-from src.common.database.api.crud import CRUDBase
 from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
@@ -307,18 +307,18 @@ class PersonInfoManager:
                 crud = CRUDBase(PersonInfo)
                 record = await crud.get_by(person_id=p_id)
                 query_time = time.time()
-                
+
                 if record:
                     # 更新记录
                     await crud.update(record.id, {f_name: val_to_set})
                     save_time = time.time()
                     total_time = save_time - start_time
-                    
+
                     if total_time > 0.5:
                         logger.warning(
                             f"数据库更新操作耗时 {total_time:.3f}秒 (查询: {query_time - start_time:.3f}s, 保存: {save_time - query_time:.3f}s) person_id={p_id}, field={f_name}"
                         )
-                    
+
                     # 使缓存失效
                     from src.common.database.optimization.cache_manager import get_cache
                     from src.common.database.utils.decorators import generate_cache_key
@@ -327,7 +327,7 @@ class PersonInfoManager:
                     await cache.delete(generate_cache_key("person_value", p_id, f_name))
                     await cache.delete(generate_cache_key("person_values", p_id))
                     await cache.delete(generate_cache_key("person_has_field", p_id, f_name))
-                    
+
                     return True, False
                 else:
                     total_time = time.time() - start_time
@@ -339,7 +339,7 @@ class PersonInfoManager:
                 logger.error(f"数据库操作异常，耗时 {total_time:.3f}秒: {e}")
                 raise
 
-        found, needs_creation = await _db_update_async(person_id, field_name, processed_value)
+        _found, needs_creation = await _db_update_async(person_id, field_name, processed_value)
 
         if needs_creation:
             logger.info(f"{person_id} 不存在，将新建。")
@@ -538,7 +538,7 @@ class PersonInfoManager:
                 record = await crud.get_by(person_id=p_id)
                 if record:
                     await crud.delete(record.id)
-                    
+
                     # 注意: 删除操作很少发生,缓存会在TTL过期后自动清除
                     # 无法从person_id反向得到platform和user_id,因此无法精确清除缓存
                     # 删除后的查询仍会返回正确结果(None/False)
@@ -658,7 +658,7 @@ class PersonInfoManager:
                     try:
                         value = getattr(record, f_name, None)
                         if value is not None and way(value):
-                            person_id_value = getattr(record, 'person_id', None)
+                            person_id_value = getattr(record, "person_id", None)
                             if person_id_value:
                                 found_results[person_id_value] = value
                     except Exception as e:
@@ -690,7 +690,7 @@ class PersonInfoManager:
             """原子性的获取或创建操作"""
             # 使用CRUD进行获取或创建
             crud = CRUDBase(PersonInfo)
-            
+
             # 首先尝试获取现有记录
             record = await crud.get_by(person_id=p_id)
             if record:
@@ -736,7 +736,7 @@ class PersonInfoManager:
         model_fields = [column.name for column in PersonInfo.__table__.columns]
         filtered_initial_data = {k: v for k, v in initial_data.items() if v is not None and k in model_fields}
 
-        record, was_created = await _db_get_or_create_async(person_id, filtered_initial_data)
+        _record, was_created = await _db_get_or_create_async(person_id, filtered_initial_data)
 
         if was_created:
             logger.info(f"用户 {platform}:{user_id} (person_id: {person_id}) 不存在，将创建新记录。")

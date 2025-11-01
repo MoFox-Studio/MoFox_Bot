@@ -186,7 +186,7 @@ class RelationshipFetcher:
             # 查询用户关系数据
             user_id = str(await person_info_manager.get_value(person_id, "user_id"))
             platform = str(await person_info_manager.get_value(person_id, "platform"))
-            
+
             # 使用优化后的API（带缓存）
             relationship = await get_user_relationship(
                 platform=platform,
@@ -261,7 +261,7 @@ class RelationshipFetcher:
             # 使用优化后的API（带缓存）
             # 从stream_id解析platform，或使用默认值
             platform = stream_id.split("_")[0] if "_" in stream_id else "unknown"
-            
+
             stream, _ = await get_or_create_chat_stream(
                 stream_id=stream_id,
                 platform=platform,
