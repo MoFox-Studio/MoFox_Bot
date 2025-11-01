@@ -10,6 +10,8 @@ from enum import Enum
 from typing import Any, TypedDict
 
 from src.common.logger import get_logger
+from src.common.database.api.crud import CRUDBase
+from src.common.database.utils.decorators import cached
 from src.config.config import global_config
 
 logger = get_logger("energy_system")
@@ -203,21 +205,19 @@ class RelationshipEnergyCalculator(EnergyCalculator):
         try:
             from sqlalchemy import select
 
-            from src.common.database.compatibility import get_db_session
             from src.common.database.core.models import ChatStreams
 
-            async with get_db_session() as session:
-                stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)
-                result = await session.execute(stmt)
-                stream = result.scalar_one_or_none()
+            # 使用CRUD进行查询（已有缓存）
+            crud = CRUDBase(ChatStreams)
+            stream = await crud.get_by(stream_id=stream_id)
 
-                if stream and stream.stream_interest_score is not None:
-                    interest_score = float(stream.stream_interest_score)
-                    logger.debug(f"使用聊天流兴趣度计算关系能量: {interest_score:.3f}")
-                    return interest_score
-                else:
-                    logger.debug(f"聊天流 {stream_id} 无兴趣分数，使用默认值")
-                    return 0.3
+            if stream and stream.stream_interest_score is not None:
+                interest_score = float(stream.stream_interest_score)
+                logger.debug(f"使用聊天流兴趣度计算关系能量: {interest_score:.3f}")
+                return interest_score
+            else:
+                logger.debug(f"聊天流 {stream_id} 无兴趣分数，使用默认值")
+                return 0.3
 
         except Exception as e:
             logger.warning(f"获取聊天流兴趣度失败，使用默认值: {e}")

@@ -11,6 +11,8 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.compatibility import get_db_session
 from src.common.database.core.models import ChatStreams  # 新增导入
+from src.common.database.api.specialized import get_or_create_chat_stream
+from src.common.database.api.crud import CRUDBase
 from src.common.logger import get_logger
 from src.config.config import global_config  # 新增导入
 
@@ -441,16 +443,20 @@ class ChatManager:
                     logger.debug(f"聊天流 {stream_id} 不在最后消息列表中，可能是新创建的或还没有消息")
                 return stream
 
-            # 检查数据库中是否存在
-            async def _db_find_stream_async(s_id: str):
-                async with get_db_session() as session:
-                    return (
-                        (await session.execute(select(ChatStreams).where(ChatStreams.stream_id == s_id)))
-                        .scalars()
-                        .first()
-                    )
-
-            model_instance = await _db_find_stream_async(stream_id)
+            # 使用优化后的API查询（带缓存）
+            model_instance, _ = await get_or_create_chat_stream(
+                stream_id=stream_id,
+                platform=platform,
+                defaults={
+                    "user_platform": user_info.platform if user_info else platform,
+                    "user_id": user_info.user_id if user_info else "",
+                    "user_nickname": user_info.nickname if user_info else "",
+                    "user_cardname": user_info.cardname if user_info else "",
+                    "group_platform": group_info.platform if group_info else None,
+                    "group_id": group_info.group_id if group_info else None,
+                    "group_name": group_info.group_name if group_info else None,
+                }
+            )
 
             if model_instance:
                 # 从 SQLAlchemy 模型转换回 ChatStream.from_dict 期望的格式
@@ -696,9 +702,11 @@ class ChatManager:
 
         async def _db_load_all_streams_async():
             loaded_streams_data = []
-            async with get_db_session() as session:
-                result = await session.execute(select(ChatStreams))
-                for model_instance in result.scalars().all():
+            # 使用CRUD批量查询
+            crud = CRUDBase(ChatStreams)
+            all_streams = await crud.get_all()
+            
+            for model_instance in all_streams:
                     user_info_data = {
                         "platform": model_instance.user_platform,
                         "user_id": model_instance.user_id,
@@ -734,7 +742,6 @@ class ChatManager:
                         "interruption_count": getattr(model_instance, "interruption_count", 0),
                     }
                     loaded_streams_data.append(data_for_from_dict)
-                await session.commit()
             return loaded_streams_data
 
         try:

@@ -264,27 +264,24 @@ class PersonInfoManager:
                     final_data[key] = orjson.dumps([]).decode("utf-8")
 
         async def _db_safe_create_async(p_data: dict):
-            async with get_db_session() as session:
-                try:
-                    existing = (
-                        await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_data["person_id"]))
-                    ).scalar()
-                    if existing:
-                        logger.debug(f"用户 {p_data['person_id']} 已存在，跳过创建")
-                        return True
-
-                    # 尝试创建
-                    new_person = PersonInfo(**p_data)
-                    session.add(new_person)
-                    await session.commit()
+            try:
+                # 使用CRUD进行检查和创建
+                crud = CRUDBase(PersonInfo)
+                existing = await crud.get_by(person_id=p_data["person_id"])
+                if existing:
+                    logger.debug(f"用户 {p_data['person_id']} 已存在，跳过创建")
                     return True
-                except Exception as e:
-                    if "UNIQUE constraint failed" in str(e):
-                        logger.debug(f"检测到并发创建用户 {p_data.get('person_id')}，跳过错误")
-                        return True
-                    else:
-                        logger.error(f"创建 PersonInfo 记录 {p_data.get('person_id')} 失败 (SQLAlchemy): {e}")
-                        return False
+
+                # 创建新记录
+                await crud.create(p_data)
+                return True
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    logger.debug(f"检测到并发创建用户 {p_data.get('person_id')}，跳过错误")
+                    return True
+                else:
+                    logger.error(f"创建 PersonInfo 记录 {p_data.get('person_id')} 失败: {e}")
+                    return False
 
         await _db_safe_create_async(final_data)
 
@@ -536,16 +533,24 @@ class PersonInfoManager:
 
         async def _db_delete_async(p_id: str):
             try:
-                async with get_db_session() as session:
-                    result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                    record = result.scalar()
-                    if record:
-                        await session.delete(record)
-                        await session.commit()
-                        return 1
+                # 使用CRUD进行删除
+                crud = CRUDBase(PersonInfo)
+                record = await crud.get_by(person_id=p_id)
+                if record:
+                    await crud.delete(record.id)
+                    
+                    # 清除相关缓存
+                    from src.common.database.optimization.cache_manager import get_cache
+                    from src.common.database.utils.decorators import generate_cache_key
+                    cache = await get_cache()
+                    
+                    # 清除所有相关的person缓存
+                    await cache.delete(generate_cache_key("person_known", p_id))
+                    await cache.delete(generate_cache_key("person_field", p_id))
+                    return 1
                 return 0
             except Exception as e:
-                logger.error(f"删除 PersonInfo {p_id} 失败 (SQLAlchemy): {e}")
+                logger.error(f"删除 PersonInfo {p_id} 失败: {e}")
                 return 0
 
         deleted_count = await _db_delete_async(person_id)
@@ -641,15 +646,16 @@ class PersonInfoManager:
         async def _db_get_specific_async(f_name: str):
             found_results = {}
             try:
-                async with get_db_session() as session:
-                    result = await session.execute(select(PersonInfo.person_id, getattr(PersonInfo, f_name)))
-                    for record in result.fetchall():
-                        value = getattr(record, f_name)
-                        if way(value):
-                            found_results[record.person_id] = value
+                # 使用CRUD获取所有记录
+                crud = CRUDBase(PersonInfo)
+                all_records = await crud.get_all()
+                for record in all_records:
+                    value = getattr(record, f_name, None)
+                    if value is not None and way(value):
+                        found_results[record.person_id] = value
             except Exception as e_query:
                 logger.error(
-                    f"数据库查询失败 (SQLAlchemy specific_value_list for {f_name}): {e_query!s}", exc_info=True
+                    f"数据库查询失败 (specific_value_list for {f_name}): {e_query!s}", exc_info=True
                 )
             return found_results
 
@@ -671,30 +677,27 @@ class PersonInfoManager:
 
         async def _db_get_or_create_async(p_id: str, init_data: dict):
             """原子性的获取或创建操作"""
-            async with get_db_session() as session:
-                # 首先尝试获取现有记录
-                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                record = result.scalar()
-                if record:
-                    return record, False  # 记录存在，未创建
+            # 使用CRUD进行获取或创建
+            crud = CRUDBase(PersonInfo)
+            
+            # 首先尝试获取现有记录
+            record = await crud.get_by(person_id=p_id)
+            if record:
+                return record, False  # 记录存在，未创建
 
-                # 记录不存在，尝试创建
-                try:
-                    new_person = PersonInfo(**init_data)
-                    session.add(new_person)
-                    await session.commit()
-                    await session.refresh(new_person)
-                    return new_person, True  # 创建成功
-                except Exception as e:
-                    # 如果创建失败（可能是因为竞态条件），再次尝试获取
-                    if "UNIQUE constraint failed" in str(e):
-                        logger.debug(f"检测到并发创建用户 {p_id}，获取现有记录")
-                        result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                    record = result.scalar()
+            # 记录不存在，尝试创建
+            try:
+                new_person = await crud.create(init_data)
+                return new_person, True  # 创建成功
+            except Exception as e:
+                # 如果创建失败（可能是因为竞态条件），再次尝试获取
+                if "UNIQUE constraint failed" in str(e):
+                    logger.debug(f"检测到并发创建用户 {p_id}，获取现有记录")
+                    record = await crud.get_by(person_id=p_id)
                     if record:
                         return record, False  # 其他协程已创建，返回现有记录
-                    # 如果仍然失败，重新抛出异常
-                    raise e
+                # 如果仍然失败，重新抛出异常
+                raise e
 
         unique_nickname = await self._generate_unique_person_name(nickname)
         initial_data = {
@@ -746,13 +749,9 @@ class PersonInfoManager:
 
         if not found_person_id:
 
-            async def _db_find_by_name_async(p_name_to_find: str):
-                async with get_db_session() as session:
-                    return (
-                        await session.execute(select(PersonInfo).where(PersonInfo.person_name == p_name_to_find))
-                    ).scalar()
-
-            record = await _db_find_by_name_async(person_name)
+            # 使用CRUD进行查询
+            crud = CRUDBase(PersonInfo)
+            record = await crud.get_by(person_name=person_name)
             if record:
                 found_person_id = record.person_id
                 if (
