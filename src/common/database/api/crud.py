@@ -113,10 +113,19 @@ class CRUDBase:
             result = await session.execute(stmt)
             instance = result.scalar_one_or_none()
             
-            # 写入缓存
-            if instance is not None and use_cache:
-                cache = await get_cache()
-                await cache.set(cache_key, instance)
+            if instance is not None:
+                # 触发所有列的加载，避免 detached 后的延迟加载问题
+                # 遍历所有列属性以确保它们被加载到内存中
+                for column in self.model.__table__.columns:
+                    try:
+                        getattr(instance, column.name)
+                    except Exception:
+                        pass  # 忽略访问错误
+                
+                # 写入缓存
+                if use_cache:
+                    cache = await get_cache()
+                    await cache.set(cache_key, instance)
             
             return instance
 
@@ -165,6 +174,14 @@ class CRUDBase:
             
             result = await session.execute(stmt)
             instances = result.scalars().all()
+            
+            # 触发所有实例的列加载，避免 detached 后的延迟加载问题
+            for instance in instances:
+                for column in self.model.__table__.columns:
+                    try:
+                        getattr(instance, column.name)
+                    except Exception:
+                        pass  # 忽略访问错误
             
             # 写入缓存
             if use_cache:

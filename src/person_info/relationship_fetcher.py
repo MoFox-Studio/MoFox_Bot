@@ -200,7 +200,7 @@ class RelationshipFetcher:
                     "user_aliases": relationship.user_aliases,
                     "relationship_text": relationship.relationship_text,
                     "preference_keywords": relationship.preference_keywords,
-                    "relationship_score": relationship.affinity,
+                    "relationship_score": relationship.relationship_score,
                 }
 
                 # 5.1 用户别名

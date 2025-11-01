@@ -563,10 +563,6 @@ class PersonInfoManager:
             logger.debug("get_value获取失败：person_id不能为空")
             return None
 
-        # 使用CRUD进行查询
-        crud = CRUDBase(PersonInfo)
-        record = await crud.get_by(person_id=person_id)
-
         model_fields = [column.name for column in PersonInfo.__table__.columns]
 
         if field_name not in model_fields:
@@ -577,11 +573,21 @@ class PersonInfoManager:
                 logger.debug(f"get_value查询失败：字段'{field_name}'未在SQLAlchemy模型和默认配置中定义。")
                 return None
 
+        # 使用CRUD进行查询
+        crud = CRUDBase(PersonInfo)
+        record = await crud.get_by(person_id=person_id)
+
         if record:
-            value = getattr(record, field_name)
-            if value is not None:
-                return value
-            else:
+            # 在访问属性前确保对象已加载所有数据
+            # 使用 try-except 捕获可能的延迟加载错误
+            try:
+                value = getattr(record, field_name)
+                if value is not None:
+                    return value
+                else:
+                    return copy.deepcopy(person_info_default.get(field_name))
+            except Exception as e:
+                logger.warning(f"访问字段 {field_name} 失败: {e}, 使用默认值")
                 return copy.deepcopy(person_info_default.get(field_name))
         else:
             return copy.deepcopy(person_info_default.get(field_name))
