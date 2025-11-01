@@ -15,6 +15,7 @@ from rich.traceback import install
 
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.utils import process_llm_response
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ActionInfo
 
@@ -81,7 +82,7 @@ async def generate_reply(
     chat_id: str | None = None,
     action_data: dict[str, Any] | None = None,
     reply_to: str = "",
-    reply_message: dict[str, Any] | None = None,
+    reply_message: DatabaseMessages | None = None,
     extra_info: str = "",
     available_actions: dict[str, ActionInfo] | None = None,
     enable_tool: bool = False,
