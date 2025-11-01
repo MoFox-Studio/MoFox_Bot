@@ -7,6 +7,14 @@
 - 数据预加载
 """
 
+from .batch_scheduler import (
+    AdaptiveBatchScheduler,
+    BatchOperation,
+    BatchStats,
+    close_batch_scheduler,
+    get_batch_scheduler,
+    Priority,
+)
 from .cache_manager import (
     CacheEntry,
     CacheStats,
@@ -48,4 +56,11 @@ __all__ = [
     "AccessPattern",
     "get_preloader",
     "close_preloader",
+    # Batch Scheduler
+    "AdaptiveBatchScheduler",
+    "BatchOperation",
+    "BatchStats",
+    "Priority",
+    "get_batch_scheduler",
+    "close_batch_scheduler",
 ]
