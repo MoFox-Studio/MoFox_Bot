@@ -12,7 +12,8 @@ from PIL import Image
 from rich.traceback import install
 from sqlalchemy import and_, select
 
-from src.common.database.core.models import ImageDescriptions, Images, get_db_session
+from src.common.database.core.models import ImageDescriptions, Images
+from src.common.database.core import get_db_session
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest

@@ -8,7 +8,7 @@ import orjson
 from sqlalchemy import desc, select, update
 
 from src.common.data_models.database_data_model import DatabaseMessages
-from src.common.database.compatibility import get_db_session
+from src.common.database.core import get_db_session
 from src.common.database.core.models import Images, Messages
 from src.common.logger import get_logger
 
@@ -367,7 +367,7 @@ class MessageStorage:
                 logger.debug(f"消息ID更新已加入批处理队列: {mmc_message_id} -> {qq_message_id}")
             else:
                 # 直接更新（保留原有逻辑用于特殊情况）
-                from src.common.database.core.models import get_db_session
+                from src.common.database.core import get_db_session
 
                 async with get_db_session() as session:
                     matched_message = (

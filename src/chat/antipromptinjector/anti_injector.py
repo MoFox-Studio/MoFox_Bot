@@ -263,7 +263,8 @@ class AntiPromptInjector:
         try:
             from sqlalchemy import delete
 
-            from src.common.database.core.models import Messages, get_db_session
+            from src.common.database.core.models import Messages
+            from src.common.database.core import get_db_session
 
             message_id = message_data.get("message_id")
             if not message_id:
@@ -290,7 +291,8 @@ class AntiPromptInjector:
         try:
             from sqlalchemy import update
 
-            from src.common.database.core.models import Messages, get_db_session
+            from src.common.database.core.models import Messages
+            from src.common.database.core import get_db_session
 
             message_id = message_data.get("message_id")
             if not message_id:

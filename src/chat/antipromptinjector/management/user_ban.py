@@ -8,7 +8,8 @@ import datetime
 
 from sqlalchemy import select
 
-from src.common.database.core.models import BanUser, get_db_session
+from src.common.database.core.models import BanUser
+from src.common.database.core import get_db_session
 from src.common.logger import get_logger
 
 from ..types import DetectionResult

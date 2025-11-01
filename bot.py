@@ -560,9 +560,9 @@ class MaiBotMain:
         logger.info("正在初始化数据库表结构...")
         try:
             start_time = time.time()
-            from src.common.database.core.models import initialize_database
+            from src.common.database.core import check_and_migrate_database
 
-            await initialize_database()
+            await check_and_migrate_database()
             elapsed_time = time.time() - start_time
             logger.info(f"数据库表结构初始化完成，耗时: {elapsed_time:.2f}秒")
         except Exception as e:
