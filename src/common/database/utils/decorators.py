@@ -14,7 +14,6 @@ from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 from sqlalchemy.exc import DBAPIError, OperationalError, TimeoutError as SQLTimeoutError
 
-from src.common.database.optimization import get_cache
 from src.common.logger import get_logger
 
 logger = get_logger("database.decorators")
@@ -130,6 +129,9 @@ def cached(
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @functools.wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> T:
+            # 延迟导入避免循环依赖
+            from src.common.database.optimization import get_cache
+            
             # 生成缓存键
             cache_key_parts = [key_prefix or func.__name__]
 
