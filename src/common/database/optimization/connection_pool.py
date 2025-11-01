@@ -150,6 +150,16 @@ class ConnectionPoolManager:
                 logger.debug(f"🆕 创建连接 (池大小: {len(self._connections)})")
 
             yield connection_info.session
+            
+            # 🔧 修复：正常退出时提交事务
+            # 这对SQLite至关重要，因为SQLite没有autocommit
+            if connection_info and connection_info.session:
+                try:
+                    await connection_info.session.commit()
+                except Exception as commit_error:
+                    logger.warning(f"提交事务时出错: {commit_error}")
+                    await connection_info.session.rollback()
+                    raise
 
         except Exception:
             # 发生错误时回滚连接

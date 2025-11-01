@@ -274,6 +274,8 @@ class CRUDBase:
                 session.add(instance)
                 await session.flush()
                 await session.refresh(instance)
+                # 注意：commit在get_db_session的context manager退出时自动执行
+                # 但为了明确性，这里不需要显式commit
                 return instance
 
     async def update(
@@ -329,6 +331,7 @@ class CRUDBase:
                     await session.flush()
                     await session.refresh(db_instance)
                     instance = db_instance
+                # 注意：commit在get_db_session的context manager退出时自动执行
 
         # 清除缓存
         cache_key = f"{self.model_name}:id:{id}"
@@ -369,6 +372,7 @@ class CRUDBase:
                 stmt = delete(self.model).where(self.model.id == id)
                 result = await session.execute(stmt)
                 success = result.rowcount > 0
+                # 注意：commit在get_db_session的context manager退出时自动执行
 
         # 清除缓存
         if success:
