@@ -38,6 +38,7 @@ E = TypeVar("E", bound=Enum)
 
 
 import orjson
+from json_repair import repair_json
 
 from src.chat.memory_system.memory_chunk import (
     ConfidenceLevel,
@@ -140,6 +141,12 @@ class MemoryBuilder:
             prompt = self._build_llm_extraction_prompt(text, context)
 
             response, _ = await self.llm_model.generate_response_async(prompt, temperature=0.3)
+            
+            # 记录原始响应用于调试
+            if response:
+                logger.debug(f"LLM记忆提取原始响应长度: {len(response)}, 前300字符: {response[:300]}")
+            else:
+                logger.warning("LLM记忆提取返回空响应")
 
             # 解析LLM响应
             memories = self._parse_llm_response(response, user_id, timestamp, context)
@@ -333,26 +340,75 @@ class MemoryBuilder:
         return prompt
 
     def _extract_json_payload(self, response: str) -> str | None:
-        """从模型响应中提取JSON部分，兼容Markdown代码块等格式"""
+        """从模型响应中提取JSON部分，兼容Markdown代码块等格式
+        
+        增强的JSON提取策略，支持多种格式：
+        1. Markdown代码块: ```json ... ```
+        2. 普通代码块: ``` ... ```
+        3. 大括号包围的JSON对象
+        4. 直接的JSON字符串
+        """
         if not response:
             return None
 
         stripped = response.strip()
 
-        # 优先处理Markdown代码块格式 ```json ... ```
-        code_block_match = re.search(r"```(?:json)?\s*(.*?)```", stripped, re.IGNORECASE | re.DOTALL)
-        if code_block_match:
-            candidate = code_block_match.group(1).strip()
-            if candidate:
-                return candidate
+        # 策略1: 优先处理Markdown代码块格式 ```json ... ``` 或 ``` ... ```
+        code_block_patterns = [
+            r"```json\s*(.*?)```",  # 明确标记json的代码块
+            r"```\s*(.*?)```",      # 普通代码块
+        ]
+        
+        for pattern in code_block_patterns:
+            code_block_match = re.search(pattern, stripped, re.IGNORECASE | re.DOTALL)
+            if code_block_match:
+                candidate = code_block_match.group(1).strip()
+                if candidate and (candidate.startswith("{") or candidate.startswith("[")):
+                    logger.debug(f"从代码块中提取JSON，长度: {len(candidate)}")
+                    return candidate
 
-        # 回退到查找第一个 JSON 对象的大括号范围
+        # 策略2: 查找第一个完整的JSON对象（大括号匹配）
         start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return stripped[start : end + 1].strip()
+        if start != -1:
+            # 使用栈来找到匹配的结束大括号
+            brace_count = 0
+            in_string = False
+            escape_next = False
+            
+            for i in range(start, len(stripped)):
+                char = stripped[i]
+                
+                if escape_next:
+                    escape_next = False
+                    continue
+                    
+                if char == "\\":
+                    escape_next = True
+                    continue
+                
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                
+                if not in_string:
+                    if char == "{":
+                        brace_count += 1
+                    elif char == "}":
+                        brace_count -= 1
+                        if brace_count == 0:
+                            # 找到完整的JSON对象
+                            candidate = stripped[start : i + 1].strip()
+                            logger.debug(f"通过大括号匹配提取JSON，长度: {len(candidate)}")
+                            return candidate
 
-        return stripped if stripped.startswith("{") and stripped.endswith("}") else None
+        # 策略3: 简单的整体检查（作为最后的fallback）
+        if stripped.startswith("{") and stripped.endswith("}"):
+            logger.debug(f"整体作为JSON，长度: {len(stripped)}")
+            return stripped
+
+        # 所有策略都失败
+        logger.warning(f"无法从响应中提取JSON，响应预览: {stripped[:200]}")
+        return None
 
     def _parse_llm_response(
         self, response: str, user_id: str, timestamp: float, context: dict[str, Any]
@@ -368,11 +424,52 @@ class MemoryBuilder:
 
         try:
             data = orjson.loads(json_payload)
+            logger.debug(f"JSON直接解析成功，数据keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
         except Exception as e:
-            preview = json_payload[:200]
-            raise MemoryExtractionError(f"LLM响应JSON解析失败: {e}, 片段: {preview}") from e
+            # 尝试使用 json_repair 修复 JSON
+            logger.warning(f"JSON直接解析失败: {type(e).__name__}: {e}，尝试使用json_repair修复")
+            logger.debug(f"失败的JSON片段(前500字符): {json_payload[:500]}")
+            try:
+                repaired_json = repair_json(json_payload)
+                # repair_json 可能返回字符串或已解析的对象
+                if isinstance(repaired_json, str):
+                    data = orjson.loads(repaired_json)
+                    logger.info(f"✅ JSON修复成功(字符串模式)，数据keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+                else:
+                    data = repaired_json
+                    logger.info(f"✅ JSON修复成功(对象模式)，数据keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+            except Exception as repair_error:
+                preview = json_payload[:300]
+                logger.error(f"❌ JSON修复也失败: {type(repair_error).__name__}: {repair_error}")
+                logger.error(f"完整JSON payload(前800字符):\n{json_payload[:800]}")
+                raise MemoryExtractionError(
+                    f"LLM响应JSON解析失败\n"
+                    f"原始错误: {type(e).__name__}: {e}\n"
+                    f"修复错误: {type(repair_error).__name__}: {repair_error}\n"
+                    f"JSON片段(前300字符): {preview}"
+                ) from e
 
+        # 提取 memories 列表，兼容多种格式
         memory_list = data.get("memories", [])
+        
+        # 如果没有 memories 字段，尝试其他可能的字段名
+        if not memory_list:
+            for possible_key in ["memory", "results", "items", "data"]:
+                if possible_key in data:
+                    memory_list = data[possible_key]
+                    logger.debug(f"使用备选字段 '{possible_key}' 作为记忆列表")
+                    break
+        
+        # 如果整个data就是一个列表，直接使用
+        if not memory_list and isinstance(data, list):
+            memory_list = data
+            logger.debug("整个JSON就是记忆列表")
+        
+        if not isinstance(memory_list, list):
+            logger.warning(f"记忆列表格式错误，期望list但得到 {type(memory_list)}, 尝试包装为列表")
+            memory_list = [memory_list] if memory_list else []
+        
+        logger.debug(f"提取到 {len(memory_list)} 个记忆候选项")
 
         bot_identifiers = self._collect_bot_identifiers(context)
         system_identifiers = self._collect_system_identifiers(context)
