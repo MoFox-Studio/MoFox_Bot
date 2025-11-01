@@ -1468,18 +1468,15 @@ class DefaultReplyer:
                         if now < start_time:
                             now += timedelta(days=1)
 
-                        if start_time <= now < end_time:
-                            duration_minutes = (now - start_time).total_seconds() / 60
-                            remaining_minutes = (end_time - now).total_seconds() / 60
-                            schedule_block = (
+                        duration_minutes = (now - start_time).total_seconds() / 60
+                        remaining_minutes = (end_time - now).total_seconds() / 60
+                        schedule_block = (
                                 f"你当前正在进行“{activity}”，"
                                 f"计划时间从{start_time.strftime('%H:%M')}到{end_time.strftime('%H:%M')}。"
                                 f"这项活动已经开始了{duration_minutes:.0f}分钟，"
                                 f"预计还有{remaining_minutes:.0f}分钟结束。"
                                 "（此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。）"
                             )
-                        else:
-                            schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"
 
                     except (ValueError, AttributeError):
                         schedule_block = f"你当前正在进行“{activity}”。(此为你的当前状态，仅供参考。除非被直接询问，否则不要在对话中主动提及。)"

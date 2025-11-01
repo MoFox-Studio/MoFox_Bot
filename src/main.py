@@ -218,14 +218,6 @@ class MainSystem:
 
         cleanup_tasks = []
 
-        # 停止数据库服务
-        try:
-            from src.common.database.core import close_engine as stop_database
-
-            cleanup_tasks.append(("数据库服务", stop_database()))
-        except Exception as e:
-            logger.error(f"准备停止数据库服务时出错: {e}")
-
         # 停止消息批处理器
         try:
             from src.chat.message_receive.storage import get_message_storage_batcher, get_message_update_batcher
@@ -328,6 +320,18 @@ class MainSystem:
                 logger.error(f"执行清理任务时发生错误: {e}")
         else:
             logger.warning("没有需要清理的任务")
+
+        # 停止数据库服务 (在所有其他任务完成后最后停止)
+        try:
+            from src.common.database.core import close_engine as stop_database
+
+            logger.info("正在停止数据库服务...")
+            await asyncio.wait_for(stop_database(), timeout=15.0)
+            logger.info("🛑 数据库服务已停止")
+        except asyncio.TimeoutError:
+            logger.error("停止数据库服务超时")
+        except Exception as e:
+            logger.error(f"停止数据库服务时出错: {e}")
 
     def _cleanup(self) -> None:
         """同步清理资源（向后兼容）"""
