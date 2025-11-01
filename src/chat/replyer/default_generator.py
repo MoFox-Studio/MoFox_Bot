@@ -1949,12 +1949,12 @@ class DefaultReplyer:
             logger.error(f"获取关系信息失败: {e}")
             # 降级到基本信息
             try:
-                from src.plugin_system.apis.scoring_api import scoring_api
+                from src.plugin_system.apis import person_api
 
                 user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
                 user_id = user_info.get("user_id", "unknown")
 
-                relationship_data = await scoring_api.get_user_relationship_data(user_id)
+                relationship_data = await person_api.get_user_relationship_data(user_id)
                 if relationship_data:
                     relationship_text = relationship_data.get("relationship_text", "")
                     relationship_score = relationship_data.get("relationship_score", 0.3)

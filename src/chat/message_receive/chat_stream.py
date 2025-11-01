@@ -289,11 +289,11 @@ class ChatStream:
         """获取用户关系分"""
         # 使用统一的评分API
         try:
-            from src.plugin_system.apis.scoring_api import scoring_api
+            from src.plugin_system.apis import person_api
 
             if self.user_info and hasattr(self.user_info, "user_id"):
                 user_id = str(self.user_info.user_id)
-                relationship_score = await scoring_api.get_user_relationship_score(user_id)
+                relationship_score = await person_api.get_user_relationship_score(user_id)
                 logger.debug(f"ChatStream {self.stream_id}: 用户关系分 = {relationship_score:.3f}")
                 return relationship_score
 

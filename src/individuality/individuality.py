@@ -85,9 +85,9 @@ class Individuality:
         full_personality = f"{personality_result}，{identity_result}"
 
         # 使用统一的评分API初始化智能兴趣系统
-        from src.plugin_system.apis.scoring_api import scoring_api
+        from src.plugin_system.apis import person_api
 
-        await scoring_api.initialize_smart_interests(
+        await person_api.initialize_smart_interests(
             personality_description=full_personality, personality_id=self.bot_person_id
         )
 

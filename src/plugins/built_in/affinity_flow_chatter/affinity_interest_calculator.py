@@ -211,9 +211,9 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
         # 如果内存中没有，尝试从统一的评分API获取
         try:
-            from src.plugin_system.apis.scoring_api import scoring_api
+            from src.plugin_system.apis import person_api
 
-            relationship_data = await scoring_api.get_user_relationship_data(user_id)
+            relationship_data = await person_api.get_user_relationship_data(user_id)
             if relationship_data:
                 relationship_score = relationship_data.get("relationship_score", global_config.affinity_flow.base_relationship_score)
                 # 同时更新内存缓存
