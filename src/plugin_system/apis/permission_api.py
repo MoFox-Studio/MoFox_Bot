@@ -61,7 +61,7 @@ class PermissionAPI:
     def __init__(self):
         self._permission_manager: IPermissionManager | None = None
         # 需要保留的前缀（视为绝对节点名，不再自动加 plugins.<plugin>. 前缀）
-        self.RESERVED_PREFIXES: tuple[str, ...] = "system."
+        self.RESERVED_PREFIXES: tuple[str, ...] = "system." 
         # 系统节点列表 (name, description, default_granted)
         self._SYSTEM_NODES: list[tuple[str, str, bool]] = [
             ("system.superuser", "系统超级管理员：拥有所有权限", False),

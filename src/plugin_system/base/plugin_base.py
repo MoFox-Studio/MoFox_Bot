@@ -206,12 +206,12 @@ class PluginBase(ABC):
         if not self.config_schema:
             return {}
 
-        config_data: ClassVar = {}
+        config_data = {}
 
         # 遍历每个配置节
         for section, fields in self.config_schema.items():
             if isinstance(fields, dict):
-                section_data: ClassVar = {}
+                section_data = {}
 
                 # 遍历节内的字段
                 for field_name, field in fields.items():

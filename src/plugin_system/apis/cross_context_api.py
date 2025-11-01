@@ -27,6 +27,8 @@ async def get_context_group(chat_id: str) -> ContextGroup | None:
         return None
 
     is_group = current_stream.group_info is not None
+    if not is_group and not current_stream.user_info:
+        return None
     if is_group:
         assert current_stream.group_info is not None
         current_chat_raw_id = current_stream.group_info.group_id
