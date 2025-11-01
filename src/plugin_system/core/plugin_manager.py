@@ -14,6 +14,9 @@ from .component_registry import component_registry
 
 logger = get_logger("plugin_manager")
 
+# 全局背景任务集合
+_background_tasks = set()
+
 
 class PluginManager:
     """
@@ -142,7 +145,9 @@ class PluginManager:
                     logger.debug(f"为插件 '{plugin_name}' 调用 on_plugin_loaded 钩子")
                     try:
                         # 使用 asyncio.create_task 确保它不会阻塞加载流程
-                        asyncio.create_task(plugin_instance.on_plugin_loaded())
+                        task = asyncio.create_task(plugin_instance.on_plugin_loaded())
+                        _background_tasks.add(task)
+                        task.add_done_callback(_background_tasks.discard)
                     except Exception as e:
                         logger.error(f"调用插件 '{plugin_name}' 的 on_plugin_loaded 钩子时出错: {e}")
 

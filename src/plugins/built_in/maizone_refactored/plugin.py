@@ -11,6 +11,9 @@ from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
 from src.plugin_system.base.component_types import PermissionNodeField
 from src.plugin_system.base.config_types import ConfigField
 
+# 全局背景任务集合
+_background_tasks = set()
+
 from .actions.read_feed_action import ReadFeedAction
 from .actions.send_feed_action import SendFeedAction
 from .commands.send_feed_command import SendFeedCommand
@@ -117,8 +120,14 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         logger.info("MaiZone重构版插件服务已注册。")
 
         # --- 启动后台任务 ---
-        asyncio.create_task(scheduler_service.start())
-        asyncio.create_task(monitor_service.start())
+        task1 = asyncio.create_task(scheduler_service.start())
+        _background_tasks.add(task1)
+        task1.add_done_callback(_background_tasks.discard)
+
+        task2 = asyncio.create_task(monitor_service.start())
+        _background_tasks.add(task2)
+        task2.add_done_callback(_background_tasks.discard)
+
         logger.info("MaiZone后台监控和定时任务已启动。")
 
     def get_plugin_components(self) -> list[tuple[ComponentInfo, type]]:

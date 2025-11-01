@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 from typing import Any
 
+import aiofiles
 import orjson
 from sqlalchemy import select
 
@@ -729,8 +730,9 @@ class ExpressionLearnerManager:
                 if not os.path.exists(expr_file):
                     continue
                 try:
-                    with open(expr_file, encoding="utf-8") as f:
-                        expressions = orjson.loads(f.read())
+                    async with aiofiles.open(expr_file, encoding="utf-8") as f:
+                        content = await f.read()
+                        expressions = orjson.loads(content)
 
                     if not isinstance(expressions, list):
                         logger.warning(f"表达方式文件格式错误，跳过: {expr_file}")
@@ -791,8 +793,8 @@ class ExpressionLearnerManager:
                 os.makedirs(done_parent_dir, exist_ok=True)
                 logger.debug(f"为done.done创建父目录: {done_parent_dir}")
 
-            with open(done_flag, "w", encoding="utf-8") as f:
-                f.write("done\n")
+            async with aiofiles.open(done_flag, "w", encoding="utf-8") as f:
+                await f.write("done\n")
             logger.info(f"表达方式JSON迁移已完成，共迁移 {migrated_count} 个表达方式，已写入done.done标记文件")
         except PermissionError as e:
             logger.error(f"权限不足，无法写入done.done标记文件: {e}")

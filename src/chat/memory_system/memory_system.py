@@ -19,6 +19,9 @@ from src.chat.memory_system.memory_builder import MemoryBuilder, MemoryExtractio
 from src.chat.memory_system.memory_chunk import MemoryChunk
 from src.chat.memory_system.memory_fusion import MemoryFusionEngine
 from src.chat.memory_system.memory_query_planner import MemoryQueryPlanner
+
+# 全局背景任务集合
+_background_tasks = set()
 from src.chat.memory_system.message_collection_storage import MessageCollectionStorage
 
 
@@ -1611,7 +1614,9 @@ class MemorySystem:
     def start_hippocampus_sampling(self):
         """启动海马体采样"""
         if self.hippocampus_sampler:
-            asyncio.create_task(self.hippocampus_sampler.start_background_sampling())
+            task = asyncio.create_task(self.hippocampus_sampler.start_background_sampling())
+            _background_tasks.add(task)
+            task.add_done_callback(_background_tasks.discard)
             logger.info("海马体后台采样已启动")
         else:
             logger.warning("海马体采样器未初始化，无法启动采样")

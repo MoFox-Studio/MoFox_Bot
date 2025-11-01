@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 
 # import tqdm
+import aiofiles
 import faiss
 import numpy as np
 import orjson
@@ -194,8 +195,8 @@ class EmbeddingStore:
                 test_vectors[str(idx)] = []
 
 
-        with open(self.get_test_file_path(), "w", encoding="utf-8") as f:
-            f.write(orjson.dumps(test_vectors, option=orjson.OPT_INDENT_2).decode("utf-8"))
+        async with aiofiles.open(self.get_test_file_path(), "w", encoding="utf-8") as f:
+            await f.write(orjson.dumps(test_vectors, option=orjson.OPT_INDENT_2).decode("utf-8"))
 
         logger.info("测试字符串嵌入向量保存完成")
 

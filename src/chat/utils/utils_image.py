@@ -7,6 +7,7 @@ import time
 import uuid
 from typing import Any
 
+import aiofiles
 import numpy as np
 from PIL import Image
 from rich.traceback import install
@@ -198,8 +199,8 @@ class ImageManager:
                     os.makedirs(emoji_dir, exist_ok=True)
                     file_path = os.path.join(emoji_dir, filename)
 
-                    with open(file_path, "wb") as f:
-                        f.write(image_bytes)
+                    async with aiofiles.open(file_path, "wb") as f:
+                        await f.write(image_bytes)
                     logger.info(f"新表情包已保存至待注册目录: {file_path}")
                 except Exception as e:
                     logger.error(f"保存待注册表情包文件失败: {e!s}")
@@ -436,8 +437,8 @@ class ImageManager:
                     os.makedirs(image_dir, exist_ok=True)
                     file_path = os.path.join(image_dir, filename)
 
-                    with open(file_path, "wb") as f:
-                        f.write(image_bytes)
+                    async with aiofiles.open(file_path, "wb") as f:
+                        await f.write(image_bytes)
 
                     new_img = Images(
                         image_id=image_id,
