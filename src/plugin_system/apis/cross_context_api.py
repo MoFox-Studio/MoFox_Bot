@@ -32,8 +32,10 @@ async def get_context_group(chat_id: str) -> ContextGroup | None:
     if is_group:
         assert current_stream.group_info is not None
         current_chat_raw_id = current_stream.group_info.group_id
-    else:
+    elif current_stream.user_info:
         current_chat_raw_id = current_stream.user_info.user_id
+    else:
+        return None
     current_type = "group" if is_group else "private"
 
     for group in global_config.cross_context.groups:

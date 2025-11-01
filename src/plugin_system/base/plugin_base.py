@@ -331,7 +331,7 @@ class PluginBase(ABC):
 
         try:
             with open(user_config_path, encoding="utf-8") as f:
-                user_config: ClassVar = toml.load(f) or {}
+                user_config: dict[str, Any] = toml.load(f) or {}
         except Exception as e:
             logger.error(f"{self.log_prefix} 加载用户配置文件 {user_config_path} 失败: {e}", exc_info=True)
             self.config = self._generate_config_from_schema()  # 加载失败时使用默认 schema

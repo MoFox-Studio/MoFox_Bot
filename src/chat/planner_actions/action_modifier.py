@@ -2,9 +2,9 @@ import asyncio
 import hashlib
 import random
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from src.chat.message_receive.chat_stream import get_chat_manager
+from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.planner_actions.action_manager import ChatterActionManager
 from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
 from src.common.data_models.message_manager_data_model import StreamContext
@@ -32,7 +32,7 @@ class ActionModifier:
         """初始化动作处理器"""
         self.chat_id = chat_id
         # chat_stream 和 log_prefix 将在异步方法中初始化
-        self.chat_stream = None  # type: ignore
+        self.chat_stream: ChatStream | None = None
         self.log_prefix = f"[{chat_id}]"
 
         self.action_manager = action_manager
@@ -111,7 +111,7 @@ class ActionModifier:
                 logger.debug(f"{self.log_prefix} - 移除 {action_name}: {reason}")
 
         message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
-            chat_id=self.chat_stream.stream_id,
+            chat_id=self.chat_id,
             timestamp=time.time(),
             limit=min(int(global_config.chat.max_context_size * 0.33), 10),
         )
@@ -137,6 +137,9 @@ class ActionModifier:
                     logger.debug(f"{self.log_prefix}阶段一移除动作: {disabled_action_name}，原因: 用户自行禁用")
 
         # === 第二阶段：检查动作的关联类型 ===
+        if not self.chat_stream:
+            logger.error(f"{self.log_prefix} chat_stream 未初始化，无法执行第二阶段")
+            return
         chat_context = self.chat_stream.context_manager.context
         current_actions_s2 = self.action_manager.get_using_actions()
         type_mismatched_actions = self._check_action_associated_types(current_actions_s2, chat_context)
@@ -209,6 +212,7 @@ class ActionModifier:
         deactivated_actions = []
 
         # 获取 Action 类注册表
+        from src.plugin_system.base.base_action import BaseAction
         from src.plugin_system.base.component_types import ComponentType
         from src.plugin_system.core.component_registry import component_registry
 
@@ -232,15 +236,13 @@ class ActionModifier:
             try:
                 # 创建一个最小化的实例
                 action_instance = object.__new__(action_class)
+                # 使用 cast 来“欺骗”类型检查器
+                action_instance = cast(BaseAction, action_instance)
                 # 设置必要的属性
-                action_instance.action_name = action_name
                 action_instance.log_prefix = self.log_prefix
-                # 设置聊天内容，用于激活判断
-                action_instance._activation_chat_content = chat_content
-
-                # 调用 go_activate 方法（不再需要传入 chat_content）
+                # 调用 go_activate 方法
                 task = action_instance.go_activate(
-                    llm_judge_model=self.llm_judge,
+                    llm_judge_model=self.llm_judge
                 )
                 activation_tasks.append(task)
                 task_action_names.append(action_name)

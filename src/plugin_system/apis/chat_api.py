@@ -172,6 +172,7 @@ class ChatManager:
             for stream in get_chat_manager().streams.values():
                 if (
                     not stream.group_info
+                    and stream.user_info
                     and str(stream.user_info.user_id) == str(user_id)
                     and stream.platform == platform
                 ):
