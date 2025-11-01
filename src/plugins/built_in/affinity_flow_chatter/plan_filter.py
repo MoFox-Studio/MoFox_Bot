@@ -254,15 +254,7 @@ class ChatterPlanFilter:
                 plan
             )
 
-            actions_before_now = await get_actions_by_timestamp_with_chat(
-                chat_id=plan.chat_id,
-                timestamp_start=time.time() - 3600,
-                timestamp_end=time.time(),
-                limit=5,
-            )
-
-            actions_before_now_block = build_readable_actions(actions=actions_before_now)
-            actions_before_now_block = f"你刚刚选择并执行过的action是：\n{actions_before_now_block}"
+            actions_before_now_block = ""
 
             self.last_obs_time_mark = time.time()
 
@@ -285,6 +277,7 @@ class ChatterPlanFilter:
 动作描述：不进行回复，等待合适的回复时机
 - 当你刚刚发送了消息，没有人回复时，选择no_reply
 - 当你一次发送了太多消息，为了避免打扰聊天节奏，选择no_reply
+- 在认为对方话没有讲完的时候选择这个
 {{
     "action": "no_reply",
     "reason":"不回复的原因"
