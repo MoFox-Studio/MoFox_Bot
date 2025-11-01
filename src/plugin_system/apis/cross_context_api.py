@@ -27,11 +27,15 @@ async def get_context_group(chat_id: str) -> ContextGroup | None:
         return None
 
     is_group = current_stream.group_info is not None
+    if not is_group and not current_stream.user_info:
+        return None
     if is_group:
         assert current_stream.group_info is not None
         current_chat_raw_id = current_stream.group_info.group_id
-    else:
+    elif current_stream.user_info:
         current_chat_raw_id = current_stream.user_info.user_id
+    else:
+        return None
     current_type = "group" if is_group else "private"
 
     for group in global_config.cross_context.groups:
@@ -183,9 +187,10 @@ async def build_cross_context_s4u(
                     blacklisted_streams.add(stream_id)
             except ValueError:
                 logger.warning(f"无效的S4U黑名单格式: {chat_str}")
-        for stream_id in chat_manager.streams:
-            if stream_id != chat_stream.stream_id and stream_id not in blacklisted_streams:
-                streams_to_scan.append(stream_id)
+        streams_to_scan.extend(
+            stream_id for stream_id in chat_manager.streams
+            if stream_id != chat_stream.stream_id and stream_id not in blacklisted_streams
+        )
 
     logger.debug(f"[S4U] Found {len(streams_to_scan)} group streams to scan.")
 

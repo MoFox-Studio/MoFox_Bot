@@ -39,7 +39,7 @@ class SingleStreamContextManager:
         # 标记是否已初始化历史消息
         self._history_initialized = False
 
-        logger.info(f"[新建] 单流上下文管理器初始化: {stream_id} (id={id(self)})")
+        logger.debug(f"单流上下文管理器初始化: {stream_id}")
 
         # 异步初始化历史消息（不阻塞构造函数）
         asyncio.create_task(self._initialize_history_from_db())
@@ -237,7 +237,7 @@ class SingleStreamContextManager:
                     else:
                         setattr(self.context, attr, time.time())
             await self._update_stream_energy()
-            logger.info(f"清空单流上下文: {self.stream_id}")
+            logger.debug(f"清空单流上下文: {self.stream_id}")
             return True
         except Exception as e:
             logger.error(f"清空单流上下文失败 {self.stream_id}: {e}", exc_info=True)
@@ -303,15 +303,15 @@ class SingleStreamContextManager:
     async def _initialize_history_from_db(self):
         """从数据库初始化历史消息到context中"""
         if self._history_initialized:
-            logger.info(f"历史消息已初始化，跳过: {self.stream_id}")
+            logger.debug(f"历史消息已初始化，跳过: {self.stream_id}")
             return
 
         # 立即设置标志，防止并发重复加载
-        logger.info(f"设置历史初始化标志: {self.stream_id}")
+        logger.debug(f"设置历史初始化标志: {self.stream_id}")
         self._history_initialized = True
 
         try:
-            logger.info(f"开始从数据库加载历史消息: {self.stream_id}")
+            logger.debug(f"开始从数据库加载历史消息: {self.stream_id}")
 
             from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat
 
@@ -339,7 +339,7 @@ class SingleStreamContextManager:
                         logger.warning(f"转换历史消息失败 (message_id={msg_dict.get('message_id', 'unknown')}): {e}")
                         continue
 
-                logger.info(f"成功从数据库加载 {len(self.context.history_messages)} 条历史消息到内存: {self.stream_id}")
+                logger.debug(f"成功从数据库加载 {len(self.context.history_messages)} 条历史消息到内存: {self.stream_id}")
             else:
                 logger.debug(f"没有历史消息需要加载: {self.stream_id}")
 

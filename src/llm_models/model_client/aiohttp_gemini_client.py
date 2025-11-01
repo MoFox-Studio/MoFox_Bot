@@ -372,10 +372,7 @@ def _default_normal_response_parser(
 
             # 解析文本内容
             if "content" in candidate and "parts" in candidate["content"]:
-                content_parts = []
-                for part in candidate["content"]["parts"]:
-                    if "text" in part:
-                        content_parts.append(part["text"])
+                content_parts = [part["text"] for part in candidate["content"]["parts"] if "text" in part]
 
                 if content_parts:
                     api_response.content = "".join(content_parts)

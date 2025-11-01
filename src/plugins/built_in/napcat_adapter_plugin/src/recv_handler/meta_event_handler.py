@@ -1,11 +1,12 @@
-from src.common.logger import get_logger
-
-logger = get_logger("napcat_adapter")
-from src.plugin_system.apis import config_api
-import time
 import asyncio
+import time
+
+from src.common.logger import get_logger
+from src.plugin_system.apis import config_api
 
 from . import MetaEventType
+
+logger = get_logger("napcat_adapter")
 
 
 class MetaEventHandler:

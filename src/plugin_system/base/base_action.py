@@ -3,7 +3,7 @@ import asyncio
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from src.chat.message_receive.chat_stream import ChatStream
 from src.common.data_models.database_data_model import DatabaseMessages
@@ -26,30 +26,30 @@ class BaseAction(ABC):
     新的激活机制 (推荐使用)
     ==================================================================================
     推荐通过重写 go_activate() 方法来自定义激活逻辑：
-    
+
     示例 1 - 关键词激活：
         async def go_activate(self, llm_judge_model=None) -> bool:
             return await self._keyword_match(["你好", "hello"])
-    
+
     示例 2 - LLM 判断激活：
         async def go_activate(self, llm_judge_model=None) -> bool:
             return await self._llm_judge_activation(
                 "当用户询问天气信息时激活",
                 llm_judge_model
             )
-    
+
     示例 3 - 组合多种条件：
         async def go_activate(self, llm_judge_model=None) -> bool:
             # 30% 随机概率，或者匹配关键词
             if await self._random_activation(0.3):
                 return True
             return await self._keyword_match(["表情", "emoji"])
-    
+
     提供的工具函数：
     - _random_activation(probability): 随机激活
     - _keyword_match(keywords, case_sensitive): 关键词匹配（自动获取聊天内容）
     - _llm_judge_activation(judge_prompt, llm_judge_model): LLM 判断（自动获取聊天内容）
-    
+
     注意：聊天内容会自动从实例属性中获取，无需手动传入。
 
     ==================================================================================
@@ -68,7 +68,7 @@ class BaseAction(ABC):
     ==================================================================================
     - mode_enable: 启用的聊天模式
     - parallel_action: 是否允许并行执行
-    
+
     二步Action相关属性：
     - is_two_step_action: 是否为二步Action
     - step_one_description: 第一步的描述
@@ -80,7 +80,7 @@ class BaseAction(ABC):
     """是否为二步Action。如果为True，Action将分两步执行：第一步选择操作，第二步执行具体操作"""
     step_one_description: str = ""
     """第一步的描述，用于向LLM展示Action的基本功能"""
-    sub_actions: list[tuple[str, str, dict[str, str]]] = []
+    sub_actions: ClassVar[list[tuple[str, str, dict[str, str]]] ] = []
     """子Action列表，格式为[(子Action名, 子Action描述, 子Action参数)]。仅在二步Action中使用"""
 
     def __init__(
@@ -110,7 +110,7 @@ class BaseAction(ABC):
             **kwargs: 其他参数
         """
         if plugin_config is None:
-            plugin_config = {}
+            plugin_config: ClassVar = {}
         self.action_data = action_data
         self.reasoning = reasoning
         self.cycle_timers = cycle_timers
@@ -489,7 +489,7 @@ class BaseAction(ABC):
 
             plugin_config = component_registry.get_plugin_config(component_info.plugin_name)
             # 3. 实例化被调用的Action
-            action_params = {
+            action_params: ClassVar = {
                 "action_data": called_action_data,
                 "reasoning": f"Called by {self.action_name}",
                 "cycle_timers": self.cycle_timers,
@@ -615,9 +615,9 @@ class BaseAction(ABC):
 
     def _get_chat_content(self) -> str:
         """获取聊天内容用于激活判断
-        
+
         从实例属性中获取聊天内容。子类可以重写此方法来自定义获取逻辑。
-        
+
         Returns:
             str: 聊天内容
         """
@@ -645,7 +645,7 @@ class BaseAction(ABC):
         也可以使用提供的工具函数来简化常见的激活判断。
 
         默认实现会检查类属性中的激活类型配置，提供向后兼容支持。
-        
+
         聊天内容会自动从实例属性中获取，不需要手动传入。
 
         Args:
@@ -721,7 +721,7 @@ class BaseAction(ABC):
         case_sensitive: bool = False,
     ) -> bool:
         """关键词匹配工具函数
-        
+
         聊天内容会自动从实例属性中获取。
 
         Args:
@@ -742,7 +742,7 @@ class BaseAction(ABC):
         if not case_sensitive:
             search_text = search_text.lower()
 
-        matched_keywords = []
+        matched_keywords: ClassVar = []
         for keyword in keywords:
             check_keyword = keyword if case_sensitive else keyword.lower()
             if check_keyword in search_text:
@@ -766,7 +766,7 @@ class BaseAction(ABC):
 
         使用 LLM 来判断是否应该激活此 Action。
         会自动构建完整的判断提示词，只需要提供核心判断逻辑即可。
-        
+
         聊天内容会自动从实例属性中获取。
 
         Args:

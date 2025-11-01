@@ -1,26 +1,28 @@
 import json
-import time
 import random
-import websockets as Server
+import time
 import uuid
+from typing import Any, Dict, Optional, Tuple
+
+import websockets as Server
 from maim_message import (
-    UserInfo,
-    GroupInfo,
-    Seg,
     BaseMessageInfo,
+    GroupInfo,
     MessageBase,
+    Seg,
+    UserInfo,
 )
-from typing import Dict, Any, Tuple, Optional
+
+from src.common.logger import get_logger
 from src.plugin_system.apis import config_api
 
 from . import CommandType
+from .recv_handler.message_sending import message_send_instance
 from .response_pool import get_response
-from src.common.logger import get_logger
+from .utils import convert_image_to_gif, get_image_format
+from .websocket_manager import websocket_manager
 
 logger = get_logger("napcat_adapter")
-from .utils import get_image_format, convert_image_to_gif
-from .recv_handler.message_sending import message_send_instance
-from .websocket_manager import websocket_manager
 
 
 class SendHandler:
@@ -547,7 +549,7 @@ class SendHandler:
             set_like = bool(args["set"])
         except (KeyError, ValueError) as e:
             logger.error(f"处理表情回应命令时发生错误: {e}, 原始参数: {args}")
-            raise ValueError(f"缺少必需参数或参数类型错误: {e}")
+            raise ValueError(f"缺少必需参数或参数类型错误: {e}") from e
 
         return (
             CommandType.SET_EMOJI_LIKE.value,
@@ -567,8 +569,8 @@ class SendHandler:
         try:
             user_id: int = int(args["qq_id"])
             times: int = int(args["times"])
-        except (KeyError, ValueError):
-            raise ValueError("缺少必需参数: qq_id 或 times")
+        except (KeyError, ValueError) as e:
+            raise ValueError("缺少必需参数: qq_id 或 times") from e
 
         return (
             CommandType.SEND_LIKE.value,

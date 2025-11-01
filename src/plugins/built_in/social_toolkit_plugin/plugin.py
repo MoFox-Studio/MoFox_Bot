@@ -152,12 +152,12 @@ class PokeAction(BaseAction):
     parallel_action = True
 
     # === 功能描述（必须填写）===
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "user_name": "需要戳一戳的用户的名字 (可选)",
         "user_id": "需要戳一戳的用户的ID (可选，优先级更高)",
         "times": "需要戳一戳的次数 (默认为 1)",
     }
-    action_require = ["当需要戳某个用户时使用", "当你想提醒特定用户时使用"]
+    action_require: ClassVar[list] = ["当需要戳某个用户时使用", "当你想提醒特定用户时使用"]
     llm_judge_prompt = """
     判定是否需要使用戳一戳动作的条件：
     1. **互动时机**: 这是一个有趣的互动方式，可以在想提醒某人，或者单纯想开个玩笑时使用。
@@ -167,7 +167,7 @@ class PokeAction(BaseAction):
 
     请根据上述规则，回答“是”或“否”。
     """
-    associated_types = ["text"]
+    associated_types: ClassVar[list[str]] = ["text"]
 
     async def execute(self) -> tuple[bool, str]:
         """执行戳一戳的动作"""
@@ -225,10 +225,10 @@ class SetEmojiLikeAction(BaseAction):
     parallel_action = True
 
     # === 功能描述（必须填写）===
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "set": "是否设置回应 (True/False)",
     }
-    action_require = [
+    action_require: ClassVar[list] = [
         "当需要对一个已存在消息进行‘贴表情’回应时使用",
         "这是一个对旧消息的操作，而不是发送新消息",
     ]
@@ -240,10 +240,10 @@ class SetEmojiLikeAction(BaseAction):
 
     请回答"是"或"否"。
     """
-    associated_types = ["text"]
+    associated_types: ClassVar[list[str]] = ["text"]
 
     # 重新启用完整的表情库
-    emoji_options = []
+    emoji_options: ClassVar[list] = []
     for name in qq_face.values():
         match = re.search(r"\[表情：(.+?)\]", name)
         if match:
@@ -359,14 +359,14 @@ class RemindAction(BaseAction):
     action_name = "set_reminder"
     action_description = "根据用户的对话内容，智能地设置一个未来的提醒事项。"
     activation_type = ActionActivationType.KEYWORD
-    activation_keywords = ["提醒", "叫我", "记得", "别忘了"]
+    activation_keywords: ClassVar[list[str]] = ["提醒", "叫我", "记得", "别忘了"]
     chat_type_allow = ChatType.ALL
     parallel_action = True
 
     # === LLM 判断与参数提取 ===
     llm_judge_prompt = ""
-    action_parameters = {}
-    action_require = [
+    action_parameters: ClassVar[dict] = {}
+    action_require: ClassVar[list] = [
         "当用户请求在未来的某个时间点提醒他/她或别人某件事时使用",
         "适用于包含明确时间信息和事件描述的对话",
         "例如：'10分钟后提醒我收快递'、'明天早上九点喊一下李四参加晨会'",
@@ -545,12 +545,12 @@ class SetEmojiLikePlugin(BasePlugin):
     # 插件基本信息
     plugin_name: str = "social_toolkit_plugin"  # 内部标识符
     enable_plugin: bool = True
-    dependencies: list[str] = []  # 插件依赖列表
-    python_dependencies: list[str] = []  # Python包依赖列表，现在使用内置API
+    dependencies: ClassVar[list[str]] = []  # 插件依赖列表
+    python_dependencies: ClassVar[list[str]] = []  # Python包依赖列表，现在使用内置API
     config_file_name: str = "config.toml"  # 配置文件名
 
     # 配置节描述
-    config_section_descriptions = {"plugin": "插件基本信息", "components": "插件组件"}
+    config_section_descriptions: ClassVar[dict] = {"plugin": "插件基本信息", "components": "插件组件"}
 
     # 配置Schema定义
     config_schema: ClassVar[dict] = {

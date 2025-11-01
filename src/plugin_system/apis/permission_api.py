@@ -61,7 +61,7 @@ class PermissionAPI:
     def __init__(self):
         self._permission_manager: IPermissionManager | None = None
         # 需要保留的前缀（视为绝对节点名，不再自动加 plugins.<plugin>. 前缀）
-        self.RESERVED_PREFIXES: tuple[str, ...] = "system."
+        self.RESERVED_PREFIXES: tuple[str, ...] = ("system.",)
         # 系统节点列表 (name, description, default_granted)
         self._SYSTEM_NODES: list[tuple[str, str, bool]] = [
             ("system.superuser", "系统超级管理员：拥有所有权限", False),
@@ -80,10 +80,14 @@ class PermissionAPI:
 
     async def check_permission(self, platform: str, user_id: str, permission_node: str) -> bool:
         self._ensure_manager()
+        if not self._permission_manager:
+            return False
         return await self._permission_manager.check_permission(UserInfo(platform, user_id), permission_node)
 
     async def is_master(self, platform: str, user_id: str) -> bool:
         self._ensure_manager()
+        if not self._permission_manager:
+            return False
         return await self._permission_manager.is_master(UserInfo(platform, user_id))
 
     async def register_permission_node(
@@ -109,6 +113,8 @@ class PermissionAPI:
         if original_name != node_name:
             logger.debug(f"规范化权限节点 '{original_name}' -> '{node_name}'")
         node = PermissionNode(node_name, description, plugin_name, default_granted)
+        if not self._permission_manager:
+            return False
         return await self._permission_manager.register_permission_node(node)
 
     async def register_system_permission_node(
@@ -141,18 +147,26 @@ class PermissionAPI:
 
     async def grant_permission(self, platform: str, user_id: str, permission_node: str) -> bool:
         self._ensure_manager()
+        if not self._permission_manager:
+            return False
         return await self._permission_manager.grant_permission(UserInfo(platform, user_id), permission_node)
 
     async def revoke_permission(self, platform: str, user_id: str, permission_node: str) -> bool:
         self._ensure_manager()
+        if not self._permission_manager:
+            return False
         return await self._permission_manager.revoke_permission(UserInfo(platform, user_id), permission_node)
 
     async def get_user_permissions(self, platform: str, user_id: str) -> list[str]:
         self._ensure_manager()
+        if not self._permission_manager:
+            return []
         return await self._permission_manager.get_user_permissions(UserInfo(platform, user_id))
 
     async def get_all_permission_nodes(self) -> list[dict[str, Any]]:
         self._ensure_manager()
+        if not self._permission_manager:
+            return []
         nodes = await self._permission_manager.get_all_permission_nodes()
         return [
             {
@@ -166,6 +180,8 @@ class PermissionAPI:
 
     async def get_plugin_permission_nodes(self, plugin_name: str) -> list[dict[str, Any]]:
         self._ensure_manager()
+        if not self._permission_manager:
+            return []
         nodes = await self._permission_manager.get_plugin_permission_nodes(plugin_name)
         return [
             {

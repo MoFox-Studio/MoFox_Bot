@@ -117,10 +117,7 @@ class PersonalityEvaluatorDirect:
         使用 DeepSeek AI 评估用户对特定场景的反应
         """
         # 构建维度描述
-        dimension_descriptions = []
-        for dim in dimensions:
-            if desc := FACTOR_DESCRIPTIONS.get(dim, ""):
-                dimension_descriptions.append(f"- {dim}：{desc}")
+        dimension_descriptions = [f"- {dim}：{desc}" for dim in dimensions if (desc := FACTOR_DESCRIPTIONS.get(dim, ""))]
 
         dimensions_text = "\n".join(dimension_descriptions)
 

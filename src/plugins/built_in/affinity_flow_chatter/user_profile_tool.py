@@ -5,13 +5,13 @@
 """
 
 import time
-from typing import Any
+from typing import Any, ClassVar
 
 import orjson
 from sqlalchemy import select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import UserRelationships
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import UserRelationships
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -22,7 +22,7 @@ logger = get_logger("user_profile_tool")
 
 class UserProfileTool(BaseTool):
     """用户画像更新工具
-    
+
     使用二步调用机制：
     1. LLM决定是否调用工具并传入初步参数
     2. 工具内部调用LLM，结合现有数据和传入参数，决定最终更新内容
@@ -30,7 +30,7 @@ class UserProfileTool(BaseTool):
 
     name = "update_user_profile"
     description = "当你通过聊天记录对某个用户产生了新的认识或印象时使用此工具，更新该用户的画像信息。包括：用户别名、你对TA的主观印象、TA的偏好兴趣、你对TA的好感程度。调用时机：当你发现用户透露了新的个人信息、展现了性格特点、表达了兴趣偏好，或者你们的互动让你对TA的看法发生变化时。"
-    parameters = [
+    parameters: ClassVar = [
         ("target_user_id", ToolParamType.STRING, "目标用户的ID（必须）", True, None),
         ("user_aliases", ToolParamType.STRING, "该用户的昵称或别名，如果发现用户自称或被他人称呼的其他名字时填写，多个别名用逗号分隔（可选）", False, None),
         ("impression_description", ToolParamType.STRING, "你对该用户的整体印象和性格感受，例如'这个用户很幽默开朗'、'TA对技术很有热情'等。当你通过对话了解到用户的性格、态度、行为特点时填写（可选）", False, None),
@@ -51,7 +51,7 @@ class UserProfileTool(BaseTool):
             )
         except AttributeError:
             # 降级处理
-            available_models = [
+            available_models: ClassVar = [
                 attr for attr in dir(model_config.model_task_config)
                 if not attr.startswith("_") and attr != "model_dump"
             ]
@@ -68,10 +68,10 @@ class UserProfileTool(BaseTool):
 
     async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:
         """执行用户画像更新
-        
+
         Args:
             function_args: 工具参数
-            
+
         Returns:
             dict: 执行结果
         """
@@ -131,7 +131,7 @@ class UserProfileTool(BaseTool):
             await self._update_user_profile_in_db(target_user_id, final_profile)
 
             # 构建返回信息
-            updates = []
+            updates: ClassVar = []
             if final_profile.get("user_aliases"):
                 updates.append(f"别名: {final_profile['user_aliases']}")
             if final_profile.get("relationship_text"):
@@ -160,10 +160,10 @@ class UserProfileTool(BaseTool):
 
     async def _get_user_profile(self, user_id: str) -> dict[str, Any]:
         """从数据库获取用户现有画像
-        
+
         Args:
             user_id: 用户ID
-            
+
         Returns:
             dict: 用户画像数据
         """
@@ -210,7 +210,7 @@ class UserProfileTool(BaseTool):
         new_score: float | None
     ) -> dict[str, Any] | None:
         """使用LLM决策最终的用户画像内容
-        
+
         Args:
             target_user_id: 目标用户ID
             existing_profile: 现有画像数据
@@ -218,7 +218,7 @@ class UserProfileTool(BaseTool):
             new_impression: LLM传入的新印象
             new_keywords: LLM传入的新关键词
             new_score: LLM传入的新分数
-            
+
         Returns:
             dict: 最终决定的画像数据，如果失败返回None
         """
@@ -296,7 +296,7 @@ class UserProfileTool(BaseTool):
 
     async def _update_user_profile_in_db(self, user_id: str, profile: dict[str, Any]):
         """更新数据库中的用户画像
-        
+
         Args:
             user_id: 用户ID
             profile: 画像数据
@@ -338,10 +338,10 @@ class UserProfileTool(BaseTool):
 
     def _clean_llm_json_response(self, response: str) -> str:
         """清理LLM响应，移除可能的JSON格式标记
-        
+
         Args:
             response: LLM原始响应
-            
+
         Returns:
             str: 清理后的JSON字符串
         """

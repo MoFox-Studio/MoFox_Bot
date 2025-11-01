@@ -3,7 +3,7 @@ Web search tool implementation
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from src.common.cache_manager import tool_cache
 from src.common.logger import get_logger
@@ -31,7 +31,7 @@ class WebSurfingTool(BaseTool):
         "用于执行网络搜索。当用户明确要求搜索，或者需要获取关于公司、产品、事件的最新信息、新闻或动态时，必须使用此工具"
     )
     available_for_llm: bool = True
-    parameters = [
+    parameters: ClassVar[list] = [
         ("query", ToolParamType.STRING, "要搜索的关键词或问题。", True, None),
         ("num_results", ToolParamType.INTEGER, "期望每个搜索引擎返回的搜索结果数量，默认为5。", False, None),
         (
@@ -58,6 +58,7 @@ class WebSurfingTool(BaseTool):
     async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:
         query = function_args.get("query")
         if not query:
+
             return {"error": "搜索查询不能为空。"}
 
         # 获取当前文件路径用于缓存键
@@ -105,6 +106,8 @@ class WebSurfingTool(BaseTool):
                 search_tasks.append(engine.search(custom_args))
 
         if not search_tasks:
+
+
             return {"error": "没有可用的搜索引擎。"}
 
         try:
@@ -137,6 +140,7 @@ class WebSurfingTool(BaseTool):
         for engine_name in enabled_engines:
             engine = self.engines.get(engine_name)
             if not engine or not engine.is_available():
+
                 continue
 
             try:
@@ -163,6 +167,7 @@ class WebSurfingTool(BaseTool):
         for engine_name in enabled_engines:
             engine = self.engines.get(engine_name)
             if not engine or not engine.is_available():
+
                 continue
 
             try:

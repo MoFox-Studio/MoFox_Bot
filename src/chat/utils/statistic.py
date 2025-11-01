@@ -3,8 +3,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from src.common.database.sqlalchemy_database_api import db_get, db_query, db_save
-from src.common.database.sqlalchemy_models import LLMUsage, Messages, OnlineTime
+from src.common.database.compatibility import db_get, db_query, db_save
+from src.common.database.core.models import LLMUsage, Messages, OnlineTime
 from src.common.logger import get_logger
 from src.manager.async_task_manager import AsyncTask
 from src.manager.local_store_manager import local_storage
@@ -102,8 +102,9 @@ class OnlineTimeRecordTask(AsyncTask):
                     )
                 else:
                     # 创建新记录
-                    new_record = await db_save(
+                    new_record = await db_query(
                         model_class=OnlineTime,
+                        query_type="create",
                         data={
                             "timestamp": str(current_time),
                             "duration": 5,  # 初始时长为5分钟
@@ -234,7 +235,7 @@ class StatisticOutputTask(AsyncTask):
                 logger.exception(f"后台统计数据输出过程中发生异常：{e}")
 
         # 创建后台任务，立即返回
-        asyncio.create_task(_async_collect_and_output())
+        asyncio.create_task(_async_collect_and_output())  # noqa: RUF006
 
     # -- 以下为统计数据收集方法 --
 

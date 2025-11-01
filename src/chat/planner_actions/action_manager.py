@@ -51,7 +51,7 @@ class ChatterActionManager:
         chat_stream: ChatStream,
         log_prefix: str,
         shutting_down: bool = False,
-        action_message: dict | None = None,
+        action_message: DatabaseMessages | None = None,
     ) -> BaseAction | None:
         """
         创建动作处理器实例
@@ -143,7 +143,7 @@ class ChatterActionManager:
         self,
         action_name: str,
         chat_id: str,
-        target_message: dict | DatabaseMessages | None = None,
+        target_message: DatabaseMessages | None = None,
         reasoning: str = "",
         action_data: dict | None = None,
         thinking_id: str | None = None,
@@ -204,7 +204,7 @@ class ChatterActionManager:
                         action_prompt_display=reason,
                     )
                 else:
-                    asyncio.create_task(
+                    asyncio.create_task(  # noqa: RUF006
                         database_api.store_action_info(
                             chat_stream=chat_stream,
                             action_build_into_prompt=False,
@@ -217,7 +217,7 @@ class ChatterActionManager:
                     )
 
                 # 自动清空所有未读消息
-                asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "no_reply"))
+                asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "no_reply"))  # noqa: RUF006
 
                 return {"action_type": "no_reply", "success": True, "reply_text": "", "command": ""}
 
@@ -235,14 +235,14 @@ class ChatterActionManager:
 
                 # 记录执行的动作到目标消息
                 if success:
-                    asyncio.create_task(
+                    asyncio.create_task(  # noqa: RUF006
                         self._record_action_to_message(chat_stream, action_name, target_message, action_data)
                     )
                     # 自动清空所有未读消息
                     if clear_unread_messages:
-                        asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, action_name))
+                        asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, action_name))  # noqa: RUF006
                     # 重置打断计数
-                    asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))
+                    asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))  # noqa: RUF006
 
                 return {
                     "action_type": action_name,
@@ -264,10 +264,8 @@ class ChatterActionManager:
                     )
                     if not success or not response_set:
                         # 安全地获取 processed_plain_text
-                        if isinstance(target_message, DatabaseMessages):
+                        if target_message:
                             msg_text = target_message.processed_plain_text or "未知消息"
-                        elif target_message:
-                            msg_text = target_message.get("processed_plain_text", "未知消息")
                         else:
                             msg_text = "未知消息"
 
@@ -295,13 +293,13 @@ class ChatterActionManager:
                 )
 
                 # 记录回复动作到目标消息
-                asyncio.create_task(self._record_action_to_message(chat_stream, "reply", target_message, action_data))
+                asyncio.create_task(self._record_action_to_message(chat_stream, "reply", target_message, action_data))  # noqa: RUF006
 
                 if clear_unread_messages:
-                    asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "reply"))
+                    asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "reply"))  # noqa: RUF006
 
                 # 回复成功，重置打断计数
-                asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))
+                asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))  # noqa: RUF006
 
                 return {"action_type": "reply", "success": True, "reply_text": reply_text, "loop_info": loop_info}
 
@@ -336,10 +334,7 @@ class ChatterActionManager:
             # 获取目标消息ID
             target_message_id = None
             if target_message:
-                if isinstance(target_message, DatabaseMessages):
-                    target_message_id = target_message.message_id
-                elif isinstance(target_message, dict):
-                    target_message_id = target_message.get("message_id")
+                target_message_id = target_message.message_id
             elif action_data and isinstance(action_data, dict):
                 target_message_id = action_data.get("target_message_id")
 
@@ -508,14 +503,12 @@ class ChatterActionManager:
         person_info_manager = get_person_info_manager()
 
         # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
-        if isinstance(action_message, DatabaseMessages):
+        if action_message:
             platform = action_message.chat_info.platform
             user_id = action_message.user_info.user_id
         else:
-            platform = action_message.get("chat_info_platform")
-            if platform is None:
-                platform = getattr(chat_stream, "platform", "unknown")
-            user_id = action_message.get("user_id", "")
+            platform = getattr(chat_stream, "platform", "unknown")
+            user_id = ""
 
         # 获取用户信息并生成回复提示
         person_id = person_info_manager.get_person_id(
@@ -593,11 +586,8 @@ class ChatterActionManager:
         # 根据新消息数量决定是否需要引用回复
         reply_text = ""
         # 检查是否为主动思考消息
-        if isinstance(message_data, DatabaseMessages):
-            # DatabaseMessages 对象没有 message_type 字段，默认为 False
-            is_proactive_thinking = False
-        elif message_data:
-            is_proactive_thinking = message_data.get("message_type") == "proactive_thinking"
+        if message_data:
+            is_proactive_thinking = getattr(message_data, "message_type", None) == "proactive_thinking"
         else:
             is_proactive_thinking = True
 
@@ -628,7 +618,7 @@ class ChatterActionManager:
             if not first_replied:
                 # 决定是否引用回复
                 is_private_chat = not bool(chat_stream.group_info)
-                
+
                 # 如果明确指定了should_quote_reply，则使用指定值
                 if should_quote_reply is not None:
                     set_reply_flag = should_quote_reply and bool(message_data)
@@ -641,7 +631,7 @@ class ChatterActionManager:
                     logger.debug(
                         f"📤 [ActionManager] 使用默认引用逻辑: 默认不引用(is_private={is_private_chat})"
                     )
-                
+
                 logger.debug(
                     f"📤 [ActionManager] 准备发送第一段回复。message_data: {message_data}, set_reply: {set_reply_flag}"
                 )

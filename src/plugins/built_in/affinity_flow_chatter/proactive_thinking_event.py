@@ -3,6 +3,9 @@
 监听bot的reply事件，在reply后重置对应聊天流的主动思考定时任务
 """
 
+
+from typing import ClassVar
+
 from src.common.logger import get_logger
 from src.plugin_system import BaseEventHandler, EventType
 from src.plugin_system.base.base_event import HandlerResult
@@ -23,7 +26,7 @@ class ProactiveThinkingReplyHandler(BaseEventHandler):
 
     handler_name: str = "proactive_thinking_reply_handler"
     handler_description: str = "监听reply事件，重置主动思考定时任务"
-    init_subscribe: list[EventType | str] = [EventType.AFTER_SEND]
+    init_subscribe: ClassVar[list[EventType | str]] = [EventType.AFTER_SEND]
 
     async def execute(self, kwargs: dict | None) -> HandlerResult:
         """处理reply事件
@@ -90,7 +93,7 @@ class ProactiveThinkingMessageHandler(BaseEventHandler):
 
     handler_name: str = "proactive_thinking_message_handler"
     handler_description: str = "监听消息事件，为新聊天流创建主动思考任务"
-    init_subscribe: list[EventType | str] = [EventType.ON_MESSAGE]
+    init_subscribe: ClassVar[list[EventType | str]] = [EventType.ON_MESSAGE]
 
     async def execute(self, kwargs: dict | None) -> HandlerResult:
         """处理消息事件

@@ -2,6 +2,8 @@
 阅读说说动作组件
 """
 
+from typing import ClassVar
+
 from src.common.logger import get_logger
 from src.plugin_system import ActionActivationType, BaseAction, ChatMode
 from src.plugin_system.apis import generator_api
@@ -21,9 +23,9 @@ class ReadFeedAction(BaseAction):
     action_description: str = "读取好友的最新动态并进行评论点赞"
     activation_type: ActionActivationType = ActionActivationType.KEYWORD
     mode_enable: ChatMode = ChatMode.ALL
-    activation_keywords: list = ["看说说", "看空间", "看动态", "刷空间"]
+    activation_keywords: ClassVar[list] = ["看说说", "看空间", "看动态", "刷空间"]
 
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "target_name": "需要阅读动态的好友的昵称",
         "user_name": "请求你阅读动态的好友的昵称",
     }

@@ -30,25 +30,12 @@ async def send_message(message: MessageSending, show_log=True) -> bool:
             from src.plugin_system.core.event_manager import event_manager
 
             if message.chat_stream:
-                logger.info(f"[发送完成] 准备触发 AFTER_SEND 事件，stream_id={message.chat_stream.stream_id}")
-
-                # 使用 asyncio.create_task 来异步触发事件，避免阻塞
-                async def trigger_event_async():
-                    try:
-                        logger.info("[事件触发] 开始异步触发 AFTER_SEND 事件")
-                        await event_manager.trigger_event(
-                            EventType.AFTER_SEND,
-                            permission_group="SYSTEM",
-                            stream_id=message.chat_stream.stream_id,
-                            message=message,
-                        )
-                        logger.info("[事件触发] AFTER_SEND 事件触发完成")
-                    except Exception as e:
-                        logger.error(f"[事件触发] 异步触发事件失败: {e}", exc_info=True)
-
-                # 创建异步任务，不等待完成
-                asyncio.create_task(trigger_event_async())
-                logger.info("[发送完成] AFTER_SEND 事件已提交到异步任务")
+                await event_manager.trigger_event(
+                    EventType.AFTER_SEND,
+                    permission_group="SYSTEM",
+                    stream_id=message.chat_stream.stream_id,
+                    message=message,
+                )
         except Exception as event_error:
             logger.error(f"触发 AFTER_SEND 事件时出错: {event_error}", exc_info=True)
 

@@ -22,17 +22,17 @@ logger = get_logger("message_processor")
 
 async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str, platform: str) -> DatabaseMessages:
     """从适配器消息字典处理并生成 DatabaseMessages
-    
+
     这个函数整合了原 MessageRecv 的所有处理逻辑：
     1. 解析 message_segment 并异步处理内容（图片、语音、视频等）
     2. 提取所有消息元数据
     3. 直接构造 DatabaseMessages 对象
-    
+
     Args:
         message_dict: MessageCQ序列化后的字典
         stream_id: 聊天流ID
         platform: 平台标识
-        
+
     Returns:
         DatabaseMessages: 处理完成的数据库消息对象
     """
@@ -98,7 +98,7 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
     mentioned_value = processing_state.get("is_mentioned")
     if isinstance(mentioned_value, bool):
         is_mentioned = mentioned_value
-    elif isinstance(mentioned_value, (int, float)):
+    elif isinstance(mentioned_value, int | float):
         is_mentioned = mentioned_value != 0
 
     db_message = DatabaseMessages(
@@ -151,12 +151,12 @@ async def process_message_from_dict(message_dict: dict[str, Any], stream_id: str
 
 async def _process_message_segments(segment: Seg, state: dict, message_info: BaseMessageInfo) -> str:
     """递归处理消息段，转换为文字描述
-    
+
     Args:
         segment: 要处理的消息段
         state: 处理状态字典（用于记录消息类型标记）
         message_info: 消息基础信息（用于某些处理逻辑）
-        
+
     Returns:
         str: 处理后的文本
     """
@@ -175,12 +175,12 @@ async def _process_message_segments(segment: Seg, state: dict, message_info: Bas
 
 async def _process_single_segment(segment: Seg, state: dict, message_info: BaseMessageInfo) -> str:
     """处理单个消息段
-    
+
     Args:
         segment: 消息段
         state: 处理状态字典
         message_info: 消息基础信息
-        
+
     Returns:
         str: 处理后的文本
     """
@@ -337,13 +337,13 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
 
 def _prepare_additional_config(message_info: BaseMessageInfo, is_notify: bool, is_public_notice: bool, notice_type: str | None) -> str | None:
     """准备 additional_config，包含 format_info 和 notice 信息
-    
+
     Args:
         message_info: 消息基础信息
         is_notify: 是否为notice消息
         is_public_notice: 是否为公共notice
         notice_type: notice类型
-        
+
     Returns:
         str | None: JSON 字符串格式的 additional_config，如果为空则返回 None
     """
@@ -387,10 +387,10 @@ def _prepare_additional_config(message_info: BaseMessageInfo, is_notify: bool, i
 
 def _extract_reply_from_segment(segment: Seg) -> str | None:
     """从消息段中提取reply_to信息
-    
+
     Args:
         segment: 消息段
-        
+
     Returns:
         str | None: 回复的消息ID，如果没有则返回None
     """
@@ -416,10 +416,10 @@ def _extract_reply_from_segment(segment: Seg) -> str | None:
 
 def get_message_info_from_db_message(db_message: DatabaseMessages) -> BaseMessageInfo:
     """从 DatabaseMessages 重建 BaseMessageInfo（用于需要 message_info 的遗留代码）
-    
+
     Args:
         db_message: DatabaseMessages 对象
-        
+
     Returns:
         BaseMessageInfo: 重建的消息信息对象
     """
@@ -466,7 +466,7 @@ def get_message_info_from_db_message(db_message: DatabaseMessages) -> BaseMessag
 
 def set_db_message_runtime_attr(db_message: DatabaseMessages, attr_name: str, value: Any) -> None:
     """安全地为 DatabaseMessages 设置运行时属性
-    
+
     Args:
         db_message: DatabaseMessages 对象
         attr_name: 属性名
@@ -477,12 +477,12 @@ def set_db_message_runtime_attr(db_message: DatabaseMessages, attr_name: str, va
 
 def get_db_message_runtime_attr(db_message: DatabaseMessages, attr_name: str, default: Any = None) -> Any:
     """安全地获取 DatabaseMessages 的运行时属性
-    
+
     Args:
         db_message: DatabaseMessages 对象
         attr_name: 属性名
         default: 默认值
-        
+
     Returns:
         属性值或默认值
     """

@@ -11,8 +11,10 @@ from sqlalchemy import select
 
 from src.chat.express.expression_selector import expression_selector
 from src.chat.utils.prompt import Prompt
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import ChatStreams
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import ChatStreams
+from src.common.database.api.crud import CRUDBase
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.individuality.individuality import Individuality
@@ -252,26 +254,26 @@ class ProactiveThinkingPlanner:
             logger.error(f"搜集上下文信息失败: {e}", exc_info=True)
             return None
 
+    @cached(ttl=300, key_prefix="stream_impression")  # 缓存5分钟
     async def _get_stream_impression(self, stream_id: str) -> dict[str, Any] | None:
-        """从数据库获取聊天流印象数据"""
+        """从数据库获取聊天流印象数据（带5分钟缓存）"""
         try:
-            async with get_db_session() as session:
-                stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)
-                result = await session.execute(stmt)
-                stream = result.scalar_one_or_none()
+            # 使用CRUD进行查询
+            crud = CRUDBase(ChatStreams)
+            stream = await crud.get_by(stream_id=stream_id)
 
-                if not stream:
-                    return None
+            if not stream:
+                return None
 
-                return {
-                    "stream_name": stream.group_name or "私聊",
-                    "stream_impression_text": stream.stream_impression_text or "",
-                    "stream_chat_style": stream.stream_chat_style or "",
-                    "stream_topic_keywords": stream.stream_topic_keywords or "",
-                    "stream_interest_score": float(stream.stream_interest_score)
-                    if stream.stream_interest_score
-                    else 0.5,
-                }
+            return {
+                "stream_name": stream.group_name or "私聊",
+                "stream_impression_text": stream.stream_impression_text or "",
+                "stream_chat_style": stream.stream_chat_style or "",
+                "stream_topic_keywords": stream.stream_topic_keywords or "",
+                "stream_interest_score": float(stream.stream_interest_score)
+                if stream.stream_interest_score
+                else 0.5,
+            }
 
         except Exception as e:
             logger.error(f"获取聊天流印象失败: {e}")

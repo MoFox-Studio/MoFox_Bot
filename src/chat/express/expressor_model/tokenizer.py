@@ -10,7 +10,7 @@ logger = get_logger("expressor.tokenizer")
 class Tokenizer:
     """文本分词器，支持中文Jieba分词"""
 
-    def __init__(self, stopwords: set = None, use_jieba: bool = True):
+    def __init__(self, stopwords: set | None = None, use_jieba: bool = True):
         """
         Args:
             stopwords: 停用词集合
@@ -21,7 +21,7 @@ class Tokenizer:
 
         if use_jieba:
             try:
-                import rjieba
+                import rjieba  # noqa: F401
 
                 # rjieba 会自动初始化，无需手动调用
                 logger.info("RJieba分词器初始化成功")

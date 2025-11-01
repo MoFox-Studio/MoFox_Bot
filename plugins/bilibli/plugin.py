@@ -4,7 +4,7 @@ Bilibili 视频观看体验工具
 支持哔哩哔哩视频链接解析和AI视频内容分析
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from src.common.logger import get_logger
 from src.plugin_system import BasePlugin, BaseTool, ComponentInfo, ConfigField, ToolParamType, register_plugin
@@ -21,7 +21,7 @@ class BilibiliTool(BaseTool):
     description = "观看用户分享的哔哩哔哩视频，以真实用户视角给出观看感受和评价"
     available_for_llm = True
 
-    parameters = [
+    parameters: ClassVar = [
         (
             "url",
             ToolParamType.STRING,
@@ -166,7 +166,7 @@ class BilibiliTool(BaseTool):
                     return "(有点长，适合闲时观看)"
                 else:
                     return "(超长视频，需要耐心)"
-            except:
+            except Exception:
                 return ""
         return ""
 
@@ -191,16 +191,16 @@ class BilibiliPlugin(BasePlugin):
 
     # 插件基本信息
     plugin_name: str = "bilibili_video_watcher"
-    enable_plugin: bool = False
+    enable_plugin: bool = True
     dependencies: list[str] = []
     python_dependencies: list[str] = []
     config_file_name: str = "config.toml"
 
     # 配置节描述
-    config_section_descriptions = {"plugin": "插件基本信息", "bilibili": "哔哩哔哩视频观看配置", "tool": "工具配置"}
+    config_section_descriptions: ClassVar[dict] = {"plugin": "插件基本信息", "bilibili": "哔哩哔哩视频观看配置", "tool": "工具配置"}
 
     # 配置Schema定义
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {
             "name": ConfigField(type=str, default="bilibili_video_watcher", description="插件名称"),
             "version": ConfigField(type=str, default="2.0.0", description="插件版本"),

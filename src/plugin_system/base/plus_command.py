@@ -5,13 +5,12 @@
 
 import re
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.apis import send_api
-from src.plugin_system.base.base_command import BaseCommand
 from src.plugin_system.base.command_args import CommandArgs
 from src.plugin_system.base.component_types import ChatType, ComponentType, PlusCommandInfo
 
@@ -42,7 +41,7 @@ class PlusCommand(ABC):
     command_description: str = ""
     """命令描述"""
 
-    command_aliases: list[str] = []
+    command_aliases: ClassVar[list[str] ] = []
     """命令别名列表，如 ['say', 'repeat']"""
 
     priority: int = 0
@@ -337,54 +336,6 @@ class PlusCommand(ABC):
         return pattern
 
 
-class PlusCommandAdapter(BaseCommand):
-    """PlusCommand适配器
-
-    将PlusCommand适配到现有的插件系统，继承BaseCommand
-    """
-
-    def __init__(self, plus_command_class, message: DatabaseMessages, plugin_config: dict | None = None):
-        """初始化适配器
-
-        Args:
-            plus_command_class: PlusCommand子类
-            message: 消息对象（DatabaseMessages）
-            plugin_config: 插件配置
-        """
-        # 先设置必要的类属性
-        self.command_name = plus_command_class.command_name
-        self.command_description = plus_command_class.command_description
-        self.command_pattern = plus_command_class._generate_command_pattern()
-        self.chat_type_allow = getattr(plus_command_class, "chat_type_allow", ChatType.ALL)
-        self.priority = getattr(plus_command_class, "priority", 0)
-        self.intercept_message = getattr(plus_command_class, "intercept_message", False)
-
-        # 调用父类初始化
-        super().__init__(message, plugin_config)
-
-        # 创建PlusCommand实例
-        self.plus_command = plus_command_class(message, plugin_config)
-
-    async def execute(self) -> tuple[bool, str | None, bool]:
-        """执行命令
-
-        Returns:
-            Tuple[bool, Optional[str], bool]: 执行结果
-        """
-        # 检查命令是否匹配
-        if not self.plus_command.is_command_match():
-            return False, "命令不匹配", False
-
-        # 检查聊天类型权限
-        if not self.plus_command.is_chat_type_allowed():
-            return False, "不支持当前聊天类型", self.intercept_message
-
-        # 执行命令
-        try:
-            return await self.plus_command.execute(self.plus_command.args)
-        except Exception as e:
-            logger.error(f"执行命令时出错: {e}", exc_info=True)
-            return False, f"命令执行出错: {e!s}", self.intercept_message
 
 
 def create_plus_command_adapter(plus_command_class):
@@ -396,7 +347,7 @@ def create_plus_command_adapter(plus_command_class):
     Returns:
         适配器类
     """
-
+    from src.plugin_system.base.base_command import BaseCommand
     class AdapterClass(BaseCommand):
         command_name = plus_command_class.command_name
         command_description = plus_command_class.command_description
@@ -436,6 +387,61 @@ def create_plus_command_adapter(plus_command_class):
     return AdapterClass
 
 
-# 兼容旧的命名
-PlusCommandAdapter = create_plus_command_adapter
+
+def create_legacy_command_adapter(legacy_command_class):
+    """为旧版BaseCommand创建适配器的工厂函数
+
+    Args:
+        legacy_command_class: BaseCommand的子类
+
+    Returns:
+        适配器类，继承自PlusCommand
+    """
+
+    class LegacyAdapter(PlusCommand):
+        # 从旧命令类中继承元数据
+        command_name = legacy_command_class.command_name
+        command_description = legacy_command_class.command_description
+        chat_type_allow = getattr(legacy_command_class, "chat_type_allow", ChatType.ALL)
+        intercept_message = False  # 旧命令默认为False
+
+        def __init__(self, message: DatabaseMessages, plugin_config: dict | None = None):
+            super().__init__(message, plugin_config)
+            # 实例化旧命令
+            self.legacy_command = legacy_command_class(message, plugin_config)
+            # 将chat_stream传递给旧命令实例
+            self.legacy_command.chat_stream = self.chat_stream
+
+        def is_command_match(self) -> bool:
+            """使用旧命令的正则表达式进行匹配"""
+            if not self.message.processed_plain_text:
+                return False
+
+            pattern = getattr(self.legacy_command, "command_pattern", "")
+            if not pattern:
+                return False
+
+            match = re.match(pattern, self.message.processed_plain_text)
+            if match:
+                # 存储匹配组，以便旧命令的execute可以访问
+                self.legacy_command.set_matched_groups(match.groupdict())
+                return True
+
+            return False
+
+        async def execute(self, args: CommandArgs) -> tuple[bool, str | None, bool]:
+            """执行旧命令的execute方法"""
+            # 检查聊天类型
+            if not self.legacy_command.is_chat_type_allowed():
+                return False, "不支持当前聊天类型", self.intercept_message
+
+            # 执行旧命令
+            try:
+                # 旧的execute不接收args参数
+                return await self.legacy_command.execute()
+            except Exception as e:
+                logger.error(f"执行旧版命令 '{self.command_name}' 时出错: {e}", exc_info=True)
+                return False, f"命令执行出错: {e!s}", self.intercept_message
+
+    return LegacyAdapter
 

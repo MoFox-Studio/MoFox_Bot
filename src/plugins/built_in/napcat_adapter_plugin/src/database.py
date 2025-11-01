@@ -13,12 +13,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, List, Sequence
+from typing import List, Optional, Sequence
 
-from sqlalchemy import Column, Integer, BigInteger, UniqueConstraint, select, Index
+from sqlalchemy import BigInteger, Column, Index, Integer, UniqueConstraint, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.common.database.sqlalchemy_models import Base, get_db_session
+from src.common.database.core.models import Base
+from src.common.database.core import get_db_session
 from src.common.logger import get_logger
 
 logger = get_logger("napcat_adapter")

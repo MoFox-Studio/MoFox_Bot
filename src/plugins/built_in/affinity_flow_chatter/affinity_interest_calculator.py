@@ -211,9 +211,9 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
         # 如果内存中没有，尝试从统一的评分API获取
         try:
-            from src.plugin_system.apis.scoring_api import scoring_api
+            from src.plugin_system.apis import person_api
 
-            relationship_data = await scoring_api.get_user_relationship_data(user_id)
+            relationship_data = await person_api.get_user_relationship_data(user_id)
             if relationship_data:
                 relationship_score = relationship_data.get("relationship_score", global_config.affinity_flow.base_relationship_score)
                 # 同时更新内存缓存
@@ -230,11 +230,10 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         is_mentioned = getattr(message, "is_mentioned", False)
         processed_plain_text = getattr(message, "processed_plain_text", "")
 
-        # 判断是否为私聊
-        chat_info_group_id = getattr(message, "chat_info_group_id", None)
-        is_private_chat = not chat_info_group_id  # 如果没有group_id则是私聊
+        # 判断是否为私聊 - 通过 group_info 对象判断
+        is_private_chat = not message.group_info  # 如果没有group_info则是私聊
 
-        logger.debug(f"[提及分计算] is_mentioned={is_mentioned}, is_private_chat={is_private_chat}")
+        logger.debug(f"[提及分计算] is_mentioned={is_mentioned}, is_private_chat={is_private_chat}, group_info={message.group_info}")
 
         # 检查是否被提及（包括文本匹配）
         bot_aliases = [bot_nickname, *global_config.bot.alias_names]

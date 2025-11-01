@@ -258,10 +258,7 @@ def remove_duplicate_handlers():  # sourcery skip: for-append-to-extend, list-co
     root_logger = logging.getLogger()
 
     # 收集所有时间戳文件handler
-    file_handlers = []
-    for handler in root_logger.handlers[:]:
-        if isinstance(handler, TimestampedFileHandler):
-            file_handlers.append(handler)
+    file_handlers = [handler for handler in root_logger.handlers[:] if isinstance(handler, TimestampedFileHandler)]
 
     # 如果有多个文件handler，保留第一个，关闭其他的
     if len(file_handlers) > 1:

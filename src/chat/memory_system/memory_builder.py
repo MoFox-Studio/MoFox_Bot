@@ -634,9 +634,7 @@ class MemoryBuilder:
                             if cleaned:
                                 participants.append(cleaned)
                 elif isinstance(value, str):
-                    for part in self._split_subject_string(value):
-                        if part:
-                            participants.append(part)
+                    participants.extend(part for part in self._split_subject_string(value) if part)
 
         fallback = self._resolve_user_display(context, user_id)
         if fallback:

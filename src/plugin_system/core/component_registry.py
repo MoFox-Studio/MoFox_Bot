@@ -26,7 +26,7 @@ from src.plugin_system.base.component_types import (
     PromptInfo,
     ToolInfo,
 )
-from src.plugin_system.base.plus_command import PlusCommand
+from src.plugin_system.base.plus_command import PlusCommand, create_legacy_command_adapter
 
 logger = get_logger("component_registry")
 
@@ -87,8 +87,8 @@ class ComponentRegistry:
         self._tool_registry: dict[str, type["BaseTool"]] = {}  # 工具名 -> 工具类
         self._llm_available_tools: dict[str, type["BaseTool"]] = {}  # llm可用的工具名 -> 工具类
 
-        # MCP 工具注册表（运行时动态加载）
-        self._mcp_tools: list["BaseTool"] = []  # MCP 工具适配器实例列表
+        # MCP 工具注册表(运行时动态加载)
+        self._mcp_tools: list[Any] = []  # MCP 工具适配器实例列表
         self._mcp_tools_loaded = False  # MCP 工具是否已加载
 
         # EventHandler特定注册表
@@ -221,25 +221,16 @@ class ComponentRegistry:
 
     def _register_command_component(self, command_info: CommandInfo, command_class: type[BaseCommand]) -> bool:
         """注册Command组件到Command特定注册表"""
-        if not (command_name := command_info.name):
-            logger.error(f"Command组件 {command_class.__name__} 必须指定名称")
-            return False
-        if not isinstance(command_info, CommandInfo) or not issubclass(command_class, BaseCommand):
-            logger.error(f"注册失败: {command_name} 不是有效的Command")
-            return False
-        _assign_plugin_attrs(
-            command_class, command_info.plugin_name, self.get_plugin_config(command_info.plugin_name) or {}
-        )
-        self._command_registry[command_name] = command_class
-        if command_info.enabled and command_info.command_pattern:
-            pattern = re.compile(command_info.command_pattern, re.IGNORECASE | re.DOTALL)
-            if pattern not in self._command_patterns:
-                self._command_patterns[pattern] = command_name
-            else:
-                logger.warning(
-                    f"'{command_name}' 对应的命令模式与 '{self._command_patterns[pattern]}' 重复，忽略此命令"
-                )
-        return True
+        logger.warning(
+                f"检测到旧版Command组件 '{command_class.command_name}' (来自插件: {command_info.plugin_name})。"
+                "它将通过兼容层运行，但建议尽快迁移到PlusCommand以获得更好的性能和功能。"
+            )
+        # 使用适配器将其转换为PlusCommand
+        adapted_class = create_legacy_command_adapter(command_class)
+        plus_command_info = adapted_class.get_plus_command_info()
+        plus_command_info.plugin_name = command_info.plugin_name  # 继承插件名
+
+        return self._register_plus_command_component(plus_command_info, adapted_class)
 
     def _register_plus_command_component(
         self, plus_command_info: PlusCommandInfo, plus_command_class: type[PlusCommand]

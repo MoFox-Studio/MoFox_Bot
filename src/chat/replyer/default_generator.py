@@ -62,7 +62,7 @@ def init_prompt():
 {auth_role_prompt_block}
 
 你正在{chat_target_2},{reply_target_block}
-对这句话，你想表达，原句：{raw_reply},原因是：{reason}。你现在要思考怎么组织回复
+对这条消息，你想表达，原句：{raw_reply},原因是：{reason}。你现在要思考怎么组织回复
 你现在的心情是：{mood_state}
 你需要使用合适的语法和句法，参考聊天内容，组织一条日常且口语化的回复。请你修改你想表达的原句，符合你的表达风格和语言习惯
 {reply_style}，你可以完全重组回复，保留最基本的表达含义就好，但重组后保持语意通顺。
@@ -300,7 +300,7 @@ class DefaultReplyer:
         enable_tool: bool = True,
         from_plugin: bool = True,
         stream_id: str | None = None,
-        reply_message: dict[str, Any] | None = None,
+        reply_message: DatabaseMessages | None = None,
     ) -> tuple[bool, dict[str, Any] | None, str | None]:
         # sourcery skip: merge-nested-ifs
         """
@@ -334,7 +334,7 @@ class DefaultReplyer:
                     extra_info=extra_info,
                     available_actions=available_actions,
                     enable_tool=enable_tool,
-                    reply_message=DatabaseMessages(**reply_message) if isinstance(reply_message, dict) else reply_message,
+                    reply_message=reply_message,
                 )
 
             if not prompt:
@@ -1949,12 +1949,12 @@ class DefaultReplyer:
             logger.error(f"获取关系信息失败: {e}")
             # 降级到基本信息
             try:
-                from src.plugin_system.apis.scoring_api import scoring_api
+                from src.plugin_system.apis import person_api
 
                 user_info = await person_info_manager.get_values(person_id, ["user_id", "platform"])
                 user_id = user_info.get("user_id", "unknown")
 
-                relationship_data = await scoring_api.get_user_relationship_data(user_id)
+                relationship_data = await person_api.get_user_relationship_data(user_id)
                 if relationship_data:
                     relationship_text = relationship_data.get("relationship_text", "")
                     relationship_score = relationship_data.get("relationship_score", 0.3)

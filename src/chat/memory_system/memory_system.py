@@ -138,7 +138,7 @@ class MemorySystem:
         self.config = config or MemorySystemConfig.from_global_config()
         self.llm_model = llm_model
         self.status = MemorySystemStatus.INITIALIZING
-        logger.info(f"MemorySystem __init__ called, id: {id(self)}")
+        logger.debug(f"MemorySystem __init__ called, id: {id(self)}")
 
         # 核心组件（简化版）
         self.memory_builder: MemoryBuilder | None = None
@@ -167,11 +167,11 @@ class MemorySystem:
         # 海马体采样器
         self.hippocampus_sampler = None
 
-        logger.info("MemorySystem 初始化开始")
+        logger.debug("MemorySystem 初始化开始")
 
     async def initialize(self):
         """异步初始化记忆系统"""
-        logger.info(f"MemorySystem initialize started, id: {id(self)}")
+        logger.debug(f"MemorySystem initialize started, id: {id(self)}")
         try:
             # 初始化LLM模型
             fallback_task = getattr(self.llm_model, "model_for_task", None) if self.llm_model else None
@@ -226,13 +226,13 @@ class MemorySystem:
             try:
                 try:
                     self.unified_storage = VectorMemoryStorage(storage_config)
-                    logger.info("✅ Vector DB存储系统初始化成功")
+                    logger.debug("Vector DB存储系统初始化成功")
                 except Exception as storage_error:
-                    logger.error(f"❌ Vector DB存储系统初始化失败: {storage_error}", exc_info=True)
+                    logger.error(f"Vector DB存储系统初始化失败: {storage_error}", exc_info=True)
                     self.unified_storage = None  # 确保在失败时为None
                     raise
             except Exception as storage_error:
-                logger.error(f"❌ Vector DB存储系统初始化失败: {storage_error}", exc_info=True)
+                logger.error(f"Vector DB存储系统初始化失败: {storage_error}", exc_info=True)
                 raise
 
             # 初始化遗忘引擎
@@ -281,7 +281,7 @@ class MemorySystem:
                     from .hippocampus_sampler import initialize_hippocampus_sampler
 
                     self.hippocampus_sampler = await initialize_hippocampus_sampler(self)
-                    logger.info("✅ 海马体采样器初始化成功")
+                    logger.debug("海马体采样器初始化成功")
                 except Exception as e:
                     logger.warning(f"海马体采样器初始化失败: {e}")
                     self.hippocampus_sampler = None
@@ -289,7 +289,7 @@ class MemorySystem:
             # 统一存储已经自动加载数据，无需额外加载
 
             self.status = MemorySystemStatus.READY
-            logger.info(f"MemorySystem initialize finished, id: {id(self)}")
+            logger.debug(f"MemorySystem initialize finished, id: {id(self)}")
         except Exception as e:
             self.status = MemorySystemStatus.ERROR
             logger.error(f"❌ 记忆系统初始化失败: {e}", exc_info=True)
@@ -394,7 +394,7 @@ class MemorySystem:
                 value_score = await self._assess_information_value(conversation_text, normalized_context)
 
                 if value_score < self.config.memory_value_threshold:
-                    logger.info(f"信息价值评分 {value_score:.2f} 低于阈值，跳过记忆构建")
+                    logger.debug(f"信息价值评分 {value_score:.2f} 低于阈值，跳过记忆构建")
                     self.status = original_status
                     return []
             else:
@@ -446,7 +446,7 @@ class MemorySystem:
 
             build_time = time.time() - start_time
             logger.info(
-                f"✅ 生成 {len(fused_chunks)} 条记忆，成功入库 {stored_count} 条，耗时 {build_time:.2f}秒",
+                f"生成 {len(fused_chunks)} 条记忆，入库 {stored_count} 条，耗时 {build_time:.2f}秒",
             )
 
             self.status = original_status
@@ -473,16 +473,16 @@ class MemorySystem:
     def _log_memory_preview(self, memories: list[MemoryChunk]) -> None:
         """在控制台输出记忆预览，便于人工检查"""
         if not memories:
-            logger.info("📝 本次未生成新的记忆")
+            logger.debug("本次未生成新的记忆")
             return
 
-        logger.info(f"📝 本次生成的记忆预览 ({len(memories)} 条):")
+        logger.debug(f"本次生成的记忆预览 ({len(memories)} 条):")
         for idx, memory in enumerate(memories, start=1):
             text = memory.text_content or ""
             if len(text) > 120:
                 text = text[:117] + "..."
 
-            logger.info(
+            logger.debug(
                 f"  {idx}) 类型={memory.memory_type.value} 重要性={memory.metadata.importance.name} "
                 f"置信度={memory.metadata.confidence.name} | 内容={text}"
             )
@@ -800,7 +800,7 @@ class MemorySystem:
                 metadata_filters=metadata_filters,  # JSON元数据索引过滤
             )
 
-            logger.info(f"[阶段二] 向量搜索完成: 返回 {len(search_results)} 条候选")
+            logger.debug(f"[阶段二] 向量搜索完成: 返回 {len(search_results)} 条候选")
 
             # === 阶段三：综合重排 ===
             scored_memories = []
@@ -874,7 +874,7 @@ class MemorySystem:
                 if instant_memories:
                     # 将瞬时记忆放在列表最前面
                     final_memories = instant_memories + final_memories
-                    logger.info(f"融合了 {len(instant_memories)} 条瞬时记忆")
+                    logger.debug(f"融合了 {len(instant_memories)} 条瞬时记忆")
 
             except Exception as e:
                 logger.warning(f"检索瞬时记忆失败: {e}", exc_info=True)
@@ -884,9 +884,9 @@ class MemorySystem:
 
             retrieval_time = time.time() - start_time
 
-            # 详细日志 - 打印检索到的有效记忆的完整内容
-            if scored_memories:
-                logger.debug("🧠 检索到的有效记忆内容详情:")
+            # 详细日志 - 只在debug模式打印检索到的完整内容
+            if scored_memories and logger.level <= 10:  # DEBUG level
+                logger.debug("检索到的有效记忆内容详情:")
                 for i, (mem, score, details) in enumerate(scored_memories[:effective_limit], 1):
                     try:
                         # 获取记忆的完整内容
@@ -909,7 +909,7 @@ class MemorySystem:
                         created_time_str = datetime.datetime.fromtimestamp(created_time).strftime("%Y-%m-%d %H:%M:%S") if created_time else "unknown"
 
                         # 打印记忆详细信息
-                        logger.debug(f"  📝 记忆 #{i}")
+                        logger.debug(f"  记忆 #{i}")
                         logger.debug(f"     类型: {memory_type} | 重要性: {importance} | 置信度: {confidence}")
                         logger.debug(f"     创建时间: {created_time_str}")
                         logger.debug(f"     综合得分: {details['final']:.3f} (向量:{details['vector']:.3f}, 时效:{details['recency']:.3f}, 重要性:{details['importance']:.3f}, 频率:{details['frequency']:.3f})")
@@ -935,13 +935,7 @@ class MemorySystem:
                         continue
 
             logger.info(
-                "✅ 三阶段记忆检索完成"
-                f" | user={resolved_user_id}"
-                f" | 粗筛={len(search_results)}"
-                f" | 精筛={len(scored_memories)}"
-                f" | 返回={len(final_memories)}"
-                f" | duration={retrieval_time:.3f}s"
-                f" | query='{optimized_query[:60]}...'"
+                f"记忆检索完成: 返回 {len(final_memories)} 条 | 耗时 {retrieval_time:.2f}s"
             )
 
             self.last_retrieval_time = time.time()
@@ -1265,9 +1259,7 @@ class MemorySystem:
                 )
 
                 if relevant_memories:
-                    memory_contexts = []
-                    for memory in relevant_memories:
-                        memory_contexts.append(f"[历史记忆] {memory.text_content}")
+                    memory_contexts = [f"[历史记忆] {memory.text_content}" for memory in relevant_memories]
 
                     memory_transcript = "\n".join(memory_contexts)
                     cleaned_fallback = (fallback_text or "").strip()
@@ -1431,9 +1423,9 @@ class MemorySystem:
                 reasoning = result.get("reasoning", "")
                 key_factors = result.get("key_factors", [])
 
-                logger.info(f"信息价值评估: {value_score:.2f}, 理由: {reasoning}")
+                logger.debug(f"信息价值评估: {value_score:.2f}, 理由: {reasoning}")
                 if key_factors:
-                    logger.info(f"关键因素: {', '.join(key_factors)}")
+                    logger.debug(f"关键因素: {', '.join(key_factors)}")
 
                 return max(0.0, min(1.0, value_score))
 

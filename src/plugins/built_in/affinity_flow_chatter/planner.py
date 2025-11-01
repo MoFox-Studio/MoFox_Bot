@@ -104,21 +104,10 @@ class ChatterActionPlanner:
             if chat_mode == ChatMode.NORMAL:
                 return await self._normal_mode_flow(context)
 
-            # 在规划前，先进行动作修改
-            from src.chat.planner_actions.action_modifier import ActionModifier
-            action_modifier = ActionModifier(self.action_manager, self.chat_id)
-            await action_modifier.modify_actions()
-
-            initial_plan = await self.generator.generate(chat_mode)
-
-            # 确保Plan中包含所有当前可用的动作
-            initial_plan.available_actions = self.action_manager.get_using_actions()
-
             unread_messages = context.get_unread_messages() if context else []
             # 2. 使用新的兴趣度管理系统进行评分
             max_message_interest = 0.0
             reply_not_available = True
-            interest_updates: list[dict[str, Any]] = []
             aggregate_should_act = False
 
             if unread_messages:
@@ -170,9 +159,19 @@ class ChatterActionPlanner:
                     action_data={},
                     action_message=None,
                 )
+                initial_plan = await self.generator.generate(chat_mode)
                 filtered_plan = initial_plan
                 filtered_plan.decided_actions = [no_action]
             else:
+                # 在规划前，先进行动作修改
+                from src.chat.planner_actions.action_modifier import ActionModifier
+                action_modifier = ActionModifier(self.action_manager, self.chat_id)
+                await action_modifier.modify_actions()
+
+                initial_plan = await self.generator.generate(chat_mode)
+
+                # 确保Plan中包含所有当前可用的动作
+                initial_plan.available_actions = self.action_manager.get_using_actions()
                 # 4. 筛选 Plan
                 available_actions = list(initial_plan.available_actions.keys())
                 plan_filter = ChatterPlanFilter(self.chat_id, available_actions)
@@ -180,14 +179,15 @@ class ChatterActionPlanner:
 
             # 4.5 检查是否正在处理相同的目标消息，防止重复回复
             target_message_id = None
-            for action in filtered_plan.decided_actions:
-                if action.action_type in ["reply", "proactive_reply"] and action.action_message:
-                    # 提取目标消息ID
-                    if hasattr(action.action_message, "message_id"):
-                        target_message_id = action.action_message.message_id
-                    elif isinstance(action.action_message, dict):
-                        target_message_id = action.action_message.get("message_id")
-                    break
+            if filtered_plan and filtered_plan.decided_actions:
+                for action in filtered_plan.decided_actions:
+                    if action.action_type in ["reply", "proactive_reply"] and action.action_message:
+                        # 提取目标消息ID
+                        if hasattr(action.action_message, "message_id"):
+                            target_message_id = action.action_message.message_id
+                        elif isinstance(action.action_message, dict):
+                            target_message_id = action.action_message.get("message_id")
+                        break
 
             # 如果找到目标消息ID，检查是否已经在处理中
             if target_message_id and context:
@@ -215,7 +215,7 @@ class ChatterActionPlanner:
             # 6. 根据执行结果更新统计信息
             self._update_stats_from_execution_result(execution_result)
 
-            # 7. Focus模式下如果执行了reply动作，切换到Normal模式
+            # 7. Focus模式下如果执行了reply动作，根据focus_energy概率切换到Normal模式
             if chat_mode == ChatMode.FOCUS and context:
                 if filtered_plan.decided_actions:
                     has_reply = any(
@@ -225,9 +225,7 @@ class ChatterActionPlanner:
                 else:
                     has_reply = False
                 if has_reply and global_config.affinity_flow.enable_normal_mode:
-                    logger.info("Focus模式: 执行了reply动作，自动切换到Normal模式")
-                    context.chat_mode = ChatMode.NORMAL
-                    await self._sync_chat_mode_to_stream(context)
+                    await self._check_enter_normal_mode(context)
 
             # 8. 清理处理标记
             if context:
@@ -247,7 +245,7 @@ class ChatterActionPlanner:
 
     async def _normal_mode_flow(self, context: "StreamContext | None") -> tuple[list[dict[str, Any]], Any | None]:
         """Normal模式下的简化plan流程
-        
+
         只计算兴趣值并判断是否达到reply阈值，不执行完整的plan流程。
         根据focus_energy决定退出normal模式回到focus模式的概率。
         """
@@ -370,9 +368,47 @@ class ChatterActionPlanner:
                 context.processing_message_id = None
             return [], None
 
+    async def _check_enter_normal_mode(self, context: "StreamContext | None") -> None:
+        """检查并执行进入Normal模式的判定
+
+        Args:
+            context: 流上下文
+        """
+        if not context:
+            return
+
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(self.chat_id) if chat_manager else None
+
+            if not chat_stream:
+                return
+
+            focus_energy = chat_stream.focus_energy
+            # focus_energy越高，进入normal模式的概率越高
+            # 使用正比例函数: 进入概率 = focus_energy
+            # 当focus_energy = 0.1时，进入概率 = 10%
+            # 当focus_energy = 0.5时，进入概率 = 50%
+            # 当focus_energy = 0.9时，进入概率 = 90%
+            enter_probability = focus_energy
+
+            import random
+            if random.random() < enter_probability:
+                logger.info(f"Focus模式: focus_energy={focus_energy:.3f}, 进入概率={enter_probability:.3f}, 切换到Normal模式")
+                # 切换到normal模式
+                context.chat_mode = ChatMode.NORMAL
+                await self._sync_chat_mode_to_stream(context)
+            else:
+                logger.debug(f"Focus模式: focus_energy={focus_energy:.3f}, 进入概率={enter_probability:.3f}, 保持Focus模式")
+
+        except Exception as e:
+            logger.warning(f"检查进入Normal模式失败: {e}")
+
     async def _check_exit_normal_mode(self, context: "StreamContext | None") -> None:
         """检查并执行退出Normal模式的判定
-        
+
         Args:
             context: 流上下文
         """
@@ -398,12 +434,12 @@ class ChatterActionPlanner:
 
             import random
             if random.random() < exit_probability:
-                logger.info(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 切换回focus模式")
+                logger.info(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 切换回Focus模式")
                 # 切换回focus模式
                 context.chat_mode = ChatMode.FOCUS
                 await self._sync_chat_mode_to_stream(context)
             else:
-                logger.debug(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 保持normal模式")
+                logger.debug(f"Normal模式: focus_energy={focus_energy:.3f}, 退出概率={exit_probability:.3f}, 保持Normal模式")
 
         except Exception as e:
             logger.warning(f"检查退出Normal模式失败: {e}")
@@ -478,9 +514,8 @@ class ChatterActionPlanner:
         chat_mood = mood_manager.get_mood_by_chat_id(self.chat_id)
         return {
             "current_mood": chat_mood.mood_state,
-            "is_angry_from_wakeup": chat_mood.is_angry_from_wakeup,
-            "regression_count": chat_mood.regression_count,
-            "last_change_time": chat_mood.last_change_time,
+            "regression_count": getattr(chat_mood, "regression_count", 0),
+            "last_change_time": getattr(chat_mood, "last_change_time", 0),
         }
 
 

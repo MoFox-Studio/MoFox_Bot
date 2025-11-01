@@ -5,10 +5,12 @@
 用于从QQ消息中下载视频并转发给Bot进行分析
 """
 
-import aiohttp
 import asyncio
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+import aiohttp
+
 from src.common.logger import get_logger
 
 logger = get_logger("video_handler")
@@ -34,20 +36,20 @@ class VideoDownloader:
             if any(keyword in url_lower for keyword in video_keywords):
                 return True
 
-            # 检查文件扩展名（传统方法）
+            # 检查文件扩展名(传统方法)
             path = Path(url.split("?")[0])  # 移除查询参数
             if path.suffix.lower() in self.supported_formats:
                 return True
 
-            # 对于QQ等特殊平台，URL可能没有扩展名
-            # 我们允许这些URL通过，稍后通过HTTP头Content-Type验证
+            # 对于QQ等特殊平台,URL可能没有扩展名
+            # 我们允许这些URL通过,稍后通过HTTP头Content-Type验证
             qq_domains = ["qpic.cn", "gtimg.cn", "qq.com", "tencent.com"]
             if any(domain in url_lower for domain in qq_domains):
                 return True
 
             return False
-        except:
-            # 如果解析失败，默认允许尝试下载（稍后验证）
+        except Exception:
+            # 如果解析失败,默认允许尝试下载(稍后验证)
             return True
 
     def check_file_size(self, content_length: Optional[str]) -> bool:
@@ -59,7 +61,7 @@ class VideoDownloader:
             size_bytes = int(content_length)
             size_mb = size_bytes / (1024 * 1024)
             return size_mb <= self.max_size_mb
-        except:
+        except Exception:
             return True
 
     async def download_video(self, url: str, filename: Optional[str] = None) -> Dict[str, Any]:

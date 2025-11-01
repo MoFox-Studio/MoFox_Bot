@@ -11,8 +11,8 @@ sys.path.insert(0, str(project_root))
 
 from sqlalchemy import func, select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import Expression
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import Expression
 
 
 async def check_database():
@@ -63,12 +63,12 @@ async def check_database():
         null_situation = await session.execute(
             select(func.count())
             .select_from(Expression)
-            .where(Expression.situation == None)
+            .where(Expression.situation is None)
         )
         null_style = await session.execute(
             select(func.count())
             .select_from(Expression)
-            .where(Expression.style == None)
+            .where(Expression.style is None)
         )
 
         null_sit_count = null_situation.scalar()
@@ -102,7 +102,7 @@ async def check_database():
             .limit(20)
         )
 
-        styles = [s for s in unique_styles.scalars()]
+        styles = list(unique_styles.scalars())
         for style in styles:
             print(f"  - {style}")
 

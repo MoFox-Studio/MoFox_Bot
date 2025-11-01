@@ -43,8 +43,6 @@ from .base import (
     PluginInfo,
     # 新增的增强命令系统
     PlusCommand,
-    PlusCommandAdapter,
-    PlusCommandInfo,
     PythonDependency,
     ToolInfo,
     ToolParamType,

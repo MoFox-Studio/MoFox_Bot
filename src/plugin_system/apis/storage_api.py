@@ -6,10 +6,11 @@
 @Desc    :   提供给插件使用的本地存储API（集成版）
 """
 
+import atexit
 import json
 import os
 import threading
-from typing import Any
+from typing import Any, ClassVar
 
 from src.common.logger import get_logger
 
@@ -26,7 +27,7 @@ class PluginStorageManager:
     哼，现在它和API住在一起了，希望它们能和睦相处。
     """
 
-    _instances: dict[str, "PluginStorage"] = {}
+    _instances: ClassVar[dict[str, "PluginStorage"] ] = {}
     _lock = threading.Lock()
     _base_path = os.path.join("data", "plugin_data")
 
@@ -42,6 +43,20 @@ class PluginStorageManager:
             else:
                 logger.debug(f"从缓存中获取插件 '{name}' 的本地存储实例。")
             return cls._instances[name]
+
+    @classmethod
+    def shutdown(cls):
+        """
+        在程序退出时，强制保存所有插件实例中未保存的数据。
+        哼，别想留下任何烂摊子给我。
+        """
+        logger.info("正在执行存储管理器关闭程序，检查并保存所有未写入的数据...")
+        with cls._lock:
+            for name, instance in cls._instances.items():
+                logger.debug(f"正在检查插件 '{name}' 的数据...")
+                # 直接调用实例的_save_data，它会检查_dirty标志
+                instance._save_data()
+        logger.info("所有插件数据均已妥善保存。")
 
 
 # --- 单个存储实例部分 ---
@@ -60,6 +75,10 @@ class PluginStorage:
         self.file_path = os.path.join(base_path, f"{safe_filename}.json")
         self._data: dict[str, Any] = {}
         self._lock = threading.Lock()
+        # --- 延迟写入新增属性 ---
+        self._dirty = False  # 数据是否被修改过的标志
+        self._write_timer: threading.Timer | None = None  # 延迟写入的计时器
+        self.save_delay = 2  # 延迟2秒写入
 
         self._ensure_directory_exists()
         self._load_data()
@@ -88,11 +107,27 @@ class PluginStorage:
                 logger.warning(f"从 '{self.file_path}' 加载数据失败: {e}，将初始化为空数据。")
                 self._data = {}
 
+    def _schedule_save(self) -> None:
+        """安排一次延迟保存操作。"""
+        with self._lock:
+            self._dirty = True
+            # 如果已经有计时器在跑，就取消它，用新的覆盖
+            if self._write_timer:
+                self._write_timer.cancel()
+            self._write_timer = threading.Timer(self.save_delay, self._save_data)
+            self._write_timer.start()
+            logger.debug(f"插件 '{self.name}' 的数据修改已暂存，计划在 {self.save_delay} 秒后写入磁盘。")
+
     def _save_data(self) -> None:
         with self._lock:
+            if not self._dirty:
+                return  # 数据没有被修改，不需要保存
+
             try:
                 with open(self.file_path, "w", encoding="utf-8") as f:
                     json.dump(self._data, f, indent=4, ensure_ascii=False)
+                self._dirty = False  # 保存后重置标志
+                logger.debug(f"插件 '{self.name}' 的数据已成功保存到磁盘。")
             except Exception as e:
                 logger.error(f"向 '{self.file_path}' 保存数据时发生错误: {e}", exc_info=True)
                 raise
@@ -108,7 +143,7 @@ class PluginStorage:
         """
         logger.debug(f"在 '{self.name}' 存储中设置值: key='{key}'。")
         self._data[key] = value
-        self._save_data()
+        self._schedule_save()
 
     def add(self, key: str, value: Any) -> bool:
         """
@@ -122,19 +157,19 @@ class PluginStorage:
         if key not in self._data:
             logger.debug(f"在 '{self.name}' 存储中新增值: key='{key}'。")
             self._data[key] = value
-            self._save_data()
+            self._schedule_save()
             return True
         logger.warning(f"尝试为已存在的键 '{key}' 新增值，操作被忽略。")
         return False
 
     def update(self, data: dict[str, Any]) -> None:
         self._data.update(data)
-        self._save_data()
+        self._schedule_save()
 
     def delete(self, key: str) -> bool:
         if key in self._data:
             del self._data[key]
-            self._save_data()
+            self._schedule_save()
             return True
         return False
 
@@ -144,10 +179,14 @@ class PluginStorage:
     def clear(self) -> None:
         logger.warning(f"插件 '{self.name}' 的本地存储将被清空！")
         self._data = {}
-        self._save_data()
+        self._schedule_save()
 
 
 # --- 对外暴露的API函数 ---
+
+
+# 注册退出时的清理函数
+atexit.register(PluginStorageManager.shutdown)
 
 
 def get_local_storage(name: str) -> "PluginStorage":

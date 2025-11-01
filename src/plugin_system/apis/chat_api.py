@@ -48,9 +48,10 @@ class ChatManager:
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         streams = []
         try:
-            for stream in get_chat_manager().streams.values():
-                if platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform:
-                    streams.append(stream)
+            streams.extend(
+                stream for stream in get_chat_manager().streams.values()
+                if platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform
+            )
             logger.debug(f"[ChatAPI] 获取到 {len(streams)} 个 {platform} 平台的聊天流")
         except Exception as e:
             logger.error(f"[ChatAPI] 获取聊天流失败: {e}")
@@ -71,9 +72,10 @@ class ChatManager:
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         streams = []
         try:
-            for stream in get_chat_manager().streams.values():
-                if (platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform) and stream.group_info:
-                    streams.append(stream)
+            streams.extend(
+                stream for stream in get_chat_manager().streams.values()
+                if (platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform) and stream.group_info
+            )
             logger.debug(f"[ChatAPI] 获取到 {len(streams)} 个 {platform} 平台的群聊流")
         except Exception as e:
             logger.error(f"[ChatAPI] 获取群聊流失败: {e}")
@@ -97,9 +99,10 @@ class ChatManager:
             raise TypeError("platform 必须是字符串或是 SpecialTypes 枚举")
         streams = []
         try:
-            for stream in get_chat_manager().streams.values():
-                if (platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform) and not stream.group_info:
-                    streams.append(stream)
+            streams.extend(
+                stream for stream in get_chat_manager().streams.values()
+                if (platform == SpecialTypes.ALL_PLATFORMS or stream.platform == platform) and not stream.group_info
+            )
             logger.debug(f"[ChatAPI] 获取到 {len(streams)} 个 {platform} 平台的私聊流")
         except Exception as e:
             logger.error(f"[ChatAPI] 获取私聊流失败: {e}")
@@ -169,6 +172,7 @@ class ChatManager:
             for stream in get_chat_manager().streams.values():
                 if (
                     not stream.group_info
+                    and stream.user_info
                     and str(stream.user_info.user_id) == str(user_id)
                     and stream.platform == platform
                 ):

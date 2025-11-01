@@ -10,7 +10,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from src.common.database.sqlalchemy_models import PermissionNodes, UserPermissions, get_engine
+from src.common.database.core.models import PermissionNodes, UserPermissions
+from src.common.database.core import get_engine
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.apis.permission_api import IPermissionManager, PermissionNode, UserInfo
@@ -456,8 +457,7 @@ class PermissionManager(IPermissionManager):
                 )
                 granted_users = result.scalars().all()
 
-                for user_perm in granted_users:
-                    users.append((user_perm.platform, user_perm.user_id))
+                users.extend((user_perm.platform, user_perm.user_id) for user_perm in granted_users)
 
                 # 如果是默认授权的权限节点，还需要考虑没有明确设置的用户
                 # 但这里我们只返回明确授权的用户，避免返回所有用户

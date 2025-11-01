@@ -10,8 +10,8 @@ sys.path.insert(0, str(project_root))
 
 from sqlalchemy import select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import Expression
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import Expression
 
 
 async def analyze_style_fields():
@@ -29,15 +29,14 @@ async def analyze_style_fields():
         print(f"\n总共检查 {len(expressions)} 条记录\n")
 
         # 按类型分类
-        style_examples = []
-
-        for expr in expressions:
-            if expr.type == "style":
-                style_examples.append({
-                    "situation": expr.situation,
-                    "style": expr.style,
-                    "length": len(expr.style) if expr.style else 0
-                })
+        style_examples = [
+            {
+                "situation": expr.situation,
+                "style": expr.style,
+                "length": len(expr.style) if expr.style else 0
+            }
+            for expr in expressions if expr.type == "style"
+        ]
 
         print("📋 Style 类型样例 (前15条):")
         print("="*60)

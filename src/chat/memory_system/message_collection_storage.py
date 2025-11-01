@@ -122,8 +122,7 @@ class MessageCollectionStorage:
 
             collections = []
             if results and results.get("ids") and results["ids"][0]:
-                for metadata in results["metadatas"][0]:
-                    collections.append(MessageCollection.from_dict(metadata))
+                collections.extend(MessageCollection.from_dict(metadata) for metadata in results["metadatas"][0])
 
             return collections
         except Exception as e:

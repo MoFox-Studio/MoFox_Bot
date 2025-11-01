@@ -4,7 +4,7 @@ MCP Tool Adapter
 将 MCP 工具适配为 BaseTool，使其能够被插件系统识别和调用
 """
 
-from typing import Any, ClassVar
+from typing import Any
 
 import mcp.types
 
@@ -27,9 +27,6 @@ class MCPToolAdapter(BaseTool):
     3. 参与工具缓存机制
     """
 
-    # 类级别默认值，使用 ClassVar 标注
-    available_for_llm: ClassVar[bool] = True
-
     def __init__(self, server_name: str, mcp_tool: mcp.types.Tool, plugin_config: dict | None = None):
         """
         初始化 MCP 工具适配器
@@ -47,6 +44,7 @@ class MCPToolAdapter(BaseTool):
         # 设置实例属性
         self.name = f"mcp_{server_name}_{mcp_tool.name}"
         self.description = mcp_tool.description or f"MCP tool from {server_name}"
+        self.available_for_llm = True  # MCP 工具默认可供 LLM 使用
 
         # 转换参数定义
         self.parameters = self._convert_parameters(mcp_tool.inputSchema)

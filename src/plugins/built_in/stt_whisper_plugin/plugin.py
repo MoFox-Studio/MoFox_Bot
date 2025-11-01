@@ -1,4 +1,5 @@
 import asyncio
+from typing import ClassVar
 
 import whisper
 
@@ -19,7 +20,7 @@ class LocalASRTool(BaseTool):
     """
     tool_name = "local_asr"
     tool_description = "将本地音频文件路径转换为文字。"
-    tool_parameters = [
+    tool_parameters: ClassVar[list] = [
         {"name": "audio_path", "type": "string", "description": "需要识别的音频文件路径", "required": True}
     ]
 
@@ -50,6 +51,7 @@ class LocalASRTool(BaseTool):
     async def execute(self, function_args: dict) -> str:
         audio_path = function_args.get("audio_path")
         if not audio_path:
+
             return "错误：缺少 audio_path 参数。"
 
         global _whisper_model
@@ -78,7 +80,7 @@ class LocalASRTool(BaseTool):
 class STTWhisperPlugin(BasePlugin):
     plugin_name = "stt_whisper_plugin"
     config_file_name = "config.toml"
-    python_dependencies = ["openai-whisper"]
+    python_dependencies: ClassVar[list[str]] = ["openai-whisper"]
 
     async def on_plugin_loaded(self):
         """

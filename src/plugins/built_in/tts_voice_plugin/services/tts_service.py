@@ -67,10 +67,14 @@ class TTSService:
             logger.warning("TTS 'default' style is missing 'refer_wav_path'.")
 
         for style_cfg in tts_styles_config:
-            if not isinstance(style_cfg, dict): continue
+            if not isinstance(style_cfg, dict):
+
+                continue
 
             style_name = style_cfg.get("style_name")
-            if not style_name: continue
+            if not style_name:
+
+                continue
 
             styles[style_name] = {
                 "url": global_server,
@@ -158,7 +162,9 @@ class TTSService:
 
             # --- 步骤一：像稳定版一样，先切换模型 ---
             async def switch_model_weights(weights_path: str | None, weight_type: str):
-                if not weights_path: return
+                if not weights_path:
+
+                    return
                 api_endpoint = f"/set_{weight_type}_weights"
                 switch_url = f"{base_url}{api_endpoint}"
                 try:
@@ -220,6 +226,7 @@ class TTSService:
         try:
             effects_config = self.get_config("spatial_effects", {})
             if not effects_config.get("enabled", False):
+
                 return audio_data
 
             # 获取插件目录和IR文件路径
@@ -251,6 +258,8 @@ class TTSService:
                 logger.warning(f"卷积混响已启用，但IR文件不存在 ({ir_path})，跳过该效果。")
 
             if not effects:
+
+
                 return audio_data
 
             # 将原始音频数据加载到内存中的 AudioFile 对象
@@ -293,7 +302,9 @@ class TTSService:
 
         server_config = self.tts_styles[style]
         clean_text = self._clean_text_for_tts(text)
-        if not clean_text: return None
+        if not clean_text:
+
+            return None
 
         # 语言决策流程：
         # 1. 优先使用决策模型直接指定的 language_hint (最高优先级)

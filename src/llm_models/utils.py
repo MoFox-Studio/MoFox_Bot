@@ -4,7 +4,8 @@ from datetime import datetime
 
 from PIL import Image
 
-from src.common.database.sqlalchemy_models import LLMUsage, get_db_session
+from src.common.database.core.models import LLMUsage
+from src.common.database.core import get_db_session
 from src.common.logger import get_logger
 from src.config.api_ada_configs import ModelInfo
 
