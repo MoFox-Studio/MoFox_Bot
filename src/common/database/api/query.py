@@ -458,10 +458,11 @@ class AggregateQuery:
         if not fields:
             raise ValueError("至少需要一个分组字段")
 
-        group_columns = []
-        for field_name in fields:
-            if hasattr(self.model, field_name):
-                group_columns.append(getattr(self.model, field_name))
+        group_columns = [
+            getattr(self.model, field_name)
+            for field_name in fields
+            if hasattr(self.model, field_name)
+        ]
 
         if not group_columns:
             return []
