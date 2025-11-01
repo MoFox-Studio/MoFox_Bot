@@ -191,7 +191,7 @@ class BilibiliPlugin(BasePlugin):
 
     # 插件基本信息
     plugin_name: str = "bilibili_video_watcher"
-    enable_plugin: bool = True
+    enable_plugin: bool = False
     dependencies: list[str] = []
     python_dependencies: list[str] = []
     config_file_name: str = "config.toml"
