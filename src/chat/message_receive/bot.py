@@ -363,6 +363,14 @@ class ChatBot:
             # print(message_data)
             # logger.debug(str(message_data))
 
+            # 优先处理adapter_response消息（在echo检查之前！）
+            message_segment = message_data.get("message_segment")
+            if message_segment and isinstance(message_segment, dict):
+                if message_segment.get("type") == "adapter_response":
+                    logger.info(f"[DEBUG bot.py message_process] 检测到adapter_response，立即处理")
+                    await self._handle_adapter_response_from_dict(message_segment.get("data"))
+                    return
+
             # 先提取基础信息检查是否是自身消息上报
             from maim_message import BaseMessageInfo
             temp_message_info = BaseMessageInfo.from_dict(message_data.get("message_info", {}))
@@ -373,14 +381,7 @@ class ChatBot:
                     await MessageStorage.update_message(message_data)
                     return
 
-            # 优先处理adapter_response消息（在创建DatabaseMessages之前）
             message_segment = message_data.get("message_segment")
-            if message_segment and isinstance(message_segment, dict):
-                if message_segment.get("type") == "adapter_response":
-                    logger.info(f"[DEBUG bot.py message_process] 检测到adapter_response，立即处理")
-                    await self._handle_adapter_response_from_dict(message_segment.get("data"))
-                    return
-
             group_info = temp_message_info.group_info
             user_info = temp_message_info.user_info
 
