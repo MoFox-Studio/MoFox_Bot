@@ -10,8 +10,8 @@ from typing import Any, ClassVar
 import orjson
 from sqlalchemy import select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import UserRelationships
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import UserRelationships
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest

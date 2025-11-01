@@ -11,8 +11,8 @@ sys.path.insert(0, str(project_root))
 
 from sqlalchemy import func, select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import Expression
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import Expression
 
 
 async def check_database():

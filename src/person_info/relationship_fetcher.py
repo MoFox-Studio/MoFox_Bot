@@ -181,20 +181,33 @@ class RelationshipFetcher:
 
         # 5. 从UserRelationships表获取完整关系信息（新系统）
         try:
-            from src.common.database.sqlalchemy_database_api import db_query
-            from src.common.database.sqlalchemy_models import UserRelationships
+            from src.common.database.api.specialized import get_user_relationship
 
-            # 查询用户关系数据（修复：添加 await）
+            # 查询用户关系数据
             user_id = str(await person_info_manager.get_value(person_id, "user_id"))
-            relationships = await db_query(
-                UserRelationships,
-                filters={"user_id": user_id},
-                limit=1,
+            platform = str(await person_info_manager.get_value(person_id, "platform"))
+
+            # 使用优化后的API（带缓存）
+            relationship = await get_user_relationship(
+                platform=platform,
+                user_id=user_id,
+                target_id="bot",  # 或者根据实际需要传入目标用户ID
             )
 
-            if relationships:
-                # db_query 返回字典列表，使用字典访问方式
-                rel_data = relationships[0]
+            if relationship:
+                # 将SQLAlchemy对象转换为字典以保持兼容性
+                # 直接使用 __dict__ 访问，避免触发 SQLAlchemy 的描述符和 lazy loading
+                # 方案A已经确保所有字段在缓存前都已预加载，所以 __dict__ 中有完整数据
+                try:
+                    rel_data = {
+                        "user_aliases": relationship.__dict__.get("user_aliases"),
+                        "relationship_text": relationship.__dict__.get("relationship_text"),
+                        "preference_keywords": relationship.__dict__.get("preference_keywords"),
+                        "relationship_score": relationship.__dict__.get("relationship_score"),
+                    }
+                except Exception as attr_error:
+                    logger.warning(f"访问relationship对象属性失败: {attr_error}")
+                    rel_data = {}
 
                 # 5.1 用户别名
                 if rel_data.get("user_aliases"):
@@ -243,21 +256,34 @@ class RelationshipFetcher:
             str: 格式化后的聊天流印象字符串
         """
         try:
-            from src.common.database.sqlalchemy_database_api import db_query
-            from src.common.database.sqlalchemy_models import ChatStreams
+            from src.common.database.api.specialized import get_or_create_chat_stream
 
-            # 查询聊天流数据
-            streams = await db_query(
-                ChatStreams,
-                filters={"stream_id": stream_id},
-                limit=1,
+            # 使用优化后的API（带缓存）
+            # 从stream_id解析platform，或使用默认值
+            platform = stream_id.split("_")[0] if "_" in stream_id else "unknown"
+
+            stream, _ = await get_or_create_chat_stream(
+                stream_id=stream_id,
+                platform=platform,
             )
 
-            if not streams:
+            if not stream:
                 return ""
 
-            # db_query 返回字典列表，使用字典访问方式
-            stream_data = streams[0]
+            # 将SQLAlchemy对象转换为字典以保持兼容性
+            # 直接使用 __dict__ 访问，避免触发 SQLAlchemy 的描述符和 lazy loading
+            # 方案A已经确保所有字段在缓存前都已预加载，所以 __dict__ 中有完整数据
+            try:
+                stream_data = {
+                    "group_name": stream.__dict__.get("group_name"),
+                    "stream_impression_text": stream.__dict__.get("stream_impression_text"),
+                    "stream_chat_style": stream.__dict__.get("stream_chat_style"),
+                    "stream_topic_keywords": stream.__dict__.get("stream_topic_keywords"),
+                }
+            except Exception as e:
+                logger.warning(f"访问stream对象属性失败: {e}")
+                stream_data = {}
+            
             impression_parts = []
 
             # 1. 聊天环境基本信息

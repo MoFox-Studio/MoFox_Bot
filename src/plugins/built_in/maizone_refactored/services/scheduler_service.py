@@ -11,8 +11,8 @@ from collections.abc import Callable
 
 from sqlalchemy import select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import MaiZoneScheduleStatus
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import MaiZoneScheduleStatus
 from src.common.logger import get_logger
 from src.schedule.schedule_manager import schedule_manager
 

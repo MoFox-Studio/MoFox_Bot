@@ -4,8 +4,8 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.common.database.sqlalchemy_database_api import db_get
-from src.common.database.sqlalchemy_models import LLMUsage
+from src.common.database.compatibility import db_get
+from src.common.database.core.models import LLMUsage
 from src.common.logger import get_logger
 from src.config.config import model_config
 

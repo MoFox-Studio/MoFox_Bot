@@ -9,8 +9,10 @@ from json_repair import repair_json
 from sqlalchemy import select
 
 from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import Expression
+from src.common.database.api.crud import CRUDBase
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import Expression
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -150,6 +152,8 @@ class ExpressionSelector:
         # sourcery skip: extract-duplicate-method, move-assign
         # 支持多chat_id合并抽选
         related_chat_ids = self.get_related_chat_ids(chat_id)
+        
+        # 使用CRUD查询（由于需要IN条件，使用session）
         async with get_db_session() as session:
             # 优化：一次性查询所有相关chat_id的表达方式
             style_query = await session.execute(
@@ -207,6 +211,7 @@ class ExpressionSelector:
         if not expressions_to_update:
             return
         updates_by_key = {}
+        affected_chat_ids = set()
         for expr in expressions_to_update:
             source_id: str = expr.get("source_id")  # type: ignore
             expr_type: str = expr.get("type", "style")
@@ -218,6 +223,8 @@ class ExpressionSelector:
             key = (source_id, expr_type, situation, style)
             if key not in updates_by_key:
                 updates_by_key[key] = expr
+            affected_chat_ids.add(source_id)
+            
         for chat_id, expr_type, situation, style in updates_by_key:
             async with get_db_session() as session:
                 query = await session.execute(
@@ -240,6 +247,13 @@ class ExpressionSelector:
                         f"表达方式激活: 原count={current_count:.3f}, 增量={increment}, 新count={new_count:.3f} in db"
                     )
                 await session.commit()
+        
+        # 清除所有受影响的chat_id的缓存
+        from src.common.database.optimization.cache_manager import get_cache
+        from src.common.database.utils.decorators import generate_cache_key
+        cache = await get_cache()
+        for chat_id in affected_chat_ids:
+            await cache.delete(generate_cache_key("chat_expressions", chat_id))
 
     async def select_suitable_expressions(
         self,

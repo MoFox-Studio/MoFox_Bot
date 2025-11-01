@@ -1,99 +1,23 @@
 """SQLAlchemy数据库模型定义
 
-替换Peewee ORM，使用SQLAlchemy提供更好的连接池管理和错误恢复能力
+本文件只包含纯模型定义，使用SQLAlchemy 2.0的Mapped类型注解风格。
+引擎和会话管理已移至core/engine.py和core/session.py。
 
-说明: 部分旧模型仍使用 `Column = Column(Type, ...)` 的经典风格。本文件开始逐步迁移到
-SQLAlchemy 2.0 推荐的带类型注解的声明式风格：
-
+所有模型使用统一的类型注解风格：
     field_name: Mapped[PyType] = mapped_column(Type, ...)
 
-这样 IDE / Pylance 能正确推断实例属性的真实 Python 类型，避免将其视为不可赋值的 Column 对象。
-当前仅对产生类型检查问题的模型 (BanUser) 进行了迁移，其余模型保持不变以减少一次性改动范围。
+这样IDE/Pylance能正确推断实例属性类型。
 """
 
 import datetime
-import os
 import time
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
-from typing import Any
 
-from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text, text
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import Boolean, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.common.database.connection_pool_manager import get_connection_pool_manager
-from src.common.logger import get_logger
-
-logger = get_logger("sqlalchemy_models")
-
 # 创建基类
 Base = declarative_base()
-
-# 全局异步引擎与会话工厂占位（延迟初始化）
-_engine: AsyncEngine | None = None
-_SessionLocal: async_sessionmaker[AsyncSession] | None = None
-
-
-async def enable_sqlite_wal_mode(engine):
-    """为 SQLite 启用 WAL 模式以提高并发性能"""
-    try:
-        async with engine.begin() as conn:
-            # 启用 WAL 模式
-            await conn.execute(text("PRAGMA journal_mode = WAL"))
-            # 设置适中的同步级别，平衡性能和安全性
-            await conn.execute(text("PRAGMA synchronous = NORMAL"))
-            # 启用外键约束
-            await conn.execute(text("PRAGMA foreign_keys = ON"))
-            # 设置 busy_timeout，避免锁定错误
-            await conn.execute(text("PRAGMA busy_timeout = 60000"))  # 60秒
-
-        logger.info("[SQLite] WAL 模式已启用，并发性能已优化")
-    except Exception as e:
-        logger.warning(f"[SQLite] 启用 WAL 模式失败: {e}，将使用默认配置")
-
-
-async def maintain_sqlite_database():
-    """定期维护 SQLite 数据库性能"""
-    try:
-        engine, SessionLocal = await initialize_database()
-        if not engine:
-            return
-
-        async with engine.begin() as conn:
-            # 检查并确保 WAL 模式仍然启用
-            result = await conn.execute(text("PRAGMA journal_mode"))
-            journal_mode = result.scalar()
-
-            if journal_mode != "wal":
-                await conn.execute(text("PRAGMA journal_mode = WAL"))
-                logger.info("[SQLite] WAL 模式已重新启用")
-
-            # 优化数据库性能
-            await conn.execute(text("PRAGMA synchronous = NORMAL"))
-            await conn.execute(text("PRAGMA busy_timeout = 60000"))
-            await conn.execute(text("PRAGMA foreign_keys = ON"))
-
-            # 定期清理（可选，根据需要启用）
-            # await conn.execute(text("PRAGMA optimize"))
-
-        logger.info("[SQLite] 数据库维护完成")
-    except Exception as e:
-        logger.warning(f"[SQLite] 数据库维护失败: {e}")
-
-
-def get_sqlite_performance_config():
-    """获取 SQLite 性能优化配置"""
-    return {
-        "journal_mode": "WAL",  # 提高并发性能
-        "synchronous": "NORMAL",  # 平衡性能和安全性
-        "busy_timeout": 60000,  # 60秒超时
-        "foreign_keys": "ON",  # 启用外键约束
-        "cache_size": -10000,  # 10MB 缓存
-        "temp_store": "MEMORY",  # 临时存储使用内存
-        "mmap_size": 268435456,  # 256MB 内存映射
-    }
 
 
 # MySQL兼容的字段类型辅助函数
@@ -666,170 +590,6 @@ class MonthlyPlan(Base):
         Index("idx_monthlyplan_last_used_date", "last_used_date"),
         Index("idx_monthlyplan_usage_count", "usage_count"),
     )
-
-
-def get_database_url():
-    """获取数据库连接URL"""
-    from src.config.config import global_config
-
-    config = global_config.database
-
-    if config.database_type == "mysql":
-        # 对用户名和密码进行URL编码，处理特殊字符
-        from urllib.parse import quote_plus
-
-        encoded_user = quote_plus(config.mysql_user)
-        encoded_password = quote_plus(config.mysql_password)
-
-        # 检查是否配置了Unix socket连接
-        if config.mysql_unix_socket:
-            # 使用Unix socket连接
-            encoded_socket = quote_plus(config.mysql_unix_socket)
-            return (
-                f"mysql+aiomysql://{encoded_user}:{encoded_password}"
-                f"@/{config.mysql_database}"
-                f"?unix_socket={encoded_socket}&charset={config.mysql_charset}"
-            )
-        else:
-            # 使用标准TCP连接
-            return (
-                f"mysql+aiomysql://{encoded_user}:{encoded_password}"
-                f"@{config.mysql_host}:{config.mysql_port}/{config.mysql_database}"
-                f"?charset={config.mysql_charset}"
-            )
-    else:  # SQLite
-        # 如果是相对路径，则相对于项目根目录
-        if not os.path.isabs(config.sqlite_path):
-            ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-            db_path = os.path.join(ROOT_PATH, config.sqlite_path)
-        else:
-            db_path = config.sqlite_path
-
-        # 确保数据库目录存在
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-
-        return f"sqlite+aiosqlite:///{db_path}"
-
-
-_initializing: bool = False  # 防止递归初始化
-
-async def initialize_database() -> tuple["AsyncEngine", async_sessionmaker[AsyncSession]]:
-    """初始化异步数据库引擎和会话
-
-    Returns:
-        tuple[AsyncEngine, async_sessionmaker[AsyncSession]]: 创建好的异步引擎与会话工厂。
-
-    说明:
-        显式的返回类型标注有助于 Pyright/Pylance 正确推断调用处的对象，
-        避免后续对返回值再次 `await` 时出现 *"tuple[...] 并非 awaitable"* 的误用。
-    """
-    global _engine, _SessionLocal, _initializing
-
-    # 已经初始化直接返回
-    if _engine is not None and _SessionLocal is not None:
-        return _engine, _SessionLocal
-
-    # 正在初始化的并发调用等待主初始化完成，避免递归
-    if _initializing:
-        import asyncio
-        for _ in range(1000):  # 最多等待约10秒
-            await asyncio.sleep(0.01)
-            if _engine is not None and _SessionLocal is not None:
-                return _engine, _SessionLocal
-        raise RuntimeError("等待数据库初始化完成超时 (reentrancy guard)")
-
-    _initializing = True
-    try:
-        database_url = get_database_url()
-        from src.config.config import global_config
-
-        config = global_config.database
-
-        # 配置引擎参数
-        engine_kwargs: dict[str, Any] = {
-            "echo": False,  # 生产环境关闭SQL日志
-            "future": True,
-        }
-
-        if config.database_type == "mysql":
-            engine_kwargs.update(
-                {
-                    "pool_size": config.connection_pool_size,
-                    "max_overflow": config.connection_pool_size * 2,
-                    "pool_timeout": config.connection_timeout,
-                    "pool_recycle": 3600,
-                    "pool_pre_ping": True,
-                    "connect_args": {
-                        "autocommit": config.mysql_autocommit,
-                        "charset": config.mysql_charset,
-                        "connect_timeout": config.connection_timeout,
-                    },
-                }
-            )
-        else:
-            engine_kwargs.update(
-                {
-                    "connect_args": {
-                        "check_same_thread": False,
-                        "timeout": 60,
-                    },
-                }
-            )
-
-        _engine = create_async_engine(database_url, **engine_kwargs)
-        _SessionLocal = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False)
-
-        # 迁移
-        from src.common.database.db_migration import check_and_migrate_database
-        await check_and_migrate_database(existing_engine=_engine)
-
-        if config.database_type == "sqlite":
-            await enable_sqlite_wal_mode(_engine)
-
-        logger.info(f"SQLAlchemy异步数据库初始化成功: {config.database_type}")
-        return _engine, _SessionLocal
-    finally:
-        _initializing = False
-
-
-@asynccontextmanager
-async def get_db_session() -> AsyncGenerator[AsyncSession]:
-    """
-    异步数据库会话上下文管理器。
-    在初始化失败时会yield None，调用方需要检查会话是否为None。
-
-    现在使用透明的连接池管理器来复用现有连接，提高并发性能。
-    """
-    SessionLocal = None
-    try:
-        _, SessionLocal = await initialize_database()
-        if not SessionLocal:
-            raise RuntimeError("数据库会话工厂 (_SessionLocal) 未初始化。")
-    except Exception as e:
-        logger.error(f"数据库初始化失败，无法创建会话: {e}")
-        raise
-
-    # 使用连接池管理器获取会话
-    pool_manager = get_connection_pool_manager()
-
-    async with pool_manager.get_session(SessionLocal) as session:
-        # 对于 SQLite，在会话开始时设置 PRAGMA（仅对新连接）
-        from src.config.config import global_config
-
-        if global_config.database.database_type == "sqlite":
-            try:
-                await session.execute(text("PRAGMA busy_timeout = 60000"))
-                await session.execute(text("PRAGMA foreign_keys = ON"))
-            except Exception as e:
-                logger.debug(f"设置 SQLite PRAGMA 时出错（可能是复用连接）: {e}")
-
-        yield session
-
-
-async def get_engine():
-    """获取异步数据库引擎"""
-    engine, _ = await initialize_database()
-    return engine
 
 
 class PermissionNodes(Base):

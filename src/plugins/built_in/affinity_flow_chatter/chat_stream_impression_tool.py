@@ -9,8 +9,10 @@ from typing import Any, ClassVar
 
 from sqlalchemy import select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import ChatStreams
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import ChatStreams
+from src.common.database.api.crud import CRUDBase
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import model_config
 from src.llm_models.utils_model import LLMRequest
@@ -186,30 +188,29 @@ class ChatStreamImpressionTool(BaseTool):
             dict: 聊天流印象数据
         """
         try:
-            async with get_db_session() as session:
-                stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)
-                result = await session.execute(stmt)
-                stream = result.scalar_one_or_none()
+            # 使用CRUD进行查询
+            crud = CRUDBase(ChatStreams)
+            stream = await crud.get_by(stream_id=stream_id)
 
-                if stream:
-                    return {
-                        "stream_impression_text": stream.stream_impression_text or "",
-                        "stream_chat_style": stream.stream_chat_style or "",
-                        "stream_topic_keywords": stream.stream_topic_keywords or "",
-                        "stream_interest_score": float(stream.stream_interest_score)
-                        if stream.stream_interest_score is not None
-                        else 0.5,
-                        "group_name": stream.group_name or "私聊",
-                    }
-                else:
-                    # 聊天流不存在，返回默认值
-                    return {
-                        "stream_impression_text": "",
-                        "stream_chat_style": "",
-                        "stream_topic_keywords": "",
-                        "stream_interest_score": 0.5,
-                        "group_name": "未知",
-                    }
+            if stream:
+                return {
+                    "stream_impression_text": stream.stream_impression_text or "",
+                    "stream_chat_style": stream.stream_chat_style or "",
+                    "stream_topic_keywords": stream.stream_topic_keywords or "",
+                    "stream_interest_score": float(stream.stream_interest_score)
+                    if stream.stream_interest_score is not None
+                    else 0.5,
+                    "group_name": stream.group_name or "私聊",
+                }
+            else:
+                # 聊天流不存在，返回默认值
+                return {
+                    "stream_impression_text": "",
+                    "stream_chat_style": "",
+                    "stream_topic_keywords": "",
+                    "stream_interest_score": 0.5,
+                    "group_name": "未知",
+                }
         except Exception as e:
             logger.error(f"获取聊天流印象失败: {e}")
             return {
@@ -342,25 +343,35 @@ class ChatStreamImpressionTool(BaseTool):
             impression: 印象数据
         """
         try:
-            async with get_db_session() as session:
-                stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
+            # 使用CRUD进行更新
+            crud = CRUDBase(ChatStreams)
+            existing = await crud.get_by(stream_id=stream_id)
 
-                if existing:
-                    # 更新现有记录
-                    existing.stream_impression_text = impression.get("stream_impression_text", "")
-                    existing.stream_chat_style = impression.get("stream_chat_style", "")
-                    existing.stream_topic_keywords = impression.get("stream_topic_keywords", "")
-                    existing.stream_interest_score = impression.get("stream_interest_score", 0.5)
-
-                    await session.commit()
-                    logger.info(f"聊天流印象已更新到数据库: {stream_id}")
-                else:
-                    error_msg = f"聊天流 {stream_id} 不存在于数据库中，无法更新印象"
-                    logger.error(error_msg)
-                    # 注意：通常聊天流应该在消息处理时就已创建，这里不创建新记录
-                    raise ValueError(error_msg)
+            if existing:
+                # 更新现有记录
+                await crud.update(
+                    existing.id,
+                    {
+                        "stream_impression_text": impression.get("stream_impression_text", ""),
+                        "stream_chat_style": impression.get("stream_chat_style", ""),
+                        "stream_topic_keywords": impression.get("stream_topic_keywords", ""),
+                        "stream_interest_score": impression.get("stream_interest_score", 0.5),
+                    }
+                )
+                
+                # 使缓存失效
+                from src.common.database.optimization.cache_manager import get_cache
+                from src.common.database.utils.decorators import generate_cache_key
+                cache = await get_cache()
+                await cache.delete(generate_cache_key("stream_impression", stream_id))
+                await cache.delete(generate_cache_key("chat_stream", stream_id))
+                
+                logger.info(f"聊天流印象已更新到数据库: {stream_id}")
+            else:
+                error_msg = f"聊天流 {stream_id} 不存在于数据库中，无法更新印象"
+                logger.error(error_msg)
+                # 注意：通常聊天流应该在消息处理时就已创建，这里不创建新记录
+                raise ValueError(error_msg)
 
         except Exception as e:
             logger.error(f"更新聊天流印象到数据库失败: {e}", exc_info=True)

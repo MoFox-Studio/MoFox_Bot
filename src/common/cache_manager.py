@@ -8,8 +8,8 @@ import numpy as np
 import orjson
 
 from src.common.config_helpers import resolve_embedding_dimension
-from src.common.database.sqlalchemy_database_api import db_query, db_save
-from src.common.database.sqlalchemy_models import CacheEntries
+from src.common.database.compatibility import db_query, db_save
+from src.common.database.core.models import CacheEntries
 from src.common.logger import get_logger
 from src.common.vector_db import vector_db_service
 from src.config.config import global_config, model_config
