@@ -112,7 +112,7 @@ class BaseTool(ABC):
         if not cls.is_two_step_tool:
             return []
 
-        definitions: ClassVar = []
+        definitions = []
         for sub_name, sub_desc, sub_params in cls.sub_tools:
             definitions.append({"name": f"{cls.name}_{sub_name}", "description": sub_desc, "parameters": sub_params})
         return definitions

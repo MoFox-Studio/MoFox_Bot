@@ -350,10 +350,10 @@ def _default_normal_response_parser(
         api_response.tool_calls = []
         for call in message_part.tool_calls:
             try:
-                arguments = orjson.loads(repair_json(call.function.arguments))
+                arguments = orjson.loads(repair_json(call.function.arguments)) # type: ignore
                 if not isinstance(arguments, dict):
                     raise RespParseException(resp, "响应解析失败，工具调用参数无法解析为字典类型")
-                api_response.tool_calls.append(ToolCall(call.id, call.function.name, arguments))
+                api_response.tool_calls.append(ToolCall(call.id, call.function.name, arguments)) # type: ignore
             except orjson.JSONDecodeError as e:
                 raise RespParseException(resp, "响应解析失败，无法解析工具调用参数") from e
 
