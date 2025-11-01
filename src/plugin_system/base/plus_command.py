@@ -435,3 +435,62 @@ def create_plus_command_adapter(plus_command_class):
 
     return AdapterClass
 
+
+
+def create_legacy_command_adapter(legacy_command_class):
+    """为旧版BaseCommand创建适配器的工厂函数
+
+    Args:
+        legacy_command_class: BaseCommand的子类
+
+    Returns:
+        适配器类，继承自PlusCommand
+    """
+
+    class LegacyAdapter(PlusCommand):
+        # 从旧命令类中继承元数据
+        command_name = legacy_command_class.command_name
+        command_description = legacy_command_class.command_description
+        chat_type_allow = getattr(legacy_command_class, "chat_type_allow", ChatType.ALL)
+        intercept_message = False  # 旧命令默认为False
+
+        def __init__(self, message: DatabaseMessages, plugin_config: dict | None = None):
+            super().__init__(message, plugin_config)
+            # 实例化旧命令
+            self.legacy_command = legacy_command_class(message, plugin_config)
+            # 将chat_stream传递给旧命令实例
+            self.legacy_command.chat_stream = self.chat_stream
+
+        def is_command_match(self) -> bool:
+            """使用旧命令的正则表达式进行匹配"""
+            if not self.message.processed_plain_text:
+                return False
+
+            pattern = getattr(self.legacy_command, "command_pattern", "")
+            if not pattern:
+                return False
+
+            match = re.match(pattern, self.message.processed_plain_text)
+            if match:
+                # 存储匹配组，以便旧命令的execute可以访问
+                self.legacy_command.set_matched_groups(match.groupdict())
+                return True
+
+            return False
+
+        async def execute(self, args: CommandArgs) -> tuple[bool, str | None, bool]:
+            """执行旧命令的execute方法"""
+            # 检查聊天类型
+            if not self.legacy_command.is_chat_type_allowed():
+                return False, "不支持当前聊天类型", self.intercept_message
+
+            # 执行旧命令
+            try:
+                # 旧的execute不接收args参数
+                return await self.legacy_command.execute()
+            except Exception as e:
+                logger.error(f"执行旧版命令 '{self.command_name}' 时出错: {e}", exc_info=True)
+                return False, f"命令执行出错: {e!s}", self.intercept_message
+
+    return LegacyAdapter
+
