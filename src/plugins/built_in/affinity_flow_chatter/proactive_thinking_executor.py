@@ -541,10 +541,32 @@ async def execute_proactive_thinking(stream_id: str):
 
     try:
         # 0. 前置检查
+        # 0.1 检查白名单/黑名单
+        # 从 stream_id 获取 stream_config 字符串进行验证
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(stream_id)
+            
+            if chat_stream:
+                # 使用 ChatStream 的 get_raw_id() 方法获取配置字符串
+                stream_config = chat_stream.get_raw_id()
+                
+                # 执行白名单/黑名单检查
+                if not proactive_thinking_scheduler._check_whitelist_blacklist(stream_config):
+                    logger.debug(f"聊天流 {stream_id} ({stream_config}) 未通过白名单/黑名单检查，跳过主动思考")
+                    return
+            else:
+                logger.warning(f"无法获取聊天流 {stream_id} 的信息，跳过白名单检查")
+        except Exception as e:
+            logger.warning(f"白名单检查时出错: {e}，继续执行")
+        
+        # 0.2 检查安静时段
         if proactive_thinking_scheduler._is_in_quiet_hours():
             logger.debug("安静时段，跳过")
             return
 
+        # 0.3 检查每日限制
         if not proactive_thinking_scheduler._check_daily_limit(stream_id):
             logger.debug("今日发言达上限")
             return
