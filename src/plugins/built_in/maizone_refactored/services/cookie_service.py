@@ -135,9 +135,11 @@ class CookieService:
         # 3. 尝试从Adapter获取 (作为最后的备用方案)
         logger.warning(f"从本地缓存加载 {qq_account} 的Cookie失败，最后尝试使用Adapter API。")
         cookies = await self._get_cookies_from_adapter(stream_id)
+        logger.info(f"[DEBUG] _get_cookies_from_adapter 返回: type={type(cookies)}, is_None={cookies is None}, bool={bool(cookies) if cookies is not None else 'N/A'}")
         if cookies:
-            logger.info(f"成功从Adapter API为 {qq_account} 获取Cookie。")
+            logger.info(f"成功从Adapter API为 {qq_account} 获取Cookie，keys={list(cookies.keys())}")
             self._save_cookies_to_file(qq_account, cookies)
+            logger.info(f"[DEBUG] Cookie已保存，即将返回")
             return cookies
 
         logger.error(

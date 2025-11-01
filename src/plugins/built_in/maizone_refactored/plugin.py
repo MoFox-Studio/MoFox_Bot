@@ -4,7 +4,6 @@ MaiZone（麦麦空间）- 重构版
 
 import asyncio
 from pathlib import Path
-from typing import ClassVar
 
 from src.common.logger import get_logger
 from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
@@ -37,14 +36,14 @@ class MaiZoneRefactoredPlugin(BasePlugin):
     plugin_description: str = "重构版的MaiZone插件"
     config_file_name: str = "config.toml"
     enable_plugin: bool = True
-    dependencies: ClassVar[list[str] ] = []
-    python_dependencies: ClassVar[list[str] ] = []
+    dependencies: list[str] = []
+    python_dependencies: list[str] = []
 
-    config_schema: ClassVar[dict] = {
+    config_schema: dict = {
         "plugin": {"enable": ConfigField(type=bool, default=True, description="是否启用插件")},
         "models": {
             "text_model": ConfigField(type=str, default="maizone", description="生成文本的模型名称"),
-            "vision_model": ConfigField(type=str, default="YISHAN-gemini-2.5-flash", description="识别图片的模型名称"),
+            "vision_model": ConfigField(type=str, default="sf-glm-4.5v", description="识别图片的模型名称（建议使用model_config.toml中配置的视觉模型）"),
             "siliconflow_apikey": ConfigField(type=str, default="", description="硅基流动AI生图API密钥"),
         },
         "send": {
@@ -87,7 +86,7 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         },
     }
 
-    permission_nodes: ClassVar[list[PermissionNodeField]] = [
+    permission_nodes: list[PermissionNodeField] = [
         PermissionNodeField(node_name="send_feed", description="是否可以使用机器人发送QQ空间说说"),
         PermissionNodeField(node_name="read_feed", description="是否可以使用机器人读取QQ空间说说"),
     ]

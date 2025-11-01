@@ -301,6 +301,28 @@ class ChatBot:
             logger.error(f"处理命令时出错: {e}")
             return False, None, True  # 出错时继续处理消息
 
+
+    async def _handle_adapter_response_from_dict(self, seg_data: dict | None):
+        """处理适配器命令响应（从字典数据）"""
+        try:
+            from src.plugin_system.apis.send_api import put_adapter_response
+
+            if isinstance(seg_data, dict):
+                request_id = seg_data.get("request_id")
+                response_data = seg_data.get("response")
+            else:
+                request_id = None
+                response_data = None
+
+            if request_id and response_data:
+                logger.info(f"[DEBUG bot.py] 收到适配器响应，request_id={request_id}")
+                put_adapter_response(request_id, response_data)
+            else:
+                logger.warning(f"适配器响应消息格式不正确: request_id={request_id}, response_data={response_data}")
+
+        except Exception as e:
+            logger.error(f"处理适配器响应时出错: {e}")
+
     async def message_process(self, message_data: dict[str, Any]) -> None:
         """处理转化后的统一格式消息"""
         try:
@@ -349,6 +371,14 @@ class ChatBot:
                 if sent_message:  # 这一段只是为了在一切处理前劫持上报的自身消息，用于更新message_id，需要ada支持上报事件，实际测试中不会对正常使用造成任何问题
                     # 直接使用消息字典更新，不再需要创建 MessageRecv
                     await MessageStorage.update_message(message_data)
+                    return
+
+            # 优先处理adapter_response消息（在创建DatabaseMessages之前）
+            message_segment = message_data.get("message_segment")
+            if message_segment and isinstance(message_segment, dict):
+                if message_segment.get("type") == "adapter_response":
+                    logger.info(f"[DEBUG bot.py message_process] 检测到adapter_response，立即处理")
+                    await self._handle_adapter_response_from_dict(message_segment.get("data"))
                     return
 
             group_info = temp_message_info.group_info

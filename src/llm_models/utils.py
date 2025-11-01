@@ -15,11 +15,11 @@ from .payload_content.message import Message, MessageBuilder
 logger = get_logger("消息压缩工具")
 
 
-def compress_messages(messages: list[Message], img_target_size: int = 2 * 1024 * 1024) -> list[Message]:
+def compress_messages(messages: list[Message], img_target_size: int = 1 * 1024 * 1024) -> list[Message]:
     """
     压缩消息列表中的图片
     :param messages: 消息列表
-    :param img_target_size: 图片目标大小，默认2MB
+    :param img_target_size: 图片目标大小，默认1MB
     :return: 压缩后的消息列表
     """
 
@@ -30,7 +30,7 @@ def compress_messages(messages: list[Message], img_target_size: int = 2 * 1024 *
         :return: 转换后的图片数据
         """
         try:
-            image = Image.open(io.BytesIO(image_data))
+            image = Image.open(image_data)
 
             if image.format and (image.format.upper() in ["JPEG", "JPG", "PNG", "WEBP"]):
                 # 静态图像，转换为JPEG格式
@@ -51,7 +51,7 @@ def compress_messages(messages: list[Message], img_target_size: int = 2 * 1024 *
         :return: 缩放后的图片数据
         """
         try:
-            image = Image.open(io.BytesIO(image_data))
+            image = Image.open(image_data)
 
             # 原始尺寸
             original_size = (image.width, image.height)
@@ -156,13 +156,9 @@ class LLMUsageRecorder:
         endpoint: str,
         time_cost: float = 0.0,
     ):
-        prompt_tokens = getattr(model_usage, "prompt_tokens", 0)
-        completion_tokens = getattr(model_usage, "completion_tokens", 0)
-        total_tokens = getattr(model_usage, "total_tokens", 0)
-
-        input_cost = (prompt_tokens / 1000000) * model_info.price_in
-        output_cost = (completion_tokens / 1000000) * model_info.price_out
-        round(input_cost + output_cost, 6)
+        input_cost = (model_usage.prompt_tokens / 1000000) * model_info.price_in
+        output_cost = (model_usage.completion_tokens / 1000000) * model_info.price_out
+        total_cost = round(input_cost + output_cost, 6)
 
         session = None
         try:
@@ -175,10 +171,10 @@ class LLMUsageRecorder:
                     user_id=user_id,
                     request_type=request_type,
                     endpoint=endpoint,
-                    prompt_tokens=prompt_tokens,
-                    completion_tokens=completion_tokens,
-                    total_tokens=total_tokens,
-                    cost=1.0,
+                    prompt_tokens=model_usage.prompt_tokens or 0,
+                    completion_tokens=model_usage.completion_tokens or 0,
+                    total_tokens=model_usage.total_tokens or 0,
+                    cost=total_cost,
                     time_cost=round(time_cost or 0.0, 3),
                     status="success",
                     timestamp=datetime.now(),  # SQLAlchemy 会处理 DateTime 字段
@@ -190,8 +186,8 @@ class LLMUsageRecorder:
             logger.debug(
                 f"Token使用情况 - 模型: {model_usage.model_name}, "
                 f"用户: {user_id}, 类型: {request_type}, "
-                f"提示词: {prompt_tokens}, 完成: {completion_tokens}, "
-                f"总计: {total_tokens}"
+                f"提示词: {model_usage.prompt_tokens}, 完成: {model_usage.completion_tokens}, "
+                f"总计: {model_usage.total_tokens}"
             )
         except Exception as e:
             logger.error(f"记录token使用情况失败: {e!s}")

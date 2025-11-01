@@ -1,28 +1,26 @@
 import json
-import random
 import time
-import uuid
-from typing import Any, Dict, Optional, Tuple
-
+import random
 import websockets as Server
+import uuid
 from maim_message import (
-    BaseMessageInfo,
-    GroupInfo,
-    MessageBase,
-    Seg,
     UserInfo,
+    GroupInfo,
+    Seg,
+    BaseMessageInfo,
+    MessageBase,
 )
-
-from src.common.logger import get_logger
+from typing import Dict, Any, Tuple, Optional
 from src.plugin_system.apis import config_api
 
 from . import CommandType
-from .recv_handler.message_sending import message_send_instance
 from .response_pool import get_response
-from .utils import convert_image_to_gif, get_image_format
-from .websocket_manager import websocket_manager
+from src.common.logger import get_logger
 
 logger = get_logger("napcat_adapter")
+from .utils import get_image_format, convert_image_to_gif
+from .recv_handler.message_sending import message_send_instance
+from .websocket_manager import websocket_manager
 
 
 class SendHandler:
@@ -55,6 +53,11 @@ class SendHandler:
         elif message_segment.type == "adapter_command":
             logger.info("处理适配器命令")
             return await self.handle_adapter_command(raw_message_base)
+        elif message_segment.type == "adapter_response":
+            # adapter_response消息是Napcat发送给Bot的，不应该在这里处理
+            # 这个handler只处理Bot发送给Napcat的消息
+            logger.info("收到adapter_response消息，此消息应该由Bot端处理，跳过")
+            return None
         else:
             logger.info("处理普通消息")
             return await self.send_normal_message(raw_message_base)
@@ -199,7 +202,9 @@ class SendHandler:
                 response = await self.send_message_to_napcat(action, params)
 
             # 发送响应回MoFox-Bot
+            logger.info(f"[DEBUG handle_adapter_command] 即将调用send_adapter_command_response, request_id={request_id}")
             await self.send_adapter_command_response(raw_message_base, response, request_id)
+            logger.info(f"[DEBUG handle_adapter_command] send_adapter_command_response调用完成")
 
             if response.get("status") == "ok":
                 logger.info(f"适配器命令 {action} 执行成功")
@@ -276,9 +281,6 @@ class SendHandler:
             new_payload = self.build_payload(payload, self.handle_videourl_message(video_url), False)
         elif seg.type == "file":
             file_path = seg.data
-            file_path = seg.data
-            if isinstance(file_path, dict):
-                file_path = file_path.get("file", "")
             new_payload = self.build_payload(payload, self.handle_file_message(file_path), False)
         return new_payload
 
@@ -416,10 +418,6 @@ class SendHandler:
 
     def handle_file_message(self, file_path: str) -> dict:
         """处理文件消息"""
-        if not file_path:
-            logger.error("文件路径为空")
-            return {}
-
         return {
             "type": "file",
             "data": {"file": f"file://{file_path}"},
@@ -549,7 +547,7 @@ class SendHandler:
             set_like = bool(args["set"])
         except (KeyError, ValueError) as e:
             logger.error(f"处理表情回应命令时发生错误: {e}, 原始参数: {args}")
-            raise ValueError(f"缺少必需参数或参数类型错误: {e}") from e
+            raise ValueError(f"缺少必需参数或参数类型错误: {e}")
 
         return (
             CommandType.SET_EMOJI_LIKE.value,
@@ -569,8 +567,8 @@ class SendHandler:
         try:
             user_id: int = int(args["qq_id"])
             times: int = int(args["times"])
-        except (KeyError, ValueError) as e:
-            raise ValueError("缺少必需参数: qq_id 或 times") from e
+        except (KeyError, ValueError):
+            raise ValueError("缺少必需参数: qq_id 或 times")
 
         return (
             CommandType.SEND_LIKE.value,
@@ -667,7 +665,6 @@ class SendHandler:
             )
 
             await message_send_instance.message_send(original_message)
-            logger.debug(f"已发送适配器命令响应，request_id: {request_id}")
 
         except Exception as e:
             logger.error(f"发送适配器命令响应时出错: {e}")
