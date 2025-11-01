@@ -293,6 +293,14 @@ async def record_llm_usage(
     output_tokens: int,
     stream_id: Optional[str] = None,
     platform: Optional[str] = None,
+    user_id: str = "system",
+    request_type: str = "chat",
+    model_assign_name: Optional[str] = None,
+    model_api_provider: Optional[str] = None,
+    endpoint: str = "/v1/chat/completions",
+    cost: float = 0.0,
+    status: str = "success",
+    time_cost: Optional[float] = None,
     use_batch: bool = True,
 ) -> Optional[LLMUsage]:
     """记录LLM使用情况
@@ -301,8 +309,16 @@ async def record_llm_usage(
         model_name: 模型名称
         input_tokens: 输入token数
         output_tokens: 输出token数
-        stream_id: 流ID
-        platform: 平台
+        stream_id: 流ID (兼容参数，实际不存储)
+        platform: 平台 (兼容参数，实际不存储)
+        user_id: 用户ID
+        request_type: 请求类型
+        model_assign_name: 模型分配名称
+        model_api_provider: 模型API提供商
+        endpoint: API端点
+        cost: 成本
+        status: 状态
+        time_cost: 时间成本
         use_batch: 是否使用批处理
         
     Returns:
@@ -310,16 +326,20 @@ async def record_llm_usage(
     """
     usage_data = {
         "model_name": model_name,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "prompt_tokens": input_tokens,  # 使用正确的字段名
+        "completion_tokens": output_tokens,  # 使用正确的字段名
         "total_tokens": input_tokens + output_tokens,
-        "timestamp": time.time(),
+        "user_id": user_id,
+        "request_type": request_type,
+        "endpoint": endpoint,
+        "cost": cost,
+        "status": status,
+        "model_assign_name": model_assign_name or model_name,
+        "model_api_provider": model_api_provider or "unknown",
     }
     
-    if stream_id:
-        usage_data["stream_id"] = stream_id
-    if platform:
-        usage_data["platform"] = platform
+    if time_cost is not None:
+        usage_data["time_cost"] = time_cost
     
     return await _llm_usage_crud.create(usage_data, use_batch=use_batch)
 
