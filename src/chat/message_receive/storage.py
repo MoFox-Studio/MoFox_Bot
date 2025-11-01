@@ -3,6 +3,7 @@ import re
 import time
 import traceback
 from collections import deque
+from typing import Optional
 
 import orjson
 from sqlalchemy import desc, select, update
