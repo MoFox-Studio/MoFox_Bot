@@ -29,10 +29,11 @@ logger = get_logger("proactive_thinking_executor")
 
 # 决策 Prompt
 decision_prompt_template = Prompt(
-    """你的人设是：
+    """{time_block}
+你的人设是：
 {bot_personality}
 
-现在是 {current_time}，你正在考虑是否要在与 "{stream_name}" 的对话中主动说些什么。
+你正在考虑是否要在与 "{stream_name}" 的对话中主动说些什么。
 
 【你当前的心情】
 {current_mood}
@@ -84,7 +85,8 @@ decision_prompt_template = Prompt(
 
 # 冒泡回复 Prompt
 simple_bubble_reply_prompt_template = Prompt(
-    """你的人设是：
+    """{time_block}
+你的人设是：
 {bot_personality}
 
 距离上次对话已经有一段时间了，你决定主动说些什么，轻松地开启新的互动。
@@ -113,10 +115,11 @@ simple_bubble_reply_prompt_template = Prompt(
 
 # 抛出话题回复 Prompt
 throw_topic_reply_prompt_template = Prompt(
-    """你的人设是：
+    """{time_block}
+你的人设是：
 {bot_personality}
 
-现在是 {current_time}，你决定在与 "{stream_name}" 的对话中主动发起一次互动。
+你决定在与 "{stream_name}" 的对话中主动发起一次互动。
 
 【你当前的心情】
 {current_mood}
@@ -202,9 +205,12 @@ class ProactiveThinkingPlanner:
             if recent_messages:
                 recent_chat_history = await message_api.build_readable_messages_to_str(recent_messages)
 
-            # 3. 获取bot人设
+            # 3. 获取bot人设和时间信息
             individuality = Individuality()
             bot_personality = await individuality.get_personality_block()
+            
+            # 构建时间信息块
+            time_block = f"当前时间是 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
             # 4. 获取当前心情
             current_mood = "感觉很平静"  # 默认心情
@@ -242,7 +248,7 @@ class ProactiveThinkingPlanner:
                 "interest_score": stream_data.get("stream_interest_score", 0.5),
                 "recent_chat_history": recent_chat_history or "暂无最近聊天记录",
                 "bot_personality": bot_personality,
-                "current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "time_block": time_block,
                 "current_mood": current_mood,
                 "last_decision": last_decision,
             }
@@ -315,8 +321,8 @@ class ProactiveThinkingPlanner:
                     last_decision_text += f"\n- 话题: {last_topic}"
 
             decision_prompt = decision_prompt_template.format(
+                time_block=context["time_block"],
                 bot_personality=context["bot_personality"],
-                current_time=context["current_time"],
                 stream_name=context["stream_name"],
                 current_mood=context.get("current_mood", "感觉很平静"),
                 stream_impression=context["stream_impression"],
@@ -378,6 +384,7 @@ class ProactiveThinkingPlanner:
 
             if action == "simple_bubble":
                 reply_prompt = simple_bubble_reply_prompt_template.format(
+                    time_block=context["time_block"],
                     bot_personality=context["bot_personality"],
                     current_mood=context.get("current_mood", "感觉很平静"),
                     stream_impression=context["stream_impression"],
@@ -387,8 +394,8 @@ class ProactiveThinkingPlanner:
                 )
             else:  # throw_topic
                 reply_prompt = throw_topic_reply_prompt_template.format(
+                    time_block=context["time_block"],
                     bot_personality=context["bot_personality"],
-                    current_time=context["current_time"],
                     stream_name=context["stream_name"],
                     current_mood=context.get("current_mood", "感觉很平静"),
                     stream_impression=context["stream_impression"],
