@@ -17,6 +17,8 @@ from sqlalchemy import select
 from src.chat.utils.utils_image import get_image_manager, image_path_to_base64
 from src.common.database.compatibility import get_db_session
 from src.common.database.core.models import Emoji, Images
+from src.common.database.api.crud import CRUDBase
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -204,16 +206,23 @@ class MaiEmoji:
 
             # 2. 删除数据库记录
             try:
-                async with get_db_session() as session:
-                    result = await session.execute(select(Emoji).where(Emoji.emoji_hash == self.hash))
-                    will_delete_emoji = result.scalar_one_or_none()
-                    if will_delete_emoji is None:
-                        logger.warning(f"[删除] 数据库中未找到哈希值为 {self.hash} 的表情包记录。")
-                        result = 0  # Indicate no DB record was deleted
-                    else:
-                        await session.delete(will_delete_emoji)
-                        result = 1  # Successfully deleted one record
-                        await session.commit()
+                # 使用CRUD进行删除
+                crud = CRUDBase(Emoji)
+                will_delete_emoji = await crud.get_by(emoji_hash=self.hash)
+                if will_delete_emoji is None:
+                    logger.warning(f"[删除] 数据库中未找到哈希值为 {self.hash} 的表情包记录。")
+                    result = 0  # Indicate no DB record was deleted
+                else:
+                    await crud.delete(will_delete_emoji.id)
+                    result = 1  # Successfully deleted one record
+                    
+                    # 使缓存失效
+                    from src.common.database.optimization.cache_manager import get_cache
+                    from src.common.database.utils.decorators import generate_cache_key
+                    cache = await get_cache()
+                    await cache.delete(generate_cache_key("emoji_by_hash", self.hash))
+                    await cache.delete(generate_cache_key("emoji_description", self.hash))
+                    await cache.delete(generate_cache_key("emoji_tag", self.hash))
             except Exception as e:
                 logger.error(f"[错误] 删除数据库记录时出错: {e!s}")
                 result = 0
@@ -697,23 +706,27 @@ class EmojiManager:
             list[MaiEmoji]: 表情包对象列表
         """
         try:
-            async with get_db_session() as session:
-                if emoji_hash:
-                    result = await session.execute(select(Emoji).where(Emoji.emoji_hash == emoji_hash))
-                    query = result.scalars().all()
-                else:
-                    logger.warning(
-                        "[查询] 未提供 hash，将尝试加载所有表情包，建议使用 get_all_emoji_from_db 更新管理器状态。"
-                    )
-                    result = await session.execute(select(Emoji))
-                    query = result.scalars().all()
+            # 使用CRUD进行查询
+            crud = CRUDBase(Emoji)
+            
+            if emoji_hash:
+                # 查询特定hash的表情包
+                emoji_record = await crud.get_by(emoji_hash=emoji_hash)
+                emoji_instances = [emoji_record] if emoji_record else []
+            else:
+                logger.warning(
+                    "[查询] 未提供 hash，将尝试加载所有表情包，建议使用 get_all_emoji_from_db 更新管理器状态。"
+                )
+                # 查询所有表情包
+                from src.common.database.api.query import QueryBuilder
+                query = QueryBuilder(Emoji)
+                emoji_instances = await query.all()
 
-                emoji_instances = query
-                emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
+            emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
 
-                if load_errors > 0:
-                    logger.warning(f"[查询] 加载过程中出现 {load_errors} 个错误。")
-                return emoji_objects
+            if load_errors > 0:
+                logger.warning(f"[查询] 加载过程中出现 {load_errors} 个错误。")
+            return emoji_objects
 
         except Exception as e:
             logger.error(f"[错误] 从数据库获取表情包对象失败: {e!s}")
@@ -734,8 +747,9 @@ class EmojiManager:
                 return emoji
         return None  # 如果循环结束还没找到，则返回 None
 
+    @cached(ttl=1800, key_prefix="emoji_tag")  # 缓存30分钟
     async def get_emoji_tag_by_hash(self, emoji_hash: str) -> str | None:
-        """根据哈希值获取已注册表情包的描述
+        """根据哈希值获取已注册表情包的描述（带30分钟缓存）
 
         Args:
             emoji_hash: 表情包的哈希值
@@ -765,8 +779,9 @@ class EmojiManager:
             logger.error(f"获取表情包描述失败 (Hash: {emoji_hash}): {e!s}")
             return None
 
+    @cached(ttl=1800, key_prefix="emoji_description")  # 缓存30分钟
     async def get_emoji_description_by_hash(self, emoji_hash: str) -> str | None:
-        """根据哈希值获取已注册表情包的描述
+        """根据哈希值获取已注册表情包的描述（带30分钟缓存）
 
         Args:
             emoji_hash: 表情包的哈希值
