@@ -289,7 +289,7 @@ class DatabaseManager:
             start_time = time.time()
 
             # 使用线程执行器运行潜在的阻塞操作
-            await initialize_sql_database( global_config.database)
+            await initialize_sql_database()
             elapsed_time = time.time() - start_time
             logger.info(
                 f"数据库连接初始化成功，使用 {global_config.database.database_type} 数据库，耗时: {elapsed_time:.2f}秒"
