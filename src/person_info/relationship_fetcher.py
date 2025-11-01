@@ -196,12 +196,18 @@ class RelationshipFetcher:
 
             if relationship:
                 # 将SQLAlchemy对象转换为字典以保持兼容性
-                rel_data = {
-                    "user_aliases": relationship.user_aliases,
-                    "relationship_text": relationship.relationship_text,
-                    "preference_keywords": relationship.preference_keywords,
-                    "relationship_score": relationship.relationship_score,
-                }
+                # 使用 try-except 防止 detached 对象访问错误
+                rel_data = {}
+                try:
+                    rel_data = {
+                        "user_aliases": getattr(relationship, "user_aliases", None),
+                        "relationship_text": getattr(relationship, "relationship_text", None),
+                        "preference_keywords": getattr(relationship, "preference_keywords", None),
+                        "relationship_score": getattr(relationship, "relationship_score", None),
+                    }
+                except Exception as attr_error:
+                    logger.warning(f"访问relationship对象属性失败: {attr_error}")
+                    rel_data = {}
 
                 # 5.1 用户别名
                 if rel_data.get("user_aliases"):
