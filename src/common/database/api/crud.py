@@ -10,6 +10,7 @@ from typing import Any, Optional, Type, TypeVar
 
 from sqlalchemy import and_, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.inspection import inspect
 
 from src.common.database.core.models import Base
 from src.common.database.core.session import get_db_session
@@ -25,6 +26,42 @@ from src.common.logger import get_logger
 logger = get_logger("database.crud")
 
 T = TypeVar("T", bound=Base)
+
+
+def _model_to_dict(instance: Base) -> dict[str, Any]:
+    """将 SQLAlchemy 模型实例转换为字典
+    
+    Args:
+        instance: SQLAlchemy 模型实例
+        
+    Returns:
+        字典表示，包含所有列的值
+    """
+    result = {}
+    for column in instance.__table__.columns:
+        try:
+            result[column.name] = getattr(instance, column.name)
+        except Exception as e:
+            logger.warning(f"无法访问字段 {column.name}: {e}")
+            result[column.name] = None
+    return result
+
+
+def _dict_to_model(model_class: Type[T], data: dict[str, Any]) -> T:
+    """从字典创建 SQLAlchemy 模型实例 (detached状态)
+    
+    Args:
+        model_class: SQLAlchemy 模型类
+        data: 字典数据
+        
+    Returns:
+        模型实例 (detached, 所有字段已加载)
+    """
+    instance = model_class()
+    for key, value in data.items():
+        if hasattr(instance, key):
+            setattr(instance, key, value)
+    return instance
 
 
 class CRUDBase:
@@ -58,13 +95,14 @@ class CRUDBase:
         """
         cache_key = f"{self.model_name}:id:{id}"
         
-        # 尝试从缓存获取
+        # 尝试从缓存获取 (缓存的是字典)
         if use_cache:
             cache = await get_cache()
-            cached = await cache.get(cache_key)
-            if cached is not None:
+            cached_dict = await cache.get(cache_key)
+            if cached_dict is not None:
                 logger.debug(f"缓存命中: {cache_key}")
-                return cached
+                # 从字典恢复对象
+                return _dict_to_model(self.model, cached_dict)
         
         # 从数据库查询
         async with get_db_session() as session:
@@ -72,10 +110,19 @@ class CRUDBase:
             result = await session.execute(stmt)
             instance = result.scalar_one_or_none()
             
-            # 写入缓存
-            if instance is not None and use_cache:
-                cache = await get_cache()
-                await cache.set(cache_key, instance)
+            if instance is not None:
+                # 预加载所有字段
+                for column in self.model.__table__.columns:
+                    try:
+                        getattr(instance, column.name)
+                    except Exception:
+                        pass
+                
+                # 转换为字典并写入缓存
+                if use_cache:
+                    instance_dict = _model_to_dict(instance)
+                    cache = await get_cache()
+                    await cache.set(cache_key, instance_dict)
             
             return instance
 
@@ -95,13 +142,14 @@ class CRUDBase:
         """
         cache_key = f"{self.model_name}:filter:{str(sorted(filters.items()))}"
         
-        # 尝试从缓存获取
+        # 尝试从缓存获取 (缓存的是字典)
         if use_cache:
             cache = await get_cache()
-            cached = await cache.get(cache_key)
-            if cached is not None:
+            cached_dict = await cache.get(cache_key)
+            if cached_dict is not None:
                 logger.debug(f"缓存命中: {cache_key}")
-                return cached
+                # 从字典恢复对象
+                return _dict_to_model(self.model, cached_dict)
         
         # 从数据库查询
         async with get_db_session() as session:
@@ -122,10 +170,11 @@ class CRUDBase:
                     except Exception:
                         pass  # 忽略访问错误
                 
-                # 写入缓存
+                # 转换为字典并写入缓存
                 if use_cache:
+                    instance_dict = _model_to_dict(instance)
                     cache = await get_cache()
-                    await cache.set(cache_key, instance)
+                    await cache.set(cache_key, instance_dict)
             
             return instance
 
@@ -149,13 +198,14 @@ class CRUDBase:
         """
         cache_key = f"{self.model_name}:multi:{skip}:{limit}:{str(sorted(filters.items()))}"
         
-        # 尝试从缓存获取
+        # 尝试从缓存获取 (缓存的是字典列表)
         if use_cache:
             cache = await get_cache()
-            cached = await cache.get(cache_key)
-            if cached is not None:
+            cached_dicts = await cache.get(cache_key)
+            if cached_dicts is not None:
                 logger.debug(f"缓存命中: {cache_key}")
-                return cached
+                # 从字典列表恢复对象列表
+                return [_dict_to_model(self.model, d) for d in cached_dicts]
         
         # 从数据库查询
         async with get_db_session() as session:
@@ -173,7 +223,7 @@ class CRUDBase:
             stmt = stmt.offset(skip).limit(limit)
             
             result = await session.execute(stmt)
-            instances = result.scalars().all()
+            instances = list(result.scalars().all())
             
             # 触发所有实例的列加载，避免 detached 后的延迟加载问题
             for instance in instances:
@@ -183,10 +233,11 @@ class CRUDBase:
                     except Exception:
                         pass  # 忽略访问错误
             
-            # 写入缓存
+            # 转换为字典列表并写入缓存
             if use_cache:
+                instances_dicts = [_model_to_dict(inst) for inst in instances]
                 cache = await get_cache()
-                await cache.set(cache_key, instances)
+                await cache.set(cache_key, instances_dicts)
             
             return instances
 

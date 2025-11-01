@@ -18,6 +18,9 @@ from src.common.database.core.session import get_db_session
 from src.common.database.optimization import get_cache, get_preloader
 from src.common.logger import get_logger
 
+# 导入 CRUD 辅助函数以避免重复定义
+from src.common.database.api.crud import _dict_to_model, _model_to_dict
+
 logger = get_logger("database.query")
 
 T = TypeVar("T", bound="Base")
@@ -191,13 +194,14 @@ class QueryBuilder(Generic[T]):
         """
         cache_key = ":".join(self._cache_key_parts) + ":all"
         
-        # 尝试从缓存获取
+        # 尝试从缓存获取 (缓存的是字典列表)
         if self._use_cache:
             cache = await get_cache()
-            cached = await cache.get(cache_key)
-            if cached is not None:
+            cached_dicts = await cache.get(cache_key)
+            if cached_dicts is not None:
                 logger.debug(f"缓存命中: {cache_key}")
-                return cached
+                # 从字典列表恢复对象列表
+                return [_dict_to_model(self.model, d) for d in cached_dicts]
         
         # 从数据库查询
         async with get_db_session() as session:
@@ -212,10 +216,11 @@ class QueryBuilder(Generic[T]):
                     except Exception:
                         pass
             
-            # 写入缓存
+            # 转换为字典列表并写入缓存
             if self._use_cache:
+                instances_dicts = [_model_to_dict(inst) for inst in instances]
                 cache = await get_cache()
-                await cache.set(cache_key, instances)
+                await cache.set(cache_key, instances_dicts)
             
             return instances
 
@@ -227,13 +232,14 @@ class QueryBuilder(Generic[T]):
         """
         cache_key = ":".join(self._cache_key_parts) + ":first"
         
-        # 尝试从缓存获取
+        # 尝试从缓存获取 (缓存的是字典)
         if self._use_cache:
             cache = await get_cache()
-            cached = await cache.get(cache_key)
-            if cached is not None:
+            cached_dict = await cache.get(cache_key)
+            if cached_dict is not None:
                 logger.debug(f"缓存命中: {cache_key}")
-                return cached
+                # 从字典恢复对象
+                return _dict_to_model(self.model, cached_dict)
         
         # 从数据库查询
         async with get_db_session() as session:
@@ -248,10 +254,11 @@ class QueryBuilder(Generic[T]):
                     except Exception:
                         pass
             
-            # 写入缓存
+            # 转换为字典并写入缓存
             if instance is not None and self._use_cache:
+                instance_dict = _model_to_dict(instance)
                 cache = await get_cache()
-                await cache.set(cache_key, instance)
+                await cache.set(cache_key, instance_dict)
             
             return instance
 
