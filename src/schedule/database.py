@@ -3,7 +3,8 @@
 
 from sqlalchemy import delete, func, select, update
 
-from src.common.database.sqlalchemy_models import MonthlyPlan, get_db_session
+from src.common.database.core.models import MonthlyPlan
+from src.common.database.core import get_db_session
 from src.common.logger import get_logger
 from src.config.config import global_config
 

@@ -649,8 +649,8 @@ class BotInterestManager:
             # 导入SQLAlchemy相关模块
             import orjson
 
-            from src.common.database.sqlalchemy_database_api import get_db_session
-            from src.common.database.sqlalchemy_models import BotPersonalityInterests as DBBotPersonalityInterests
+            from src.common.database.compatibility import get_db_session
+            from src.common.database.core.models import BotPersonalityInterests as DBBotPersonalityInterests
 
             async with get_db_session() as session:
                 # 查询最新的兴趣标签配置
@@ -731,8 +731,8 @@ class BotInterestManager:
             # 导入SQLAlchemy相关模块
             import orjson
 
-            from src.common.database.sqlalchemy_database_api import get_db_session
-            from src.common.database.sqlalchemy_models import BotPersonalityInterests as DBBotPersonalityInterests
+            from src.common.database.compatibility import get_db_session
+            from src.common.database.core.models import BotPersonalityInterests as DBBotPersonalityInterests
 
             # 将兴趣标签转换为JSON格式
             tags_data = []

@@ -218,13 +218,17 @@ class MainSystem:
 
         cleanup_tasks = []
 
-        # 停止数据库服务
+        # 停止消息批处理器
         try:
-            from src.common.database.database import stop_database
+            from src.chat.message_receive.storage import get_message_storage_batcher, get_message_update_batcher
 
-            cleanup_tasks.append(("数据库服务", stop_database()))
+            storage_batcher = get_message_storage_batcher()
+            cleanup_tasks.append(("消息存储批处理器", storage_batcher.stop()))
+            
+            update_batcher = get_message_update_batcher()
+            cleanup_tasks.append(("消息更新批处理器", update_batcher.stop()))
         except Exception as e:
-            logger.error(f"准备停止数据库服务时出错: {e}")
+            logger.error(f"准备停止消息批处理器时出错: {e}")
 
         # 停止消息管理器
         try:
@@ -316,6 +320,18 @@ class MainSystem:
                 logger.error(f"执行清理任务时发生错误: {e}")
         else:
             logger.warning("没有需要清理的任务")
+
+        # 停止数据库服务 (在所有其他任务完成后最后停止)
+        try:
+            from src.common.database.core import close_engine as stop_database
+
+            logger.info("正在停止数据库服务...")
+            await asyncio.wait_for(stop_database(), timeout=15.0)
+            logger.info("🛑 数据库服务已停止")
+        except asyncio.TimeoutError:
+            logger.error("停止数据库服务超时")
+        except Exception as e:
+            logger.error(f"停止数据库服务时出错: {e}")
 
     def _cleanup(self) -> None:
         """同步清理资源（向后兼容）"""
@@ -478,6 +494,20 @@ MoFox_Bot(第三方修改版)
             logger.info("消息重组器已启动")
         except Exception as e:
             logger.error(f"启动消息重组器失败: {e}")
+
+        # 启动消息存储批处理器
+        try:
+            from src.chat.message_receive.storage import get_message_storage_batcher, get_message_update_batcher
+
+            storage_batcher = get_message_storage_batcher()
+            await storage_batcher.start()
+            logger.info("消息存储批处理器已启动")
+            
+            update_batcher = get_message_update_batcher()
+            await update_batcher.start()
+            logger.info("消息更新批处理器已启动")
+        except Exception as e:
+            logger.error(f"启动消息批处理器失败: {e}")
 
         # 启动消息管理器
         try:

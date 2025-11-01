@@ -11,8 +11,10 @@ from sqlalchemy import select
 
 from src.chat.express.expression_selector import expression_selector
 from src.chat.utils.prompt import Prompt
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import ChatStreams
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import ChatStreams
+from src.common.database.api.crud import CRUDBase
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.individuality.individuality import Individuality
@@ -252,26 +254,26 @@ class ProactiveThinkingPlanner:
             logger.error(f"搜集上下文信息失败: {e}", exc_info=True)
             return None
 
+    @cached(ttl=300, key_prefix="stream_impression")  # 缓存5分钟
     async def _get_stream_impression(self, stream_id: str) -> dict[str, Any] | None:
-        """从数据库获取聊天流印象数据"""
+        """从数据库获取聊天流印象数据（带5分钟缓存）"""
         try:
-            async with get_db_session() as session:
-                stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)
-                result = await session.execute(stmt)
-                stream = result.scalar_one_or_none()
+            # 使用CRUD进行查询
+            crud = CRUDBase(ChatStreams)
+            stream = await crud.get_by(stream_id=stream_id)
 
-                if not stream:
-                    return None
+            if not stream:
+                return None
 
-                return {
-                    "stream_name": stream.group_name or "私聊",
-                    "stream_impression_text": stream.stream_impression_text or "",
-                    "stream_chat_style": stream.stream_chat_style or "",
-                    "stream_topic_keywords": stream.stream_topic_keywords or "",
-                    "stream_interest_score": float(stream.stream_interest_score)
-                    if stream.stream_interest_score
-                    else 0.5,
-                }
+            return {
+                "stream_name": stream.group_name or "私聊",
+                "stream_impression_text": stream.stream_impression_text or "",
+                "stream_chat_style": stream.stream_chat_style or "",
+                "stream_topic_keywords": stream.stream_topic_keywords or "",
+                "stream_interest_score": float(stream.stream_interest_score)
+                if stream.stream_interest_score
+                else 0.5,
+            }
 
         except Exception as e:
             logger.error(f"获取聊天流印象失败: {e}")
@@ -539,10 +541,32 @@ async def execute_proactive_thinking(stream_id: str):
 
     try:
         # 0. 前置检查
+        # 0.1 检查白名单/黑名单
+        # 从 stream_id 获取 stream_config 字符串进行验证
+        try:
+            from src.chat.message_receive.chat_stream import get_chat_manager
+            chat_manager = get_chat_manager()
+            chat_stream = await chat_manager.get_stream(stream_id)
+            
+            if chat_stream:
+                # 使用 ChatStream 的 get_raw_id() 方法获取配置字符串
+                stream_config = chat_stream.get_raw_id()
+                
+                # 执行白名单/黑名单检查
+                if not proactive_thinking_scheduler._check_whitelist_blacklist(stream_config):
+                    logger.debug(f"聊天流 {stream_id} ({stream_config}) 未通过白名单/黑名单检查，跳过主动思考")
+                    return
+            else:
+                logger.warning(f"无法获取聊天流 {stream_id} 的信息，跳过白名单检查")
+        except Exception as e:
+            logger.warning(f"白名单检查时出错: {e}，继续执行")
+        
+        # 0.2 检查安静时段
         if proactive_thinking_scheduler._is_in_quiet_hours():
             logger.debug("安静时段，跳过")
             return
 
+        # 0.3 检查每日限制
         if not proactive_thinking_scheduler._check_daily_limit(stream_id):
             logger.debug("今日发言达上限")
             return

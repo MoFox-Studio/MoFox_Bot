@@ -10,8 +10,10 @@ from sqlalchemy import select
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.chat_message_builder import build_anonymous_messages, get_raw_msg_by_timestamp_with_chat_inclusive
 from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import Expression
+from src.common.database.api.crud import CRUDBase
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import Expression
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -232,21 +234,26 @@ class ExpressionLearner:
 
     async def get_expression_by_chat_id(self) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
         """
-        获取指定chat_id的style和grammar表达方式
+        获取指定chat_id的style和grammar表达方式（带10分钟缓存）
         返回的每个表达方式字典中都包含了source_id, 用于后续的更新操作
         
-        优化: 一次查询获取所有类型的表达方式，避免多次数据库查询
+        优化: 使用CRUD和缓存，减少数据库访问
         """
+        # 使用静态方法以正确处理缓存键
+        return await self._get_expressions_by_chat_id_cached(self.chat_id)
+    
+    @staticmethod
+    @cached(ttl=600, key_prefix="chat_expressions")
+    async def _get_expressions_by_chat_id_cached(chat_id: str) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
+        """内部方法：从数据库获取表达方式（带缓存）"""
         learnt_style_expressions = []
         learnt_grammar_expressions = []
 
-        # 优化: 一次查询获取所有表达方式
-        async with get_db_session() as session:
-            all_expressions = await session.execute(
-                select(Expression).where(Expression.chat_id == self.chat_id)
-            )
+        # 使用CRUD查询
+        crud = CRUDBase(Expression)
+        all_expressions = await crud.get_multi(chat_id=chat_id, limit=10000)
 
-            for expr in all_expressions.scalars():
+        for expr in all_expressions:
                 # 确保create_date存在，如果不存在则使用last_active_time
                 create_date = expr.create_date if expr.create_date is not None else expr.last_active_time
 
@@ -255,7 +262,7 @@ class ExpressionLearner:
                     "style": expr.style,
                     "count": expr.count,
                     "last_active_time": expr.last_active_time,
-                    "source_id": self.chat_id,
+                    "source_id": chat_id,
                     "type": expr.type,
                     "create_date": create_date,
                 }
@@ -272,18 +279,19 @@ class ExpressionLearner:
         """
         对数据库中的所有表达方式应用全局衰减
         
-        优化: 批量处理所有更改，最后统一提交，避免逐条提交
+        优化: 使用CRUD批量处理所有更改，最后统一提交
         """
         try:
+            # 使用CRUD查询所有表达方式
+            crud = CRUDBase(Expression)
+            all_expressions = await crud.get_multi(limit=100000)  # 获取所有表达方式
+
+            updated_count = 0
+            deleted_count = 0
+            
+            # 需要手动操作的情况下使用session
             async with get_db_session() as session:
-                # 获取所有表达方式
-                all_expressions = await session.execute(select(Expression))
-                all_expressions = all_expressions.scalars().all()
-
-                updated_count = 0
-                deleted_count = 0
-
-                # 优化: 批量处理所有修改
+                # 批量处理所有修改
                 for expr in all_expressions:
                     # 计算时间差
                     last_active = expr.last_active_time
@@ -383,10 +391,12 @@ class ExpressionLearner:
         current_time = time.time()
 
         # 存储到数据库 Expression 表
+        crud = CRUDBase(Expression)
         for chat_id, expr_list in chat_dict.items():
             async with get_db_session() as session:
                 for new_expr in expr_list:
                     # 查找是否已存在相似表达方式
+                    # 注意: get_all_by 不支持复杂条件，这里仍需使用 session
                     query = await session.execute(
                         select(Expression).where(
                             (Expression.chat_id == chat_id)
@@ -416,7 +426,7 @@ class ExpressionLearner:
                         )
                         session.add(new_expression)
 
-                # 限制最大数量
+                # 限制最大数量 - 使用 get_all_by_sorted 获取排序结果
                 exprs_result = await session.execute(
                     select(Expression)
                     .where((Expression.chat_id == chat_id) & (Expression.type == type))
@@ -427,6 +437,15 @@ class ExpressionLearner:
                     # 删除count最小的多余表达方式
                     for expr in exprs[: len(exprs) - MAX_EXPRESSION_COUNT]:
                         await session.delete(expr)
+                
+                # 提交后清除相关缓存
+                await session.commit()
+                
+            # 清除该chat_id的表达方式缓存
+            from src.common.database.optimization.cache_manager import get_cache
+            from src.common.database.utils.decorators import generate_cache_key
+            cache = await get_cache()
+            await cache.delete(generate_cache_key("chat_expressions", chat_id))
 
             # 🔥 训练 StyleLearner
             # 只对 style 类型的表达方式进行训练（grammar 不需要训练到模型）

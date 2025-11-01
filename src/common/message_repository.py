@@ -5,10 +5,10 @@ from typing import Any
 from sqlalchemy import func, not_, select
 from sqlalchemy.orm import DeclarativeBase
 
-from src.common.database.sqlalchemy_database_api import get_db_session
+from src.common.database.compatibility import get_db_session
 
 # from src.common.database.database_model import Messages
-from src.common.database.sqlalchemy_models import Messages
+from src.common.database.core.models import Messages
 from src.common.logger import get_logger
 from src.config.config import global_config
 

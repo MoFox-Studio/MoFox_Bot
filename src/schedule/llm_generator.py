@@ -9,7 +9,7 @@ from json_repair import repair_json
 from lunar_python import Lunar
 
 from src.chat.utils.prompt import global_prompt_manager
-from src.common.database.sqlalchemy_models import MonthlyPlan
+from src.common.database.core.models import MonthlyPlan
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
