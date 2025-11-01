@@ -78,7 +78,7 @@ class PluginStorage:
         # --- 延迟写入新增属性 ---
         self._dirty = False  # 数据是否被修改过的标志
         self._write_timer: threading.Timer | None = None  # 延迟写入的计时器
-        self.save_delay = 5  # 延迟5秒写入
+        self.save_delay = 2  # 延迟2秒写入
 
         self._ensure_directory_exists()
         self._load_data()
