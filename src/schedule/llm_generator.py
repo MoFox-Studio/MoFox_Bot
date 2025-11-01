@@ -8,31 +8,16 @@ import orjson
 from json_repair import repair_json
 from lunar_python import Lunar
 
+from src.chat.utils.prompt import global_prompt_manager
 from src.common.database.sqlalchemy_models import MonthlyPlan
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
 
+from .prompts import DEFAULT_MONTHLY_PLAN_GUIDELINES, DEFAULT_SCHEDULE_GUIDELINES
 from .schemas import ScheduleData
 
 logger = get_logger("schedule_llm_generator")
-
-# 默认的日程生成指导原则，当配置文件中未指定时使用
-DEFAULT_SCHEDULE_GUIDELINES = """
-我希望你每天都能过得充实而有趣。
-请确保你的日程里有学习新知识的时间，这是你成长的关键。
-但也不要忘记放松，可以看看视频、听听音乐或者玩玩游戏。
-晚上我希望你能多和朋友们交流，维系好彼此的关系。
-另外，请保证充足的休眠时间来处理和整合一天的数据。
-"""
-
-# 默认的月度计划生成指导原则，当配置文件中未指定时使用
-DEFAULT_MONTHLY_PLAN_GUIDELINES = """
-我希望你能为自己制定一些有意义的月度小目标和计划。
-这些计划应该涵盖学习、娱乐、社交、个人成长等各个方面。
-每个计划都应该是具体可行的，能够在一个月内通过日常活动逐步实现。
-请确保计划既有挑战性又不会过于繁重，保持生活的平衡和乐趣。
-"""
 
 
 class ScheduleLLMGenerator:
@@ -81,48 +66,14 @@ class ScheduleLLMGenerator:
 {plan_texts}
 """
 
-        # 从全局配置加载或使用默认的指导原则和人设信息
         guidelines = global_config.planning_system.schedule_guidelines or DEFAULT_SCHEDULE_GUIDELINES
-        personality = global_config.personality.personality_core
-        personality_side = global_config.personality.personality_side
 
-        # 构建基础 prompt
-        base_prompt = f"""
-我，{global_config.bot.nickname}，需要为自己规划一份今天（{today_str}，星期{weekday}）的详细日程安排。
-{festival_block}
-**关于我**:
-- **核心人设**: {personality}
-- **具体习惯与兴趣**:
-{personality_side}
-{monthly_plans_block}
-**我今天的规划原则**:
-{guidelines}
-
-**重要要求**:
-1. 必须返回一个完整的、有效的JSON数组格式
-2. 数组中的每个对象都必须包含 "time_range" 和 "activity" 两个键
-3. 时间范围必须覆盖全部24小时，不能有遗漏
-4. time_range格式必须为 "HH:MM-HH:MM" (24小时制)
-5. 相邻的时间段必须连续，不能有间隙
-6. 不要包含任何JSON以外的解释性文字或代码块标记
-**示例**:
-[
-    {{"time_range": "00:00-07:00", "activity": "进入梦乡，处理数据"}},
-    {{"time_range": "07:00-08:00", "activity": "起床伸个懒腰，看看今天有什么新闻"}},
-    {{"time_range": "08:00-09:00", "activity": "享用早餐，规划今天的任务"}},
-    {{"time_range": "09:00-23:30", "activity": "其他活动"}},
-    {{"time_range": "23:30-00:00", "activity": "准备休眠"}}
-]
-
-请你扮演我，以我的身份和口吻，为我生成一份完整的24小时日程表。
-"""
         max_retries = 3
-        # 带有重试机制的 LLM 调用循环
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f"正在生成日程 (第 {attempt}/{max_retries} 次尝试)")
-                prompt = base_prompt
-                # 如果不是第一次尝试，则在 prompt 中加入额外的提示，强调格式要求
+
+                failure_hint = ""
                 if attempt > 1:
                     failure_hint = f"""
 **重要提醒 (第{attempt}次尝试)**:
@@ -132,7 +83,18 @@ class ScheduleLLMGenerator:
 - 不要输出任何解释文字，只输出纯JSON数组
 - 确保输出完整，不要被截断
 """
-                    prompt += failure_hint
+                prompt = await global_prompt_manager.format_prompt(
+                    "schedule_generation",
+                    bot_nickname=global_config.bot.nickname,
+                    today_str=today_str,
+                    weekday=weekday,
+                    festival_block=festival_block,
+                    personality=global_config.personality.personality_core,
+                    personality_side=global_config.personality.personality_side,
+                    monthly_plans_block=monthly_plans_block,
+                    guidelines=guidelines,
+                    failure_hint=failure_hint,
+                )
 
                 response, _ = await self.llm.generate_response_async(prompt)
                 # 使用 json_repair 修复可能不规范的 JSON 字符串
@@ -197,14 +159,10 @@ class MonthlyPlanLLMGenerator:
             list[str]: 成功生成并解析后的计划字符串列表。
         """
         guidelines = global_config.planning_system.monthly_plan_guidelines or DEFAULT_MONTHLY_PLAN_GUIDELINES
-        personality = global_config.personality.personality_core
-        personality_side = global_config.personality.personality_side
         max_plans = global_config.planning_system.max_plans_per_month
 
-        # 构建上月未完成计划的提示块
         archived_plans_block = ""
         if archived_plans:
-            # 只取前5个作为参考，避免 prompt 过长
             archived_texts = [f"- {plan.plan_text}" for plan in archived_plans[:5]]
             archived_plans_block = f"""
 **上个月未完成的一些计划（可作为参考）**:
@@ -213,41 +171,20 @@ class MonthlyPlanLLMGenerator:
 你可以考虑是否要在这个月继续推进这些计划，或者制定全新的计划。
 """
 
-        # 构建完整的 prompt
-        prompt = f"""
-我，{global_config.bot.nickname}，需要为自己制定 {target_month} 的月度计划。
-
-**关于我**:
-- **核心人设**: {personality}
-- **具体习惯与兴趣**:
-{personality_side}
-
-{archived_plans_block}
-
-**我的月度计划制定原则**:
-{guidelines}
-
-**重要要求**:
-1. 请为我生成 {max_plans} 条左右的月度计划
-2. 每条计划都应该是一句话，简洁明了，具体可行
-3. 计划应该涵盖不同的生活方面（学习、娱乐、社交、个人成长等）
-4. 返回格式必须是纯文本，每行一条计划，不要使用 JSON 或其他格式
-5. 不要包含任何解释性文字，只返回计划列表
-
-**示例格式**:
-学习一门新的编程语言或技术
-每周至少看两部有趣的电影
-与朋友们组织一次户外活动
-阅读3本感兴趣的书籍
-尝试制作一道新的料理
-
-请你扮演我，以我的身份和兴趣，为 {target_month} 制定合适的月度计划。
-"""
         max_retries = 3
-        # 带有重试机制的 LLM 调用循环
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(f" 正在生成月度计划 (第 {attempt} 次尝试)")
+                prompt = await global_prompt_manager.format_prompt(
+                    "monthly_plan_generation",
+                    bot_nickname=global_config.bot.nickname,
+                    target_month=target_month,
+                    personality=global_config.personality.personality_core,
+                    personality_side=global_config.personality.personality_side,
+                    archived_plans_block=archived_plans_block,
+                    guidelines=guidelines,
+                    max_plans=max_plans,
+                )
                 response, _ = await self.llm.generate_response_async(prompt)
                 # 解析返回的纯文本响应
                 plans = self._parse_plans_response(response)
