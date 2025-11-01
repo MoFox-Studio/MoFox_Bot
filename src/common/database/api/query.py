@@ -205,21 +205,16 @@ class QueryBuilder(Generic[T]):
             result = await session.execute(self._stmt)
             instances = list(result.scalars().all())
 
-            # 预加载所有列以避免detached对象的lazy loading问题
-            for instance in instances:
-                for column in self.model.__table__.columns:
-                    try:
-                        getattr(instance, column.name)
-                    except Exception:
-                        pass
-
-            # 转换为字典列表并写入缓存
+            # ✅ 在 session 内部转换为字典列表，此时所有字段都可安全访问
+            instances_dicts = [_model_to_dict(inst) for inst in instances]
+            
+            # 写入缓存
             if self._use_cache:
-                instances_dicts = [_model_to_dict(inst) for inst in instances]
                 cache = await get_cache()
                 await cache.set(cache_key, instances_dicts)
-
-            return instances
+            
+            # 从字典列表重建对象列表返回（detached状态，所有字段已加载）
+            return [_dict_to_model(self.model, d) for d in instances_dicts]
 
     async def first(self) -> T | None:
         """获取第一个结果
@@ -243,21 +238,19 @@ class QueryBuilder(Generic[T]):
             result = await session.execute(self._stmt)
             instance = result.scalars().first()
 
-            # 预加载所有列以避免detached对象的lazy loading问题
             if instance is not None:
-                for column in self.model.__table__.columns:
-                    try:
-                        getattr(instance, column.name)
-                    except Exception:
-                        pass
-
-            # 转换为字典并写入缓存
-            if instance is not None and self._use_cache:
+                # ✅ 在 session 内部转换为字典，此时所有字段都可安全访问
                 instance_dict = _model_to_dict(instance)
-                cache = await get_cache()
-                await cache.set(cache_key, instance_dict)
+                
+                # 写入缓存
+                if self._use_cache:
+                    cache = await get_cache()
+                    await cache.set(cache_key, instance_dict)
+                
+                # 从字典重建对象返回（detached状态，所有字段已加载）
+                return _dict_to_model(self.model, instance_dict)
 
-            return instance
+            return None
 
     async def count(self) -> int:
         """统计数量

@@ -196,31 +196,18 @@ class RelationshipFetcher:
 
             if relationship:
                 # 将SQLAlchemy对象转换为字典以保持兼容性
-                # 使用 inspect 安全访问 detached 对象，避免触发 lazy loading
-                from sqlalchemy import inspect as sa_inspect
-                
-                rel_data = {}
+                # 直接使用 __dict__ 访问，避免触发 SQLAlchemy 的描述符和 lazy loading
+                # 方案A已经确保所有字段在缓存前都已预加载，所以 __dict__ 中有完整数据
                 try:
-                    # 使用 inspect 获取对象状态，避免触发 ORM 机制
-                    state = sa_inspect(relationship)
                     rel_data = {
-                        "user_aliases": state.attrs.user_aliases.value if hasattr(state.attrs, "user_aliases") else None,
-                        "relationship_text": state.attrs.relationship_text.value if hasattr(state.attrs, "relationship_text") else None,
-                        "preference_keywords": state.attrs.preference_keywords.value if hasattr(state.attrs, "preference_keywords") else None,
-                        "relationship_score": state.attrs.relationship_score.value if hasattr(state.attrs, "relationship_score") else None,
+                        "user_aliases": relationship.__dict__.get("user_aliases"),
+                        "relationship_text": relationship.__dict__.get("relationship_text"),
+                        "preference_keywords": relationship.__dict__.get("preference_keywords"),
+                        "relationship_score": relationship.__dict__.get("relationship_score"),
                     }
                 except Exception as attr_error:
                     logger.warning(f"访问relationship对象属性失败: {attr_error}")
-                    # 如果 inspect 也失败，尝试使用 __dict__ 直接访问
-                    try:
-                        rel_data = {
-                            "user_aliases": relationship.__dict__.get("user_aliases"),
-                            "relationship_text": relationship.__dict__.get("relationship_text"),
-                            "preference_keywords": relationship.__dict__.get("preference_keywords"),
-                            "relationship_score": relationship.__dict__.get("relationship_score"),
-                        }
-                    except Exception:
-                        rel_data = {}
+                    rel_data = {}
 
                 # 5.1 用户别名
                 if rel_data.get("user_aliases"):
@@ -284,26 +271,18 @@ class RelationshipFetcher:
                 return ""
 
             # 将SQLAlchemy对象转换为字典以保持兼容性
-            # 使用 inspect 安全访问 detached 对象，避免触发 lazy loading
-            from sqlalchemy import inspect as sa_inspect
-            
+            # 直接使用 __dict__ 访问，避免触发 SQLAlchemy 的描述符和 lazy loading
+            # 方案A已经确保所有字段在缓存前都已预加载，所以 __dict__ 中有完整数据
             try:
-                state = sa_inspect(stream)
-                stream_data = {
-                    "group_name": state.attrs.group_name.value if hasattr(state.attrs, "group_name") else None,
-                    "stream_impression_text": state.attrs.stream_impression_text.value if hasattr(state.attrs, "stream_impression_text") else None,
-                    "stream_chat_style": state.attrs.stream_chat_style.value if hasattr(state.attrs, "stream_chat_style") else None,
-                    "stream_topic_keywords": state.attrs.stream_topic_keywords.value if hasattr(state.attrs, "stream_topic_keywords") else None,
-                }
-            except Exception as e:
-                logger.warning(f"访问stream对象属性失败: {e}")
-                # 回退到 __dict__ 访问
                 stream_data = {
                     "group_name": stream.__dict__.get("group_name"),
                     "stream_impression_text": stream.__dict__.get("stream_impression_text"),
                     "stream_chat_style": stream.__dict__.get("stream_chat_style"),
                     "stream_topic_keywords": stream.__dict__.get("stream_topic_keywords"),
                 }
+            except Exception as e:
+                logger.warning(f"访问stream对象属性失败: {e}")
+                stream_data = {}
             
             impression_parts = []
 

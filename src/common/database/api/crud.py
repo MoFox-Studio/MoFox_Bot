@@ -108,20 +108,18 @@ class CRUDBase:
             instance = result.scalar_one_or_none()
 
             if instance is not None:
-                # 预加载所有字段
-                for column in self.model.__table__.columns:
-                    try:
-                        getattr(instance, column.name)
-                    except Exception:
-                        pass
-
-                # 转换为字典并写入缓存
+                # ✅ 在 session 内部转换为字典，此时所有字段都可安全访问
+                instance_dict = _model_to_dict(instance)
+                
+                # 写入缓存
                 if use_cache:
-                    instance_dict = _model_to_dict(instance)
                     cache = await get_cache()
                     await cache.set(cache_key, instance_dict)
+                
+                # 从字典重建对象返回（detached状态，所有字段已加载）
+                return _dict_to_model(self.model, instance_dict)
 
-            return instance
+            return None
 
     async def get_by(
         self,
@@ -159,21 +157,18 @@ class CRUDBase:
             instance = result.scalar_one_or_none()
 
             if instance is not None:
-                # 触发所有列的加载，避免 detached 后的延迟加载问题
-                # 遍历所有列属性以确保它们被加载到内存中
-                for column in self.model.__table__.columns:
-                    try:
-                        getattr(instance, column.name)
-                    except Exception:
-                        pass  # 忽略访问错误
-
-                # 转换为字典并写入缓存
+                # ✅ 在 session 内部转换为字典，此时所有字段都可安全访问
+                instance_dict = _model_to_dict(instance)
+                
+                # 写入缓存
                 if use_cache:
-                    instance_dict = _model_to_dict(instance)
                     cache = await get_cache()
                     await cache.set(cache_key, instance_dict)
+                
+                # 从字典重建对象返回（detached状态，所有字段已加载）
+                return _dict_to_model(self.model, instance_dict)
 
-            return instance
+            return None
 
     async def get_multi(
         self,
@@ -222,21 +217,16 @@ class CRUDBase:
             result = await session.execute(stmt)
             instances = list(result.scalars().all())
 
-            # 触发所有实例的列加载，避免 detached 后的延迟加载问题
-            for instance in instances:
-                for column in self.model.__table__.columns:
-                    try:
-                        getattr(instance, column.name)
-                    except Exception:
-                        pass  # 忽略访问错误
-
-            # 转换为字典列表并写入缓存
+            # ✅ 在 session 内部转换为字典列表，此时所有字段都可安全访问
+            instances_dicts = [_model_to_dict(inst) for inst in instances]
+            
+            # 写入缓存
             if use_cache:
-                instances_dicts = [_model_to_dict(inst) for inst in instances]
                 cache = await get_cache()
                 await cache.set(cache_key, instances_dicts)
-
-            return instances
+            
+            # 从字典列表重建对象列表返回（detached状态，所有字段已加载）
+            return [_dict_to_model(self.model, d) for d in instances_dicts]
 
     async def create(
         self,
