@@ -257,14 +257,20 @@ class RelationshipFetcher:
         """
         try:
             from src.common.database.api.specialized import get_or_create_chat_stream
+            import time
 
             # 使用优化后的API（带缓存）
             # 从stream_id解析platform，或使用默认值
             platform = stream_id.split("_")[0] if "_" in stream_id else "unknown"
+            current_time = time.time()
 
             stream, _ = await get_or_create_chat_stream(
                 stream_id=stream_id,
                 platform=platform,
+                defaults={
+                    "create_time": current_time,
+                    "last_active_time": current_time,
+                },
             )
 
             if not stream:
