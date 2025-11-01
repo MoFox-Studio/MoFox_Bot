@@ -204,6 +204,14 @@ class QueryBuilder(Generic[T]):
             result = await session.execute(self._stmt)
             instances = list(result.scalars().all())
             
+            # 预加载所有列以避免detached对象的lazy loading问题
+            for instance in instances:
+                for column in self.model.__table__.columns:
+                    try:
+                        getattr(instance, column.name)
+                    except Exception:
+                        pass
+            
             # 写入缓存
             if self._use_cache:
                 cache = await get_cache()
@@ -231,6 +239,14 @@ class QueryBuilder(Generic[T]):
         async with get_db_session() as session:
             result = await session.execute(self._stmt)
             instance = result.scalars().first()
+            
+            # 预加载所有列以避免detached对象的lazy loading问题
+            if instance is not None:
+                for column in self.model.__table__.columns:
+                    try:
+                        getattr(instance, column.name)
+                    except Exception:
+                        pass
             
             # 写入缓存
             if instance is not None and self._use_cache:
