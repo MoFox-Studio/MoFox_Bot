@@ -11,6 +11,8 @@ from sqlalchemy import select
 
 from src.common.database.compatibility import get_db_session
 from src.common.database.core.models import PersonInfo
+from src.common.database.api.crud import CRUDBase
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -108,21 +110,18 @@ class PersonInfoManager:
         # 直接返回计算的 id（同步）
         return hashlib.md5(key.encode()).hexdigest()
 
+    @cached(ttl=300, key_prefix="person_known", use_kwargs=False)
     async def is_person_known(self, platform: str, user_id: int):
-        """判断是否认识某人"""
+        """判断是否认识某人（带5分钟缓存）"""
         person_id = self.get_person_id(platform, user_id)
 
-        async def _db_check_known_async(p_id: str):
-            # 在需要时获取会话
-            async with get_db_session() as session:
-                return (
-                    await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                ).scalar() is not None
-
         try:
-            return await _db_check_known_async(person_id)
+            # 使用CRUD进行查询
+            crud = CRUDBase(PersonInfo)
+            record = await crud.get_by(person_id=person_id)
+            return record is not None
         except Exception as e:
-            logger.error(f"检查用户 {person_id} 是否已知时出错 (SQLAlchemy): {e}")
+            logger.error(f"检查用户 {person_id} 是否已知时出错: {e}")
             return False
 
     async def get_person_id_by_person_name(self, person_name: str) -> str:
@@ -306,30 +305,42 @@ class PersonInfoManager:
 
         async def _db_update_async(p_id: str, f_name: str, val_to_set):
             start_time = time.time()
-            async with get_db_session() as session:
-                try:
-                    result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                    record = result.scalar()
-                    query_time = time.time()
-                    if record:
-                        setattr(record, f_name, val_to_set)
-                        save_time = time.time()
-                        total_time = save_time - start_time
-                        if total_time > 0.5:
-                            logger.warning(
-                                f"数据库更新操作耗时 {total_time:.3f}秒 (查询: {query_time - start_time:.3f}s, 保存: {save_time - query_time:.3f}s) person_id={p_id}, field={f_name}"
-                            )
-                        await session.commit()
-                        return True, False
-                    else:
-                        total_time = time.time() - start_time
-                        if total_time > 0.5:
-                            logger.warning(f"数据库查询操作耗时 {total_time:.3f}秒 person_id={p_id}, field={f_name}")
-                        return False, True
-                except Exception as e:
+            try:
+                # 使用CRUD进行更新
+                crud = CRUDBase(PersonInfo)
+                record = await crud.get_by(person_id=p_id)
+                query_time = time.time()
+                
+                if record:
+                    # 更新记录
+                    await crud.update(record.id, {f_name: val_to_set})
+                    save_time = time.time()
+                    total_time = save_time - start_time
+                    
+                    if total_time > 0.5:
+                        logger.warning(
+                            f"数据库更新操作耗时 {total_time:.3f}秒 (查询: {query_time - start_time:.3f}s, 保存: {save_time - query_time:.3f}s) person_id={p_id}, field={f_name}"
+                        )
+                    
+                    # 使缓存失效
+                    from src.common.database.optimization.cache_manager import get_cache
+                    from src.common.database.utils.decorators import generate_cache_key
+                    cache = await get_cache()
+                    # 使相关缓存失效
+                    await cache.delete(generate_cache_key("person_value", p_id, f_name))
+                    await cache.delete(generate_cache_key("person_values", p_id))
+                    await cache.delete(generate_cache_key("person_has_field", p_id, f_name))
+                    
+                    return True, False
+                else:
                     total_time = time.time() - start_time
-                    logger.error(f"数据库操作异常，耗时 {total_time:.3f}秒: {e}")
-                    raise
+                    if total_time > 0.5:
+                        logger.warning(f"数据库查询操作耗时 {total_time:.3f}秒 person_id={p_id}, field={f_name}")
+                    return False, True
+            except Exception as e:
+                total_time = time.time() - start_time
+                logger.error(f"数据库操作异常，耗时 {total_time:.3f}秒: {e}")
+                raise
 
         found, needs_creation = await _db_update_async(person_id, field_name, processed_value)
 
@@ -361,24 +372,22 @@ class PersonInfoManager:
             await self._safe_create_person_info(person_id, creation_data)
 
     @staticmethod
+    @cached(ttl=300, key_prefix="person_has_field")
     async def has_one_field(person_id: str, field_name: str):
-        """判断是否存在某一个字段"""
+        """判断是否存在某一个字段（带5分钟缓存）"""
         # 获取 SQLAlchemy 模型的所有字段名
         model_fields = [column.name for column in PersonInfo.__table__.columns]
         if field_name not in model_fields:
             logger.debug(f"检查字段'{field_name}'失败，未在 PersonInfo SQLAlchemy 模型中定义。")
             return False
 
-        async def _db_has_field_async(p_id: str, f_name: str):
-            async with get_db_session() as session:
-                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                record = result.scalar()
-            return bool(record)
-
         try:
-            return await _db_has_field_async(person_id, field_name)
+            # 使用CRUD进行查询
+            crud = CRUDBase(PersonInfo)
+            record = await crud.get_by(person_id=person_id)
+            return bool(record)
         except Exception as e:
-            logger.error(f"检查字段 {field_name} for {person_id} 时出错 (SQLAlchemy): {e}")
+            logger.error(f"检查字段 {field_name} for {person_id} 时出错: {e}")
             return False
 
     @staticmethod
@@ -547,15 +556,16 @@ class PersonInfoManager:
             logger.debug(f"删除失败：未找到 person_id={person_id} 或删除未影响行")
 
     @staticmethod
+    @cached(ttl=600, key_prefix="person_value")
     async def get_value(person_id: str, field_name: str) -> Any:
-        """获取单个字段值（同步版本）"""
+        """获取单个字段值（带10分钟缓存）"""
         if not person_id:
             logger.debug("get_value获取失败：person_id不能为空")
             return None
 
-        async with get_db_session() as session:
-            result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == person_id))
-            record = result.scalar()
+        # 使用CRUD进行查询
+        crud = CRUDBase(PersonInfo)
+        record = await crud.get_by(person_id=person_id)
 
         model_fields = [column.name for column in PersonInfo.__table__.columns]
 
@@ -577,21 +587,18 @@ class PersonInfoManager:
             return copy.deepcopy(person_info_default.get(field_name))
 
     @staticmethod
+    @cached(ttl=600, key_prefix="person_values")
     async def get_values(person_id: str, field_names: list) -> dict:
-        """获取指定person_id文档的多个字段值，若不存在该字段，则返回该字段的全局默认值"""
+        """获取指定person_id文档的多个字段值（带10分钟缓存）"""
         if not person_id:
             logger.debug("get_values获取失败：person_id不能为空")
             return {}
 
         result = {}
 
-        async def _db_get_record_async(p_id: str):
-            async with get_db_session() as session:
-                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                record = result.scalar()
-                return record
-
-        record = await _db_get_record_async(person_id)
+        # 使用CRUD进行查询
+        crud = CRUDBase(PersonInfo)
+        record = await crud.get_by(person_id=person_id)
 
         # 获取 SQLAlchemy 模型的所有字段名
         model_fields = [column.name for column in PersonInfo.__table__.columns]
