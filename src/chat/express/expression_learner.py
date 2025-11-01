@@ -245,11 +245,11 @@ class ExpressionLearner:
             all_expressions = await session.execute(
                 select(Expression).where(Expression.chat_id == self.chat_id)
             )
-            
+
             for expr in all_expressions.scalars():
                 # 确保create_date存在，如果不存在则使用last_active_time
                 create_date = expr.create_date if expr.create_date is not None else expr.last_active_time
-                
+
                 expr_data = {
                     "situation": expr.situation,
                     "style": expr.style,
@@ -259,13 +259,13 @@ class ExpressionLearner:
                     "type": expr.type,
                     "create_date": create_date,
                 }
-                
+
                 # 根据类型分类
                 if expr.type == "style":
                     learnt_style_expressions.append(expr_data)
                 elif expr.type == "grammar":
                     learnt_grammar_expressions.append(expr_data)
-        
+
         return learnt_style_expressions, learnt_grammar_expressions
 
     async def _apply_global_decay_to_database(self, current_time: float) -> None:

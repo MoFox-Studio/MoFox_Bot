@@ -73,7 +73,7 @@ class ChatStreamImpressionTool(BaseTool):
             )
         except AttributeError:
             # 降级处理
-            available_models: ClassVar = [
+            available_models = [
                 attr
                 for attr in dir(model_config.model_task_config)
                 if not attr.startswith("_") and attr != "model_dump"
@@ -153,7 +153,7 @@ class ChatStreamImpressionTool(BaseTool):
             await self._update_stream_impression_in_db(stream_id, final_impression)
 
             # 构建返回信息
-            updates: ClassVar = []
+            updates = []
             if final_impression.get("stream_impression_text"):
                 updates.append(f"印象: {final_impression['stream_impression_text'][:50]}...")
             if final_impression.get("stream_chat_style"):

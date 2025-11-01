@@ -182,7 +182,7 @@ class UnifiedScheduler:
         except ImportError:
             pass
 
-        logger.info(f"统一调度器已停止")
+        logger.info("统一调度器已停止")
         self._tasks.clear()
         self._event_subscriptions.clear()
 

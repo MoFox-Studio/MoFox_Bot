@@ -628,7 +628,7 @@ class ChatterActionManager:
             if not first_replied:
                 # 决定是否引用回复
                 is_private_chat = not bool(chat_stream.group_info)
-                
+
                 # 如果明确指定了should_quote_reply，则使用指定值
                 if should_quote_reply is not None:
                     set_reply_flag = should_quote_reply and bool(message_data)
@@ -641,7 +641,7 @@ class ChatterActionManager:
                     logger.debug(
                         f"📤 [ActionManager] 使用默认引用逻辑: 默认不引用(is_private={is_private_chat})"
                     )
-                
+
                 logger.debug(
                     f"📤 [ActionManager] 准备发送第一段回复。message_data: {message_data}, set_reply: {set_reply_flag}"
                 )

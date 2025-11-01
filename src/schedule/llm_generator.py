@@ -290,7 +290,7 @@ class MonthlyPlanLLMGenerator:
                 # 过滤掉一些明显不是计划的句子
                 if len(line) > 5 and not line.startswith(("请", "以上", "总结", "注意")):
                     plans.append(line)
-            
+
             # 根据配置限制最大计划数量
             max_plans = global_config.planning_system.max_plans_per_month
             if len(plans) > max_plans:

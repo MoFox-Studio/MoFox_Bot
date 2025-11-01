@@ -354,7 +354,7 @@ class MessageManager:
                 # 取消 stream_loop_task，子任务会通过 try-catch 自动取消
                 try:
                     stream_loop_task.cancel()
-                    
+
                     # 等待任务真正结束（设置超时避免死锁）
                     try:
                         await asyncio.wait_for(stream_loop_task, timeout=2.0)

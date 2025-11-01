@@ -417,7 +417,7 @@ class OpenaiClient(BaseClient):
 
         # 清理其他事件循环的过期缓存
         keys_to_remove = [
-            key for key in self._global_client_cache.keys() 
+            key for key in self._global_client_cache.keys()
             if key[0] == self._config_hash and key[1] != current_loop_id
         ]
         for key in keys_to_remove:
@@ -451,7 +451,7 @@ class OpenaiClient(BaseClient):
         return {
             "cached_openai_clients": len(cls._global_client_cache),
             "cache_keys": [
-                {"config_hash": k[0], "loop_id": k[1]} 
+                {"config_hash": k[0], "loop_id": k[1]}
                 for k in cls._global_client_cache.keys()
             ],
         }
