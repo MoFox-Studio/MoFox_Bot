@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from src.common.logger import get_logger
 
-from ..config.database_config import get_database_config
 from .engine import get_engine
 
 logger = get_logger("database.session")
@@ -78,8 +77,9 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     # 使用连接池管理器（透明复用连接）
     async with pool_manager.get_session(session_factory) as session:
         # 为SQLite设置特定的PRAGMA
-        config = get_database_config()
-        if config.db_type == "sqlite":
+        from src.config.config import global_config
+        
+        if global_config.database.database_type == "sqlite":
             try:
                 await session.execute(text("PRAGMA busy_timeout = 60000"))
                 await session.execute(text("PRAGMA foreign_keys = ON"))

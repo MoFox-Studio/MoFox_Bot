@@ -4,14 +4,15 @@
 """
 
 import asyncio
+import os
 from typing import Optional
+from urllib.parse import quote_plus
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from src.common.logger import get_logger
 
-from ..config.database_config import get_database_config
 from ..utils.exceptions import DatabaseInitializationError
 
 logger = get_logger("database.engine")
@@ -47,21 +48,86 @@ async def get_engine() -> AsyncEngine:
             return _engine
         
         try:
-            config = get_database_config()
+            from src.config.config import global_config
             
-            logger.info(f"正在初始化 {config.db_type.upper()} 数据库引擎...")
+            config = global_config.database
+            db_type = config.database_type
+            
+            logger.info(f"正在初始化 {db_type.upper()} 数据库引擎...")
+            
+            # 构建数据库URL和引擎参数
+            if db_type == "mysql":
+                # MySQL配置
+                encoded_user = quote_plus(config.mysql_user)
+                encoded_password = quote_plus(config.mysql_password)
+                
+                if config.mysql_unix_socket:
+                    # Unix socket连接
+                    encoded_socket = quote_plus(config.mysql_unix_socket)
+                    url = (
+                        f"mysql+aiomysql://{encoded_user}:{encoded_password}"
+                        f"@/{config.mysql_database}"
+                        f"?unix_socket={encoded_socket}&charset={config.mysql_charset}"
+                    )
+                else:
+                    # TCP连接
+                    url = (
+                        f"mysql+aiomysql://{encoded_user}:{encoded_password}"
+                        f"@{config.mysql_host}:{config.mysql_port}/{config.mysql_database}"
+                        f"?charset={config.mysql_charset}"
+                    )
+                
+                engine_kwargs = {
+                    "echo": False,
+                    "future": True,
+                    "pool_size": config.connection_pool_size,
+                    "max_overflow": config.connection_pool_size * 2,
+                    "pool_timeout": config.connection_timeout,
+                    "pool_recycle": 3600,
+                    "pool_pre_ping": True,
+                    "connect_args": {
+                        "autocommit": config.mysql_autocommit,
+                        "charset": config.mysql_charset,
+                        "connect_timeout": config.connection_timeout,
+                    },
+                }
+                
+                logger.info(
+                    f"MySQL配置: {config.mysql_user}@{config.mysql_host}:{config.mysql_port}/{config.mysql_database}"
+                )
+            
+            else:
+                # SQLite配置
+                if not os.path.isabs(config.sqlite_path):
+                    ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+                    db_path = os.path.join(ROOT_PATH, config.sqlite_path)
+                else:
+                    db_path = config.sqlite_path
+                
+                # 确保数据库目录存在
+                os.makedirs(os.path.dirname(db_path), exist_ok=True)
+                
+                url = f"sqlite+aiosqlite:///{db_path}"
+                
+                engine_kwargs = {
+                    "echo": False,
+                    "future": True,
+                    "connect_args": {
+                        "check_same_thread": False,
+                        "timeout": 60,
+                    },
+                }
+                
+                logger.info(f"SQLite配置: {db_path}")
             
             # 创建异步引擎
-            _engine = create_async_engine(
-                config.url,
-                **config.engine_kwargs
-            )
+            _engine = create_async_engine(url, **engine_kwargs)
             
             # SQLite特定优化
-            if config.db_type == "sqlite":
+            if db_type == "sqlite":
                 await _enable_sqlite_optimizations(_engine)
             
-            logger.info(f"✅ {config.db_type.upper()} 数据库引擎初始化成功")
+            logger.info(f"✅ {db_type.upper()} 数据库引擎初始化成功")
             return _engine
         
         except Exception as e:
