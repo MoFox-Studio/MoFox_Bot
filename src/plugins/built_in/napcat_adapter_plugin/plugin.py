@@ -19,11 +19,13 @@ from .src.recv_handler.meta_event_handler import meta_event_handler
 from .src.recv_handler.notice_handler import notice_handler
 from .src.response_pool import check_timeout_response, put_response
 from .src.send_handler import send_handler
+from .src.stream_router import stream_router
 from .src.websocket_manager import websocket_manager
 
 logger = get_logger("napcat_adapter")
 
-message_queue = asyncio.Queue()
+# 旧的全局消息队列已被流路由器替代
+# message_queue = asyncio.Queue()
 
 
 def get_classes_in_module(module):
@@ -64,7 +66,8 @@ async def message_recv(server_connection: Server.ServerConnection):
             # 处理完整消息（可能是重组后的，也可能是原本就完整的）
             post_type = decoded_raw_message.get("post_type")
             if post_type in ["meta_event", "message", "notice"]:
-                await message_queue.put(decoded_raw_message)
+                # 使用流路由器路由消息到对应的聊天流
+                await stream_router.route_message(decoded_raw_message)
             elif post_type is None:
                 await put_response(decoded_raw_message)
 
@@ -76,61 +79,11 @@ async def message_recv(server_connection: Server.ServerConnection):
             logger.debug(f"原始消息: {raw_message[:500]}...")
 
 
-async def message_process():
-    """消息处理主循环"""
-    logger.info("消息处理器已启动")
-    try:
-        while True:
-            try:
-                # 使用超时等待，以便能够响应取消请求
-                message = await asyncio.wait_for(message_queue.get(), timeout=1.0)
-
-                post_type = message.get("post_type")
-                if post_type == "message":
-                    await message_handler.handle_raw_message(message)
-                elif post_type == "meta_event":
-                    await meta_event_handler.handle_meta_event(message)
-                elif post_type == "notice":
-                    await notice_handler.handle_notice(message)
-                else:
-                    logger.warning(f"未知的post_type: {post_type}")
-
-                message_queue.task_done()
-                await asyncio.sleep(0.05)
-
-            except asyncio.TimeoutError:
-                # 超时是正常的，继续循环
-                continue
-            except asyncio.CancelledError:
-                logger.info("消息处理器收到取消信号")
-                break
-            except Exception as e:
-                logger.error(f"处理消息时出错: {e}")
-                # 即使出错也标记任务完成，避免队列阻塞
-                try:
-                    message_queue.task_done()
-                except ValueError:
-                    pass
-                await asyncio.sleep(0.1)
-
-    except asyncio.CancelledError:
-        logger.info("消息处理器已停止")
-        raise
-    except Exception as e:
-        logger.error(f"消息处理器异常: {e}")
-        raise
-    finally:
-        logger.info("消息处理器正在清理...")
-        # 清空剩余的队列项目
-        try:
-            while not message_queue.empty():
-                try:
-                    message_queue.get_nowait()
-                    message_queue.task_done()
-                except asyncio.QueueEmpty:
-                    break
-        except Exception as e:
-            logger.debug(f"清理消息队列时出错: {e}")
+# 旧的单消费者消息处理循环已被流路由器替代
+# 现在每个聊天流都有自己的消费者协程
+# async def message_process():
+#     """消息处理主循环"""
+#     ...
 
 
 async def napcat_server(plugin_config: dict):
@@ -150,6 +103,12 @@ async def graceful_shutdown():
     """优雅关闭所有组件"""
     try:
         logger.info("正在关闭adapter...")
+
+        # 停止流路由器
+        try:
+            await stream_router.stop()
+        except Exception as e:
+            logger.warning(f"停止流路由器时出错: {e}")
 
         # 停止消息重组器的清理任务
         try:
@@ -198,17 +157,6 @@ async def graceful_shutdown():
 
     except Exception as e:
         logger.error(f"Adapter关闭中出现错误: {e}")
-    finally:
-        # 确保消息队列被清空
-        try:
-            while not message_queue.empty():
-                try:
-                    message_queue.get_nowait()
-                    message_queue.task_done()
-                except asyncio.QueueEmpty:
-                    break
-        except Exception:
-            pass
 
 
 class LauchNapcatAdapterHandler(BaseEventHandler):
@@ -225,12 +173,16 @@ class LauchNapcatAdapterHandler(BaseEventHandler):
         logger.info("启动消息重组器...")
         await reassembler.start_cleanup_task()
 
+        # 启动流路由器
+        logger.info("启动流路由器...")
+        await stream_router.start()
+
         logger.info("开始启动Napcat Adapter")
 
         # 创建单独的异步任务，防止阻塞主线程
         asyncio.create_task(self._start_maibot_connection())
         asyncio.create_task(napcat_server(self.plugin_config))
-        asyncio.create_task(message_process())
+        # 不再需要 message_process 任务，由流路由器管理消费者
         asyncio.create_task(check_timeout_response())
 
     async def _start_maibot_connection(self):
@@ -347,6 +299,12 @@ class NapcatAdapterPlugin(BasePlugin):
                 choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
             ),
         },
+        "stream_router": {
+            "max_streams": ConfigField(type=int, default=500, description="最大并发流数量"),
+            "stream_timeout": ConfigField(type=int, default=600, description="流不活跃超时时间（秒），超时后自动清理"),
+            "stream_queue_size": ConfigField(type=int, default=100, description="每个流的消息队列大小"),
+            "cleanup_interval": ConfigField(type=int, default=60, description="清理不活跃流的间隔时间（秒）"),
+        },
         "features": {
             # 权限设置
             "group_list_type": ConfigField(
@@ -383,7 +341,6 @@ class NapcatAdapterPlugin(BasePlugin):
             "supported_formats": ConfigField(
                 type=list, default=["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm"], description="支持的视频格式"
             ),
-            # 消息缓冲功能已移除
         },
     }
 
@@ -397,7 +354,8 @@ class NapcatAdapterPlugin(BasePlugin):
         "voice": "发送语音设置",
         "slicing": "WebSocket消息切片设置",
         "debug": "调试设置",
-        "features": "功能设置（权限控制、聊天功能、视频处理、消息缓冲等）",
+        "stream_router": "流路由器设置（按聊天流分配消费者，提升高并发性能）",
+        "features": "功能设置（权限控制、聊天功能、视频处理等）",
     }
 
     def register_events(self):
@@ -444,4 +402,11 @@ class NapcatAdapterPlugin(BasePlugin):
         notice_handler.set_plugin_config(self.config)
         # 设置meta_event_handler的插件配置
         meta_event_handler.set_plugin_config(self.config)
+        
+        # 设置流路由器的配置
+        stream_router.max_streams = config_api.get_plugin_config(self.config, "stream_router.max_streams", 500)
+        stream_router.stream_timeout = config_api.get_plugin_config(self.config, "stream_router.stream_timeout", 600)
+        stream_router.stream_queue_size = config_api.get_plugin_config(self.config, "stream_router.stream_queue_size", 100)
+        stream_router.cleanup_interval = config_api.get_plugin_config(self.config, "stream_router.cleanup_interval", 60)
+        
         # 设置其他handler的插件配置（现在由component_registry在注册时自动设置）

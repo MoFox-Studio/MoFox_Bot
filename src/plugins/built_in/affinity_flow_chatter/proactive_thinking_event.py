@@ -59,6 +59,20 @@ class ProactiveThinkingReplyHandler(BaseEventHandler):
                 logger.debug("[主动思考事件] reply_reset_enabled 为 False，跳过重置")
                 return HandlerResult(success=True, continue_process=True, message=None)
 
+            # 检查白名单/黑名单（获取 stream_config 进行验证）
+            try:
+                from src.chat.message_receive.chat_stream import get_chat_manager
+                chat_manager = get_chat_manager()
+                chat_stream = await chat_manager.get_stream(stream_id)
+                
+                if chat_stream:
+                    stream_config = chat_stream.get_raw_id()
+                    if not proactive_thinking_scheduler._check_whitelist_blacklist(stream_config):
+                        logger.debug(f"[主动思考事件] 聊天流 {stream_id} ({stream_config}) 不在白名单中，跳过重置")
+                        return HandlerResult(success=True, continue_process=True, message=None)
+            except Exception as e:
+                logger.warning(f"[主动思考事件] 白名单检查时出错: {e}")
+
             # 检查是否被暂停
             was_paused = await proactive_thinking_scheduler.is_paused(stream_id)
             logger.debug(f"[主动思考事件] 聊天流 {stream_id} 暂停状态: {was_paused}")
