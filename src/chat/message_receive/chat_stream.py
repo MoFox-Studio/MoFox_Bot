@@ -704,7 +704,7 @@ class ChatManager:
             loaded_streams_data = []
             # 使用CRUD批量查询
             crud = CRUDBase(ChatStreams)
-            all_streams = await crud.get_all()
+            all_streams = await crud.get_multi(limit=100000)  # 获取所有聊天流
             
             for model_instance in all_streams:
                     user_info_data = {

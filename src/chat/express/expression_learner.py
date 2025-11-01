@@ -251,7 +251,7 @@ class ExpressionLearner:
 
         # 使用CRUD查询
         crud = CRUDBase(Expression)
-        all_expressions = await crud.get_all_by(chat_id=chat_id)
+        all_expressions = await crud.get_multi(chat_id=chat_id, limit=10000)
 
         for expr in all_expressions:
                 # 确保create_date存在，如果不存在则使用last_active_time
@@ -284,7 +284,7 @@ class ExpressionLearner:
         try:
             # 使用CRUD查询所有表达方式
             crud = CRUDBase(Expression)
-            all_expressions = await crud.get_all()
+            all_expressions = await crud.get_multi(limit=100000)  # 获取所有表达方式
 
             updated_count = 0
             deleted_count = 0

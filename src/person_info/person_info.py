@@ -643,7 +643,7 @@ class PersonInfoManager:
             try:
                 # 使用CRUD获取所有记录
                 crud = CRUDBase(PersonInfo)
-                all_records = await crud.get_all()
+                all_records = await crud.get_multi(limit=100000)  # 获取所有记录
                 for record in all_records:
                     value = getattr(record, f_name, None)
                     if value is not None and way(value):
