@@ -3,6 +3,7 @@ import base64
 import binascii
 import hashlib
 import io
+import json
 import os
 import random
 import re
@@ -974,141 +975,91 @@ class EmojiManager:
                 logger.debug(f"查询已有表情包描述时出错: {e}")
 
             # 3. 如果没有现有描述，则调用VLM生成新的详细描述
+            # 3. 如果有现有描述，则复用或解析；否则调用VLM生成新的统一描述
             if existing_description:
-                description = existing_description
-                logger.info("[优化] 复用已有的详细描述，跳过VLM调用")
+                # 兼容旧格式的 final_description，尝试从中解析出各个部分
+                logger.info("[优化] 复用已有的描述，跳过VLM调用")
+                description_match = re.search(r"Desc: (.*)", existing_description, re.DOTALL)
+                keywords_match = re.search(r"Keywords: \[(.*?)\]", existing_description)
+                refined_match = re.search(r"^(.*?) Keywords:", existing_description, re.DOTALL)
+
+                description = description_match.group(1).strip() if description_match else existing_description
+                emotions_text = keywords_match.group(1) if keywords_match else ""
+                emotions = [e.strip() for e in emotions_text.split(",") if e.strip()]
+                refined_description = refined_match.group(1).strip() if refined_match else ""
+                final_description = existing_description
             else:
-                logger.info("[VLM分析] 开始为新表情包生成详细描述")
-                # 为动态图（GIF）和静态图构建不同的、要求简洁的prompt
+                logger.info("[VLM分析] 开始为新表情包生成统一描述")
+                description, emotions, refined_description, is_compliant = "", [], "", False
+
+                prompt = f"""这是一个表情包。请你作为一位互联网“梗”学家和情感分析师，对这个表情包进行全面分析，并以JSON格式返回你的分析结果。
+你的分析需要包含以下四个部分：
+1.  **detailed_description**: 对图片的详尽描述（不超过250字）。请遵循以下结构：
+    -   概括图片主题和氛围。
+    -   详细描述核心元素，识别二次元角色及出处。
+    -   描述传达的核心情绪或梗。
+    -   准确转述图中文字。
+    -   特别注意识别网络文化特殊含义（如“滑稽”表情）。
+2.  **keywords**: 提炼5到8个核心关键词或短语（数组形式），应包含：核心文字、表情动作、情绪氛围、主体或构图特点。
+3.  **refined_sentence**: 生成一句自然的精炼描述，应包含：角色名称、出处、核心文字，并体现核心情绪。
+4.  **is_compliant**: 根据以下标准判断是否合规（布尔值true/false）：
+    -   主题符合：“{global_config.emoji.filtration_prompt}”。
+    -   内容健康，无不良元素。
+    -   必须是表情包，非普通截图。
+    -   图中文字不超过5个。
+请确保你的最终输出是严格的JSON对象，不要添加任何额外解释或文本。
+"""
+
+                image_data_for_vlm, image_format_for_vlm = image_base64, image_format
                 if image_format in ["gif", "GIF"]:
                     image_base64_frames = get_image_manager().transform_gif(image_base64)
                     if not image_base64_frames:
                         raise RuntimeError("GIF表情包转换失败")
-                    prompt = "这是一个GIF动图表情包的关键帧。请用不超过250字，进行详尽且严谨的描述。请按照以下结构组织：首先，概括图片的主题和整体氛围。其次，详细描述图片中的核心元素，如果包含二次元角色，请尝试识别角色名称和出处。接着，描述动态画面展现了什么变化，以及它传达的核心情绪或玩的梗。最后，如果图片中包含任何文字，请准确地转述出来，这部分不计入字数限制。请特别注意识别网络文化中的特殊含义，例如，“滑稽”表情应被识别为“滑稽”，而不仅仅是“黄色的脸”。"
-                    description = None
-                    for i in range(3):
-                        try:
-                            logger.info(f"[VLM调用] 正在为GIF表情包生成描述 (第 {i+1}/3 次)...")
-                            description, _ = await self.vlm.generate_response_for_image(
-                                prompt, image_base64_frames, "jpeg", temperature=0.3, max_tokens=600
-                            )
-                            if description and description.strip():
-                                break
-                        except Exception as e:
-                            logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
-                        if i < 2:
-                            logger.warning("表情包识别失败，将在1秒后重试...")
-                            await asyncio.sleep(1)
-                else:
-                    prompt = "这是一个表情包。请用不超过250字，进行详尽且严谨的描述。请按照以下结构组织：首先，概括图片的主题和整体氛围。其次，详细描述图片中的核心元素，如果包含二次元角色，请尝试识别角色名称和出处。接着，描述它传达的核心情绪或玩的梗。最后，如果图片中包含任何文字，请准确地转述出来，这部分不计入字数限制。请特别注意识别网络文化中的特殊含义，例如，“滑稽”表情应被识别为“滑稽”，而不仅仅是“黄色的脸”。"
-                    description = None
-                    for i in range(3):
-                        try:
-                            logger.info(f"[VLM调用] 正在为静态表情包生成描述 (第 {i+1}/3 次)...")
-                            description, _ = await self.vlm.generate_response_for_image(
-                                prompt, image_base64, image_format, temperature=0.3, max_tokens=600
-                            )
-                            if description and description.strip():
-                                break
-                        except Exception as e:
-                            logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
-                        if i < 2:
-                            logger.warning("表情包识别失败，将在1秒后重试...")
-                            await asyncio.sleep(1)
+                    image_data_for_vlm, image_format_for_vlm = image_base64_frames, "jpeg"
+                    prompt = "这是一个GIF动图表情包的关键帧。" + prompt
 
-            # 4. 检查VLM描述是否有效
-            if not description or not description.strip():
-                logger.warning("VLM未能生成有效的详细描述，中止处理。")
-                return "", []
+                for i in range(3):
+                    try:
+                        logger.info(f"[VLM调用] 正在为表情包生成统一描述 (第 {i+1}/3 次)...")
+                        vlm_response_str, _ = await self.vlm.generate_response_for_image(
+                            prompt, image_data_for_vlm, image_format_for_vlm, temperature=0.3, max_tokens=800
+                        )
+                        if not vlm_response_str:
+                            continue
 
-            # 5. 内容审核，确保表情包符合规定
-            if global_config.emoji.content_filtration:
-                prompt = f"""
-                    请根据以下标准审核这个表情包：
-                    1. 主题必须符合："{global_config.emoji.filtration_prompt}"。
-                    2. 内容健康，不含色情、暴力、政治敏感等元素。
-                    3. 必须是表情包，而不是普通的聊天截图或视频截图。
-                    4. 表情包中的文字数量（如果有）不能超过5个。
-                    这个表情包是否完全满足以上所有要求？请只回答“是”或“否”。
-                """
-                content, _ = await self.vlm.generate_response_for_image(
-                    prompt, image_base64, image_format, temperature=0.1, max_tokens=10
-                )
-                if "否" in content:
+                        match = re.search(r"\{.*\}", vlm_response_str, re.DOTALL)
+                        if match:
+                            vlm_response_json = json.loads(match.group(0))
+                            description = vlm_response_json.get("detailed_description", "")
+                            emotions = vlm_response_json.get("keywords", [])
+                            refined_description = vlm_response_json.get("refined_sentence", "")
+                            is_compliant = vlm_response_json.get("is_compliant", False)
+                            if description and emotions and refined_description:
+                                logger.info("[VLM分析] 成功解析VLM返回的JSON数据。")
+                                break
+                        logger.warning("[VLM分析] VLM返回的JSON数据不完整或格式错误，准备重试。")
+                    except (json.JSONDecodeError, AttributeError) as e:
+                        logger.error(f"VLM JSON解析失败 (第 {i+1}/3 次): {e}", exc_info=True)
+                    except Exception as e:
+                        logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
+
+                    description, emotions, refined_description = "", [], ""  # Reset for retry
+                    if i < 2:
+                        await asyncio.sleep(1)
+
+                if not description or not emotions or not refined_description:
+                    logger.warning("VLM未能生成有效的统一描述，中止处理。")
+                    return "", []
+
+                if global_config.emoji.content_filtration and not is_compliant:
                     logger.warning(f"表情包审核未通过，内容: {description[:50]}...")
                     return "", []
 
-            # 6. 基于VLM的详细描述，提炼“精炼关键词”
-            emotions = []
-            emotions_text = ""
-            if global_config.emoji.enable_emotion_analysis:
-                logger.info("[情感分析] 开始提炼表情包的“精炼关键词”")
-                emotion_prompt = f"""
-                你是一个互联网“梗”学家和情感分析师。
-                这里有一份关于某个表情包的详细描述：
-                ---
-                {description}
-                ---
-                请你基于这份描述，提炼出这个表情包最核心的、可用于检索的关键词。
+                final_description = f"{refined_description} Keywords: [{','.join(emotions)}] Desc: {description}"
 
-                你的任务是：
-                1.  **全面分析**：仔细阅读描述，理解表情包的全部细节，包括**图中文字、人物表情、动作、情绪、构图**等。
-                2.  **提炼关键词**：总结出 5 到 8 个最能代表这个表情包的关键词或短语。
-                3.  **关键词要求**：
-                    -   必须包含表情包中的**核心文字**（如果有）。
-                    -   必须描述核心的**表情和动作**（例如：“歪头杀”、“摊手”、“无奈苦笑”）。
-                    -   必须体现核心的**情绪和氛围**（例如：“悲伤”、“喜悦”、“沙雕”、“阴阳怪气”）。
-                    -   可以包含**核心主体或构图特点**（例如：“猫猫头”、“大头贴”、“模糊画质”）。
-                4.  **格式要求**：请直接输出这些关键词，并用**逗号**分隔，不要添加任何其他解释或编号。
-                """
-                emotions_text, _ = await self.llm_emotion_judge.generate_response_async(
-                    emotion_prompt, temperature=0.6, max_tokens=150
-                )
-                emotions = [e.strip() for e in emotions_text.split(",") if e.strip()]
-            else:
-                logger.info("[情感分析] 表情包感情关键词二次识别已禁用，跳过此步骤")
-
-            # 7. 基于详细描述和关键词，生成“精炼自然语言描述”
-            refined_description = ""
-            if emotions:  # 只有在成功提取关键词后才进行精炼
-                logger.info("[自然语言精炼] 开始生成“点睛之笔”的自然语言描述")
-                refine_prompt = f"""
-                你的任务是为一张表情包生成一句自然的、包含核心信息的精炼描述。
-
-                这里是关于这个表情包的分析信息：
-                # 详细描述
-                {description}
-
-                # 核心关键词
-                {emotions_text}
-
-                # 你的任务
-                请结合以上所有信息，用一句自然的语言，概括出这个表情包的核心内容。
-
-                # 规则 (非常重要！)
-                1.  **自然流畅**：描述应该像一个普通人看到图片后的自然反应，而不是生硬的机器分析。
-                2.  **包含关键信息**：如果详细描述中识别出了角色名称、出处，必须包含在精炼描述中。
-                3.  **体现情绪**：描述需要体现出表情包传达的核心情绪。
-                4.  **包含核心文字**：如果表情包中有文字，必须将文字完整地包含在描述中。
-                5.  **输出格式**：**请直接返回这句描述，不要添加任何前缀、标题、引号或多余的解释。**
-
-                示例：
-                - 详细描述：“图片的核心是一位面带微笑的少女，她被识别为游戏《崩坏3rd》中的角色爱莉希雅（Elysia）...”
-                - 正确输出：游戏《崩坏3rd》中的角色爱莉希雅，她面带微笑，看起来很开心。
-                """
-                refined_description, _ = await self.llm_emotion_judge.generate_response_async(
-                    refine_prompt, temperature=0.7, max_tokens=100
-                )
-                refined_description = refined_description.strip()
-
-            # 8. 格式化最终的描述，并返回结果
-            final_description = (
-                f"{refined_description} Keywords: [{','.join(emotions)}] Desc: {description}"
-            )
             logger.info(f"[注册分析] VLM描述: {description}")
             logger.info(f"[注册分析] 提炼出的情感标签: {emotions}")
             logger.info(f"[注册分析] 精炼后的自然语言描述: {refined_description}")
-
             return final_description, emotions
 
         except Exception as e:
