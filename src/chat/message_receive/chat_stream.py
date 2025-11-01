@@ -9,8 +9,8 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from src.common.data_models.database_data_model import DatabaseMessages
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import ChatStreams  # 新增导入
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import ChatStreams  # 新增导入
 from src.common.logger import get_logger
 from src.config.config import global_config  # 新增导入
 

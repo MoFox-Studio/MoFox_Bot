@@ -220,7 +220,7 @@ class MainSystem:
 
         # 停止数据库服务
         try:
-            from src.common.database.database import stop_database
+            from src.common.database.core import close_engine as stop_database
 
             cleanup_tasks.append(("数据库服务", stop_database()))
         except Exception as e:

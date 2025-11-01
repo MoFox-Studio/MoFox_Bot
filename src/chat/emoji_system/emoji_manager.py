@@ -15,8 +15,8 @@ from rich.traceback import install
 from sqlalchemy import select
 
 from src.chat.utils.utils_image import get_image_manager, image_path_to_base64
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import Emoji, Images
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import Emoji, Images
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest

@@ -282,7 +282,7 @@ class DatabaseManager:
     async def __aenter__(self):
         """异步上下文管理器入口"""
         try:
-            from src.common.database.database import initialize_sql_database
+            from src.common.database.core import check_and_migrate_database as initialize_sql_database
             from src.config.config import global_config
 
             logger.info("正在初始化数据库连接...")
@@ -560,7 +560,7 @@ class MaiBotMain:
         logger.info("正在初始化数据库表结构...")
         try:
             start_time = time.time()
-            from src.common.database.sqlalchemy_models import initialize_database
+            from src.common.database.core.models import initialize_database
 
             await initialize_database()
             elapsed_time = time.time() - start_time

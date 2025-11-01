@@ -52,7 +52,7 @@ from typing import Any
 import orjson
 from sqlalchemy import func, select
 
-from src.common.database.sqlalchemy_models import MonthlyPlan, Schedule, get_db_session
+from src.common.database.core.models import MonthlyPlan, Schedule, get_db_session
 from src.common.logger import get_logger
 from src.schedule.database import get_active_plans_for_month
 

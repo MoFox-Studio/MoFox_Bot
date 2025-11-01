@@ -8,8 +8,8 @@ from rich.traceback import install
 from sqlalchemy import and_, select
 
 from src.chat.utils.utils import assign_message_ids, translate_timestamp_to_human_readable
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import ActionRecords, Images
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import ActionRecords, Images
 from src.common.logger import get_logger
 from src.common.message_repository import count_messages, find_messages
 from src.config.config import global_config
@@ -990,7 +990,7 @@ async def build_readable_messages(
         # 从第一条消息中获取chat_id
         chat_id = copy_messages[0].get("chat_id") if copy_messages else None
 
-        from src.common.database.sqlalchemy_database_api import get_db_session
+        from src.common.database.compatibility import get_db_session
 
         async with get_db_session() as session:
             # 获取这个时间范围内的动作记录，并匹配chat_id

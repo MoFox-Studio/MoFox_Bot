@@ -203,8 +203,8 @@ class RelationshipEnergyCalculator(EnergyCalculator):
         try:
             from sqlalchemy import select
 
-            from src.common.database.sqlalchemy_database_api import get_db_session
-            from src.common.database.sqlalchemy_models import ChatStreams
+            from src.common.database.compatibility import get_db_session
+            from src.common.database.core.models import ChatStreams
 
             async with get_db_session() as session:
                 stmt = select(ChatStreams).where(ChatStreams.stream_id == stream_id)

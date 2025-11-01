@@ -181,8 +181,8 @@ class RelationshipFetcher:
 
         # 5. 从UserRelationships表获取完整关系信息（新系统）
         try:
-            from src.common.database.sqlalchemy_database_api import db_query
-            from src.common.database.sqlalchemy_models import UserRelationships
+            from src.common.database.compatibility import db_query
+            from src.common.database.core.models import UserRelationships
 
             # 查询用户关系数据（修复：添加 await）
             user_id = str(await person_info_manager.get_value(person_id, "user_id"))
@@ -243,8 +243,8 @@ class RelationshipFetcher:
             str: 格式化后的聊天流印象字符串
         """
         try:
-            from src.common.database.sqlalchemy_database_api import db_query
-            from src.common.database.sqlalchemy_models import ChatStreams
+            from src.common.database.compatibility import db_query
+            from src.common.database.core.models import ChatStreams
 
             # 查询聊天流数据
             streams = await db_query(
