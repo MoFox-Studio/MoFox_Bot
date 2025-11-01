@@ -620,10 +620,14 @@ class PersonInfoManager:
                 continue
 
             if record:
-                value = getattr(record, field_name)
-                if value is not None:
-                    result[field_name] = value
-                else:
+                try:
+                    value = getattr(record, field_name)
+                    if value is not None:
+                        result[field_name] = value
+                    else:
+                        result[field_name] = copy.deepcopy(person_info_default.get(field_name))
+                except Exception as e:
+                    logger.warning(f"访问字段 {field_name} 失败: {e}, 使用默认值")
                     result[field_name] = copy.deepcopy(person_info_default.get(field_name))
             else:
                 result[field_name] = copy.deepcopy(person_info_default.get(field_name))
@@ -651,9 +655,15 @@ class PersonInfoManager:
                 crud = CRUDBase(PersonInfo)
                 all_records = await crud.get_multi(limit=100000)  # 获取所有记录
                 for record in all_records:
-                    value = getattr(record, f_name, None)
-                    if value is not None and way(value):
-                        found_results[record.person_id] = value
+                    try:
+                        value = getattr(record, f_name, None)
+                        if value is not None and way(value):
+                            person_id_value = getattr(record, 'person_id', None)
+                            if person_id_value:
+                                found_results[person_id_value] = value
+                    except Exception as e:
+                        logger.warning(f"访问记录字段失败: {e}")
+                        continue
             except Exception as e_query:
                 logger.error(
                     f"数据库查询失败 (specific_value_list for {f_name}): {e_query!s}", exc_info=True
@@ -750,10 +760,11 @@ class PersonInfoManager:
 
         if not found_person_id:
 
-            # 使用CRUD进行查询
+            # 使用CRUD进行查询 (person_name不是唯一字段,可能返回多条)
             crud = CRUDBase(PersonInfo)
-            record = await crud.get_by(person_name=person_name)
-            if record:
+            records = await crud.get_multi(person_name=person_name, limit=1)
+            if records:
+                record = records[0]
                 found_person_id = record.person_id
                 if (
                     found_person_id not in self.person_name_list
@@ -761,7 +772,7 @@ class PersonInfoManager:
                 ):
                     self.person_name_list[found_person_id] = person_name
             else:
-                logger.debug(f"数据库中也未找到名为 '{person_name}' 的用户 (Peewee)")
+                logger.debug(f"数据库中也未找到名为 '{person_name}' 的用户")
                 return None
 
         if found_person_id:
