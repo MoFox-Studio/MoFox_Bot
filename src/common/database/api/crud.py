@@ -110,12 +110,12 @@ class CRUDBase:
             if instance is not None:
                 # ✅ 在 session 内部转换为字典，此时所有字段都可安全访问
                 instance_dict = _model_to_dict(instance)
-                
+
                 # 写入缓存
                 if use_cache:
                     cache = await get_cache()
                     await cache.set(cache_key, instance_dict)
-                
+
                 # 从字典重建对象返回（detached状态，所有字段已加载）
                 return _dict_to_model(self.model, instance_dict)
 
@@ -159,12 +159,12 @@ class CRUDBase:
             if instance is not None:
                 # ✅ 在 session 内部转换为字典，此时所有字段都可安全访问
                 instance_dict = _model_to_dict(instance)
-                
+
                 # 写入缓存
                 if use_cache:
                     cache = await get_cache()
                     await cache.set(cache_key, instance_dict)
-                
+
                 # 从字典重建对象返回（detached状态，所有字段已加载）
                 return _dict_to_model(self.model, instance_dict)
 
@@ -206,7 +206,7 @@ class CRUDBase:
             # 应用过滤条件
             for key, value in filters.items():
                 if hasattr(self.model, key):
-                    if isinstance(value, (list, tuple, set)):
+                    if isinstance(value, list | tuple | set):
                         stmt = stmt.where(getattr(self.model, key).in_(value))
                     else:
                         stmt = stmt.where(getattr(self.model, key) == value)
@@ -219,12 +219,12 @@ class CRUDBase:
 
             # ✅ 在 session 内部转换为字典列表，此时所有字段都可安全访问
             instances_dicts = [_model_to_dict(inst) for inst in instances]
-            
+
             # 写入缓存
             if use_cache:
                 cache = await get_cache()
                 await cache.set(cache_key, instances_dicts)
-            
+
             # 从字典列表重建对象列表返回（detached状态，所有字段已加载）
             return [_dict_to_model(self.model, d) for d in instances_dicts]
 
@@ -266,13 +266,13 @@ class CRUDBase:
                 await session.refresh(instance)
                 # 注意：commit在get_db_session的context manager退出时自动执行
                 # 但为了明确性，这里不需要显式commit
-        
+
         # 注意：create不清除缓存，因为：
         # 1. 新记录不会影响已有的单条查询缓存（get/get_by）
         # 2. get_multi的缓存会自然过期（TTL机制）
         # 3. 清除所有缓存代价太大，影响性能
         # 如果需要强一致性，应该在查询时设置use_cache=False
-        
+
         return instance
 
     async def update(
@@ -397,7 +397,7 @@ class CRUDBase:
             # 应用过滤条件
             for key, value in filters.items():
                 if hasattr(self.model, key):
-                    if isinstance(value, (list, tuple, set)):
+                    if isinstance(value, list | tuple | set):
                         stmt = stmt.where(getattr(self.model, key).in_(value))
                     else:
                         stmt = stmt.where(getattr(self.model, key) == value)
@@ -466,14 +466,14 @@ class CRUDBase:
 
             for instance in instances:
                 await session.refresh(instance)
-        
+
         # 批量创建的缓存策略：
         # bulk_create通常用于批量导入场景，此时清除缓存是合理的
         # 因为可能创建大量记录，缓存的列表查询会明显过期
         cache = await get_cache()
         await cache.clear()
         logger.info(f"批量创建{len(instances)}条{self.model_name}记录后已清除缓存")
-        
+
         return instances
 
     async def bulk_update(

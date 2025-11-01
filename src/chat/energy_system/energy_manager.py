@@ -9,9 +9,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TypedDict
 
-from src.common.logger import get_logger
 from src.common.database.api.crud import CRUDBase
-from src.common.database.utils.decorators import cached
+from src.common.logger import get_logger
 from src.config.config import global_config
 
 logger = get_logger("energy_system")
@@ -203,7 +202,6 @@ class RelationshipEnergyCalculator(EnergyCalculator):
 
         # 从数据库获取聊天流兴趣分数
         try:
-            from sqlalchemy import select
 
             from src.common.database.core.models import ChatStreams
 

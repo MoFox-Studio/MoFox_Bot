@@ -20,15 +20,15 @@ logger = get_logger("db_migration")
 
 async def check_and_migrate_database(existing_engine=None):
     """异步检查数据库结构并自动迁移
-    
+
     自动执行以下操作：
     - 创建不存在的表
     - 为现有表添加缺失的列
     - 为现有表创建缺失的索引
-    
+
     Args:
         existing_engine: 可选的已存在的数据库引擎。如果提供，将使用该引擎；否则获取全局引擎
-        
+
     Note:
         此函数是幂等的，可以安全地多次调用
     """
@@ -65,7 +65,7 @@ async def check_and_migrate_database(existing_engine=None):
                 for table in tables_to_create:
                     logger.info(f"表 '{table.name}' 创建成功。")
                     db_table_names.add(table.name)  # 将新创建的表添加到集合中
-                    
+
                 # 提交表创建事务
                 await connection.commit()
             except Exception as e:
@@ -191,40 +191,40 @@ async def check_and_migrate_database(existing_engine=None):
 
 async def create_all_tables(existing_engine=None):
     """创建所有表（不进行迁移检查）
-    
+
     直接创建所有在 Base.metadata 中定义的表。
     如果表已存在，将被跳过。
-    
+
     Args:
         existing_engine: 可选的已存在的数据库引擎
-        
+
     Note:
         生产环境建议使用 check_and_migrate_database()
     """
     logger.info("正在创建所有数据库表...")
     engine = existing_engine if existing_engine is not None else await get_engine()
-    
+
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-    
+
     logger.info("数据库表创建完成。")
 
 
 async def drop_all_tables(existing_engine=None):
     """删除所有表（危险操作！）
-    
+
     删除所有在 Base.metadata 中定义的表。
-    
+
     Args:
         existing_engine: 可选的已存在的数据库引擎
-        
+
     Warning:
         此操作将删除所有数据，不可恢复！仅用于测试环境！
     """
     logger.warning("⚠️  正在删除所有数据库表...")
     engine = existing_engine if existing_engine is not None else await get_engine()
-    
+
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.drop_all)
-    
+
     logger.warning("所有数据库表已删除。")

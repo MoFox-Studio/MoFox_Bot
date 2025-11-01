@@ -5,8 +5,8 @@ from typing import Any
 import orjson
 from sqlalchemy import select
 
-from src.common.database.core.models import MonthlyPlan, Schedule
 from src.common.database.core import get_db_session
+from src.common.database.core.models import MonthlyPlan, Schedule
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.manager.async_task_manager import AsyncTask, async_task_manager

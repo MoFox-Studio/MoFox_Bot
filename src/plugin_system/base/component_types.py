@@ -374,16 +374,23 @@ class PluginInfo:
         """检查缺失的Python包"""
         missing = []
         for dep in self.python_dependencies:
+            dep_obj = dep if isinstance(dep, PythonDependency) else PythonDependency(package_name=dep)
             try:
-                __import__(dep.package_name)
+                __import__(dep_obj.package_name)
             except ImportError:
-                if not dep.optional:
-                    missing.append(dep)
+                if not dep_obj.optional:
+                    missing.append(dep_obj)
         return missing
 
     def get_pip_requirements(self) -> list[str]:
         """获取所有pip安装格式的依赖"""
-        return [dep.get_pip_requirement() for dep in self.python_dependencies]
+        requirements = []
+        for dep in self.python_dependencies:
+            if isinstance(dep, str):
+                requirements.append(dep)
+            elif isinstance(dep, PythonDependency):
+                requirements.append(dep.get_pip_requirement())
+        return requirements
 
 
 @dataclass

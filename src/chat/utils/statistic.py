@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-from src.common.database.compatibility import db_get, db_query, db_save
+from src.common.database.compatibility import db_get, db_query
 from src.common.database.core.models import LLMUsage, Messages, OnlineTime
 from src.common.logger import get_logger
 from src.manager.async_task_manager import AsyncTask

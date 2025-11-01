@@ -121,13 +121,18 @@ class EULAManager:
         confirm_logger.critical("请阅读以下文件：")
         confirm_logger.critical("  - EULA.md (用户许可协议)")
         confirm_logger.critical("  - PRIVACY.md (隐私条款)")
-        confirm_logger.critical("然后编辑 .env 文件，将 'EULA_CONFIRMED=false' 改为 'EULA_CONFIRMED=true'")
+        confirm_logger.critical(
+            f"然后编辑 .env 文件，将 'EULA_CONFIRMED=false' 改为 'EULA_CONFIRMED=true'"
+        )
 
         attempts = 0
         while attempts < MAX_EULA_CHECK_ATTEMPTS:
             try:
                 await asyncio.sleep(EULA_CHECK_INTERVAL)
                 attempts += 1
+
+                # 重新加载.env文件以获取最新更改
+                load_dotenv(override=True)
 
                 # 从 os.environ 读取，避免重复 I/O
                 eula_confirmed = os.getenv("EULA_CONFIRMED", "").lower()

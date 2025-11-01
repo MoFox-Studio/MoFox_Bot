@@ -11,8 +11,9 @@
 import asyncio
 import time
 from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Generic, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from src.common.logger import get_logger
 
@@ -24,7 +25,7 @@ T = TypeVar("T")
 @dataclass
 class CacheEntry(Generic[T]):
     """缓存条目
-    
+
     Attributes:
         value: 缓存的值
         created_at: 创建时间戳
@@ -42,7 +43,7 @@ class CacheEntry(Generic[T]):
 @dataclass
 class CacheStats:
     """缓存统计信息
-    
+
     Attributes:
         hits: 命中次数
         misses: 未命中次数
@@ -70,7 +71,7 @@ class CacheStats:
 
 class LRUCache(Generic[T]):
     """LRU缓存实现
-    
+
     使用OrderedDict实现O(1)的get/set操作
     """
 
@@ -81,7 +82,7 @@ class LRUCache(Generic[T]):
         name: str = "cache",
     ):
         """初始化LRU缓存
-        
+
         Args:
             max_size: 最大缓存条目数
             ttl: 过期时间（秒）
@@ -94,18 +95,18 @@ class LRUCache(Generic[T]):
         self._lock = asyncio.Lock()
         self._stats = CacheStats()
 
-    async def get(self, key: str) -> Optional[T]:
+    async def get(self, key: str) -> T | None:
         """获取缓存值
-        
+
         Args:
             key: 缓存键
-            
+
         Returns:
             缓存值，如果不存在或已过期返回None
         """
         async with self._lock:
             entry = self._cache.get(key)
-            
+
             if entry is None:
                 self._stats.misses += 1
                 return None
@@ -125,20 +126,20 @@ class LRUCache(Generic[T]):
             entry.last_accessed = now
             entry.access_count += 1
             self._stats.hits += 1
-            
+
             # 移到末尾（最近使用）
             self._cache.move_to_end(key)
-            
+
             return entry.value
 
     async def set(
         self,
         key: str,
         value: T,
-        size: Optional[int] = None,
+        size: int | None = None,
     ) -> None:
         """设置缓存值
-        
+
         Args:
             key: 缓存键
             value: 缓存值
@@ -146,16 +147,16 @@ class LRUCache(Generic[T]):
         """
         async with self._lock:
             now = time.time()
-            
+
             # 如果键已存在，更新值
             if key in self._cache:
                 old_entry = self._cache[key]
                 self._stats.total_size -= old_entry.size
-            
+
             # 估算大小
             if size is None:
                 size = self._estimate_size(value)
-            
+
             # 创建新条目
             entry = CacheEntry(
                 value=value,
@@ -164,7 +165,7 @@ class LRUCache(Generic[T]):
                 access_count=0,
                 size=size,
             )
-            
+
             # 如果缓存已满，淘汰最久未使用的条目
             while len(self._cache) >= self.max_size:
                 oldest_key, oldest_entry = self._cache.popitem(last=False)
@@ -175,7 +176,7 @@ class LRUCache(Generic[T]):
                     f"[{self.name}] 淘汰缓存条目: {oldest_key} "
                     f"(访问{oldest_entry.access_count}次)"
                 )
-            
+
             # 添加新条目
             self._cache[key] = entry
             self._stats.item_count += 1
@@ -183,10 +184,10 @@ class LRUCache(Generic[T]):
 
     async def delete(self, key: str) -> bool:
         """删除缓存条目
-        
+
         Args:
             key: 缓存键
-            
+
         Returns:
             是否成功删除
         """
@@ -217,7 +218,7 @@ class LRUCache(Generic[T]):
 
     def _estimate_size(self, value: Any) -> int:
         """估算数据大小（字节）
-        
+
         这是一个简单的估算，实际大小可能不同
         """
         import sys
@@ -230,11 +231,11 @@ class LRUCache(Generic[T]):
 
 class MultiLevelCache:
     """多级缓存管理器
-    
+
     实现两级缓存架构：
     - L1: 高速缓存，小容量，短TTL
     - L2: 扩展缓存，大容量，长TTL
-    
+
     查询时先查L1，未命中再查L2，未命中再从数据源加载
     """
 
@@ -246,7 +247,7 @@ class MultiLevelCache:
         l2_ttl: float = 300,
     ):
         """初始化多级缓存
-        
+
         Args:
             l1_max_size: L1缓存最大条目数
             l1_ttl: L1缓存TTL（秒）
@@ -255,8 +256,8 @@ class MultiLevelCache:
         """
         self.l1_cache: LRUCache[Any] = LRUCache(l1_max_size, l1_ttl, "L1")
         self.l2_cache: LRUCache[Any] = LRUCache(l2_max_size, l2_ttl, "L2")
-        self._cleanup_task: Optional[asyncio.Task] = None
-        
+        self._cleanup_task: asyncio.Task | None = None
+
         logger.info(
             f"多级缓存初始化: L1({l1_max_size}项/{l1_ttl}s) "
             f"L2({l2_max_size}项/{l2_ttl}s)"
@@ -265,16 +266,16 @@ class MultiLevelCache:
     async def get(
         self,
         key: str,
-        loader: Optional[Callable[[], Any]] = None,
-    ) -> Optional[Any]:
+        loader: Callable[[], Any] | None = None,
+    ) -> Any | None:
         """从缓存获取数据
-        
+
         查询顺序：L1 -> L2 -> loader
-        
+
         Args:
             key: 缓存键
             loader: 数据加载函数，当缓存未命中时调用
-            
+
         Returns:
             缓存值或加载的值，如果都不存在返回None
         """
@@ -307,12 +308,12 @@ class MultiLevelCache:
         self,
         key: str,
         value: Any,
-        size: Optional[int] = None,
+        size: int | None = None,
     ) -> None:
         """设置缓存值
-        
+
         同时写入L1和L2
-        
+
         Args:
             key: 缓存键
             value: 缓存值
@@ -323,9 +324,9 @@ class MultiLevelCache:
 
     async def delete(self, key: str) -> None:
         """删除缓存条目
-        
+
         同时从L1和L2删除
-        
+
         Args:
             key: 缓存键
         """
@@ -347,7 +348,7 @@ class MultiLevelCache:
 
     async def start_cleanup_task(self, interval: float = 60) -> None:
         """启动定期清理任务
-        
+
         Args:
             interval: 清理间隔（秒）
         """
@@ -387,27 +388,27 @@ class MultiLevelCache:
 
 
 # 全局缓存实例
-_global_cache: Optional[MultiLevelCache] = None
+_global_cache: MultiLevelCache | None = None
 _cache_lock = asyncio.Lock()
 
 
 async def get_cache() -> MultiLevelCache:
     """获取全局缓存实例（单例）"""
     global _global_cache
-    
+
     if _global_cache is None:
         async with _cache_lock:
             if _global_cache is None:
                 _global_cache = MultiLevelCache()
                 await _global_cache.start_cleanup_task()
-    
+
     return _global_cache
 
 
 async def close_cache() -> None:
     """关闭全局缓存"""
     global _global_cache
-    
+
     if _global_cache is not None:
         await _global_cache.stop_cleanup_task()
         await _global_cache.clear()

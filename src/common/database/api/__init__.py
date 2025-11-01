@@ -11,49 +11,49 @@ from src.common.database.api.query import AggregateQuery, QueryBuilder
 
 # 业务特定API
 from src.common.database.api.specialized import (
-    # ActionRecords
-    get_recent_actions,
-    store_action_info,
     # ChatStreams
     get_active_streams,
-    get_or_create_chat_stream,
-    # LLMUsage
-    get_usage_statistics,
-    record_llm_usage,
     # Messages
     get_chat_history,
     get_message_count,
-    save_message,
+    get_or_create_chat_stream,
     # PersonInfo
     get_or_create_person,
-    update_person_affinity,
+    # ActionRecords
+    get_recent_actions,
+    # LLMUsage
+    get_usage_statistics,
     # UserRelationships
     get_user_relationship,
+    record_llm_usage,
+    save_message,
+    store_action_info,
+    update_person_affinity,
     update_relationship_affinity,
 )
 
 __all__ = [
+    "AggregateQuery",
     # 基础类
     "CRUDBase",
     "QueryBuilder",
-    "AggregateQuery",
-    # ActionRecords API
-    "store_action_info",
-    "get_recent_actions",
+    "get_active_streams",
     # Messages API
     "get_chat_history",
     "get_message_count",
-    "save_message",
-    # PersonInfo API
-    "get_or_create_person",
-    "update_person_affinity",
     # ChatStreams API
     "get_or_create_chat_stream",
-    "get_active_streams",
-    # LLMUsage API
-    "record_llm_usage",
+    # PersonInfo API
+    "get_or_create_person",
+    "get_recent_actions",
     "get_usage_statistics",
     # UserRelationships API
     "get_user_relationship",
+    # LLMUsage API
+    "record_llm_usage",
+    "save_message",
+    # ActionRecords API
+    "store_action_info",
+    "update_person_affinity",
     "update_relationship_affinity",
 ]

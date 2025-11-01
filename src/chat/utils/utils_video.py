@@ -25,8 +25,8 @@ from typing import Any
 
 from PIL import Image
 
-from src.common.database.core.models import Videos
 from src.common.database.core import get_db_session
+from src.common.database.core.models import Videos
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest

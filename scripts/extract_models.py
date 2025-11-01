@@ -4,20 +4,20 @@
 import re
 
 # 读取原始文件
-with open('src/common/database/sqlalchemy_models.py', 'r', encoding='utf-8') as f:
+with open("src/common/database/sqlalchemy_models.py", encoding="utf-8") as f:
     content = f.read()
 
 # 找到get_string_field函数的开始和结束
-get_string_field_start = content.find('# MySQL兼容的字段类型辅助函数')
-get_string_field_end = content.find('\n\nclass ChatStreams(Base):')
+get_string_field_start = content.find("# MySQL兼容的字段类型辅助函数")
+get_string_field_end = content.find("\n\nclass ChatStreams(Base):")
 get_string_field = content[get_string_field_start:get_string_field_end]
 
 # 找到第一个class定义开始
-first_class_pos = content.find('class ChatStreams(Base):')
+first_class_pos = content.find("class ChatStreams(Base):")
 
 # 找到所有class定义，直到遇到非class的def
 # 简单策略：找到所有以"class "开头且继承Base的类
-classes_pattern = r'class \w+\(Base\):.*?(?=\nclass \w+\(Base\):|$)'
+classes_pattern = r"class \w+\(Base\):.*?(?=\nclass \w+\(Base\):|$)"
 matches = list(re.finditer(classes_pattern, content[first_class_pos:], re.DOTALL))
 
 if matches:
@@ -53,14 +53,14 @@ Base = declarative_base()
 
 '''
 
-new_content = header + get_string_field + '\n\n' + models_content
+new_content = header + get_string_field + "\n\n" + models_content
 
 # 写入新文件
-with open('src/common/database/core/models.py', 'w', encoding='utf-8') as f:
+with open("src/common/database/core/models.py", "w", encoding="utf-8") as f:
     f.write(new_content)
 
-print('✅ Models file rewritten successfully')
-print(f'File size: {len(new_content)} characters')
+print("✅ Models file rewritten successfully")
+print(f"File size: {len(new_content)} characters")
 pattern = r"^class \w+\(Base\):"
 model_count = len(re.findall(pattern, models_content, re.MULTILINE))
-print(f'Number of model classes: {model_count}')
+print(f"Number of model classes: {model_count}")

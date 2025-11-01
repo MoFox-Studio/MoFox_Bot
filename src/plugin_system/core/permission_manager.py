@@ -10,8 +10,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from src.common.database.core.models import PermissionNodes, UserPermissions
 from src.common.database.core import get_engine
+from src.common.database.core.models import PermissionNodes, UserPermissions
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.apis.permission_api import IPermissionManager, PermissionNode, UserInfo

@@ -224,7 +224,7 @@ class MainSystem:
 
             storage_batcher = get_message_storage_batcher()
             cleanup_tasks.append(("消息存储批处理器", storage_batcher.stop()))
-            
+
             update_batcher = get_message_update_batcher()
             cleanup_tasks.append(("消息更新批处理器", update_batcher.stop()))
         except Exception as e:
@@ -502,7 +502,7 @@ MoFox_Bot(第三方修改版)
             storage_batcher = get_message_storage_batcher()
             await storage_batcher.start()
             logger.info("消息存储批处理器已启动")
-            
+
             update_batcher = get_message_update_batcher()
             await update_batcher.start()
             logger.info("消息更新批处理器已启动")

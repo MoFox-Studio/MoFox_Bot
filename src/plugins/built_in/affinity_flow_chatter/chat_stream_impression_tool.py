@@ -7,12 +7,8 @@
 import json
 from typing import Any, ClassVar
 
-from sqlalchemy import select
-
-from src.common.database.compatibility import get_db_session
-from src.common.database.core.models import ChatStreams
 from src.common.database.api.crud import CRUDBase
-from src.common.database.utils.decorators import cached
+from src.common.database.core.models import ChatStreams
 from src.common.logger import get_logger
 from src.config.config import model_config
 from src.llm_models.utils_model import LLMRequest
@@ -358,14 +354,14 @@ class ChatStreamImpressionTool(BaseTool):
                         "stream_interest_score": impression.get("stream_interest_score", 0.5),
                     }
                 )
-                
+
                 # 使缓存失效
                 from src.common.database.optimization.cache_manager import get_cache
                 from src.common.database.utils.decorators import generate_cache_key
                 cache = await get_cache()
                 await cache.delete(generate_cache_key("stream_impression", stream_id))
                 await cache.delete(generate_cache_key("chat_stream", stream_id))
-                
+
                 logger.info(f"聊天流印象已更新到数据库: {stream_id}")
             else:
                 error_msg = f"聊天流 {stream_id} 不存在于数据库中，无法更新印象"

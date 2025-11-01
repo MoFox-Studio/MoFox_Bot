@@ -15,9 +15,9 @@ from rich.traceback import install
 from sqlalchemy import select
 
 from src.chat.utils.utils_image import get_image_manager, image_path_to_base64
+from src.common.database.api.crud import CRUDBase
 from src.common.database.compatibility import get_db_session
 from src.common.database.core.models import Emoji, Images
-from src.common.database.api.crud import CRUDBase
 from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
@@ -215,7 +215,7 @@ class MaiEmoji:
                 else:
                     await crud.delete(will_delete_emoji.id)
                     result = 1  # Successfully deleted one record
-                    
+
                     # 使缓存失效
                     from src.common.database.optimization.cache_manager import get_cache
                     from src.common.database.utils.decorators import generate_cache_key
@@ -708,7 +708,7 @@ class EmojiManager:
         try:
             # 使用CRUD进行查询
             crud = CRUDBase(Emoji)
-            
+
             if emoji_hash:
                 # 查询特定hash的表情包
                 emoji_record = await crud.get_by(emoji_hash=emoji_hash)

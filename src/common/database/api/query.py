@@ -207,12 +207,12 @@ class QueryBuilder(Generic[T]):
 
             # ✅ 在 session 内部转换为字典列表，此时所有字段都可安全访问
             instances_dicts = [_model_to_dict(inst) for inst in instances]
-            
+
             # 写入缓存
             if self._use_cache:
                 cache = await get_cache()
                 await cache.set(cache_key, instances_dicts)
-            
+
             # 从字典列表重建对象列表返回（detached状态，所有字段已加载）
             return [_dict_to_model(self.model, d) for d in instances_dicts]
 
@@ -241,12 +241,12 @@ class QueryBuilder(Generic[T]):
             if instance is not None:
                 # ✅ 在 session 内部转换为字典，此时所有字段都可安全访问
                 instance_dict = _model_to_dict(instance)
-                
+
                 # 写入缓存
                 if self._use_cache:
                     cache = await get_cache()
                     await cache.set(cache_key, instance_dict)
-                
+
                 # 从字典重建对象返回（detached状态，所有字段已加载）
                 return _dict_to_model(self.model, instance_dict)
 

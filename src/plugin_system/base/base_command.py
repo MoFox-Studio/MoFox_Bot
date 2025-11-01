@@ -7,7 +7,7 @@ from src.plugin_system.base.component_types import ChatType, CommandInfo, Compon
 from src.plugin_system.base.plus_command import PlusCommand
 
 if TYPE_CHECKING:
-    from src.chat.message_receive.chat_stream import ChatStream
+    pass
 
 logger = get_logger("base_command")
 

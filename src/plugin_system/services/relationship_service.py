@@ -5,8 +5,8 @@
 
 import time
 
-from src.common.database.core.models import UserRelationships
 from src.common.database.core import get_db_session
+from src.common.database.core.models import UserRelationships
 from src.common.logger import get_logger
 from src.config.config import global_config
 
