@@ -539,14 +539,9 @@ class PersonInfoManager:
                 if record:
                     await crud.delete(record.id)
                     
-                    # 清除相关缓存
-                    from src.common.database.optimization.cache_manager import get_cache
-                    from src.common.database.utils.decorators import generate_cache_key
-                    cache = await get_cache()
-                    
-                    # 清除所有相关的person缓存
-                    await cache.delete(generate_cache_key("person_known", p_id))
-                    await cache.delete(generate_cache_key("person_field", p_id))
+                    # 注意: 删除操作很少发生,缓存会在TTL过期后自动清除
+                    # 无法从person_id反向得到platform和user_id,因此无法精确清除缓存
+                    # 删除后的查询仍会返回正确结果(None/False)
                     return 1
                 return 0
             except Exception as e:

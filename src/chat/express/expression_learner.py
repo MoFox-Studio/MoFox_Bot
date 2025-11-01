@@ -232,7 +232,6 @@ class ExpressionLearner:
             logger.error(f"为聊天流 {self.chat_name} 触发学习失败: {e}")
             return False
 
-    @cached(ttl=600, key_prefix="chat_expressions")
     async def get_expression_by_chat_id(self) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
         """
         获取指定chat_id的style和grammar表达方式（带10分钟缓存）
@@ -240,12 +239,19 @@ class ExpressionLearner:
         
         优化: 使用CRUD和缓存，减少数据库访问
         """
+        # 使用静态方法以正确处理缓存键
+        return await self._get_expressions_by_chat_id_cached(self.chat_id)
+    
+    @staticmethod
+    @cached(ttl=600, key_prefix="chat_expressions")
+    async def _get_expressions_by_chat_id_cached(chat_id: str) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
+        """内部方法：从数据库获取表达方式（带缓存）"""
         learnt_style_expressions = []
         learnt_grammar_expressions = []
 
         # 使用CRUD查询
         crud = CRUDBase(Expression)
-        all_expressions = await crud.get_all_by(chat_id=self.chat_id)
+        all_expressions = await crud.get_all_by(chat_id=chat_id)
 
         for expr in all_expressions:
                 # 确保create_date存在，如果不存在则使用last_active_time
@@ -256,7 +262,7 @@ class ExpressionLearner:
                     "style": expr.style,
                     "count": expr.count,
                     "last_active_time": expr.last_active_time,
-                    "source_id": self.chat_id,
+                    "source_id": chat_id,
                     "type": expr.type,
                     "create_date": create_date,
                 }

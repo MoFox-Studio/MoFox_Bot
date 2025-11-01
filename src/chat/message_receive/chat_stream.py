@@ -450,8 +450,8 @@ class ChatManager:
                 defaults={
                     "user_platform": user_info.platform if user_info else platform,
                     "user_id": user_info.user_id if user_info else "",
-                    "user_nickname": user_info.nickname if user_info else "",
-                    "user_cardname": user_info.cardname if user_info else "",
+                    "user_nickname": user_info.user_nickname if user_info else "",
+                    "user_cardname": user_info.user_cardname if user_info else "",
                     "group_platform": group_info.platform if group_info else None,
                     "group_id": group_info.group_id if group_info else None,
                     "group_name": group_info.group_name if group_info else None,
