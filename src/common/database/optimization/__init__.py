@@ -21,6 +21,13 @@ from .connection_pool import (
     start_connection_pool,
     stop_connection_pool,
 )
+from .preloader import (
+    AccessPattern,
+    close_preloader,
+    CommonDataPreloader,
+    DataPreloader,
+    get_preloader,
+)
 
 __all__ = [
     # Connection Pool
@@ -35,4 +42,10 @@ __all__ = [
     "CacheStats",
     "get_cache",
     "close_cache",
+    # Preloader
+    "DataPreloader",
+    "CommonDataPreloader",
+    "AccessPattern",
+    "get_preloader",
+    "close_preloader",
 ]
