@@ -19,6 +19,8 @@ from src.common.database.core.models import (
     UserRelationships,
 )
 from src.common.database.core.session import get_db_session
+from src.common.database.optimization.cache_manager import get_cache
+from src.common.database.utils.decorators import cached, generate_cache_key
 from src.common.logger import get_logger
 
 logger = get_logger("database.specialized")
@@ -179,6 +181,7 @@ async def save_message(
 
 
 # ===== PersonInfo 业务API =====
+@cached(ttl=600, key_prefix="person_info")  # 缓存10分钟
 async def get_or_create_person(
     platform: str,
     person_id: str,
@@ -234,6 +237,11 @@ async def update_person_affinity(
             {"affinity": new_affinity},
         )
         
+        # 使缓存失效
+        cache = await get_cache()
+        cache_key = generate_cache_key("person_info", platform, person_id)
+        await cache.delete(cache_key)
+        
         logger.debug(f"更新好感度: {platform}/{person_id} {affinity_delta:+.2f} -> {new_affinity:.2f}")
         return True
         
@@ -243,6 +251,7 @@ async def update_person_affinity(
 
 
 # ===== ChatStreams 业务API =====
+@cached(ttl=300, key_prefix="chat_stream")  # 缓存5分钟
 async def get_or_create_chat_stream(
     stream_id: str,
     platform: str,
@@ -393,6 +402,7 @@ async def get_usage_statistics(
 
 
 # ===== UserRelationships 业务API =====
+@cached(ttl=300, key_prefix="user_relationship")  # 缓存5分钟
 async def get_user_relationship(
     platform: str,
     user_id: str,
@@ -457,6 +467,11 @@ async def update_relationship_affinity(
                 "last_interaction_time": time.time(),
             },
         )
+        
+        # 使缓存失效
+        cache = await get_cache()
+        cache_key = generate_cache_key("user_relationship", platform, user_id, target_id)
+        await cache.delete(cache_key)
         
         logger.debug(
             f"更新关系: {platform}/{user_id}->{target_id} "

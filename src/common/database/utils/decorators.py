@@ -18,6 +18,42 @@ from src.common.logger import get_logger
 
 logger = get_logger("database.decorators")
 
+
+def generate_cache_key(
+    key_prefix: str,
+    *args: Any,
+    **kwargs: Any,
+) -> str:
+    """生成与@cached装饰器相同的缓存键
+    
+    用于手动缓存失效等操作
+    
+    Args:
+        key_prefix: 缓存键前缀
+        *args: 位置参数
+        **kwargs: 关键字参数
+        
+    Returns:
+        缓存键字符串
+        
+    Example:
+        cache_key = generate_cache_key("person_info", platform, person_id)
+        await cache.delete(cache_key)
+    """
+    cache_key_parts = [key_prefix]
+    
+    if args:
+        args_str = ",".join(str(arg) for arg in args)
+        args_hash = hashlib.md5(args_str.encode()).hexdigest()[:8]
+        cache_key_parts.append(f"args:{args_hash}")
+    
+    if kwargs:
+        kwargs_str = ",".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
+        kwargs_hash = hashlib.md5(kwargs_str.encode()).hexdigest()[:8]
+        cache_key_parts.append(f"kwargs:{kwargs_hash}")
+    
+    return ":".join(cache_key_parts)
+
 T = TypeVar("T")
 F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 
