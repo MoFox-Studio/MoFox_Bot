@@ -221,18 +221,16 @@ class ComponentRegistry:
 
     def _register_command_component(self, command_info: CommandInfo, command_class: type[BaseCommand]) -> bool:
         """注册Command组件到Command特定注册表"""
-        # 检查是否为旧版Command
-        if getattr(command_class, "_is_legacy", False):
-            logger.warning(
+        logger.warning(
                 f"检测到旧版Command组件 '{command_class.command_name}' (来自插件: {command_info.plugin_name})。"
                 "它将通过兼容层运行，但建议尽快迁移到PlusCommand以获得更好的性能和功能。"
             )
-            # 使用适配器将其转换为PlusCommand
-            adapted_class = create_legacy_command_adapter(command_class)
-            plus_command_info = adapted_class.get_plus_command_info()
-            plus_command_info.plugin_name = command_info.plugin_name  # 继承插件名
+        # 使用适配器将其转换为PlusCommand
+        adapted_class = create_legacy_command_adapter(command_class)
+        plus_command_info = adapted_class.get_plus_command_info()
+        plus_command_info.plugin_name = command_info.plugin_name  # 继承插件名
 
-            return self._register_plus_command_component(plus_command_info, adapted_class)
+        return self._register_plus_command_component(plus_command_info, adapted_class)
 
     def _register_plus_command_component(
         self, plus_command_info: PlusCommandInfo, plus_command_class: type[PlusCommand]

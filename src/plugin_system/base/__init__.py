@@ -29,7 +29,7 @@ from .component_types import (
     ToolParamType,
 )
 from .config_types import ConfigField
-from .plus_command import PlusCommand, PlusCommandAdapter, create_plus_command_adapter
+from .plus_command import PlusCommand, create_plus_command_adapter
 
 __all__ = [
     "ActionActivationType",
