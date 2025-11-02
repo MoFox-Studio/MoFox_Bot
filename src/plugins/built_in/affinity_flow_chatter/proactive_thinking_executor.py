@@ -17,6 +17,7 @@ from src.config.config import global_config, model_config
 from src.individuality.individuality import Individuality
 from src.llm_models.utils_model import LLMRequest
 from src.plugin_system.apis import message_api, send_api
+from src.utils.json_parser import extract_and_parse_json
 
 logger = get_logger("proactive_thinking_executor")
 
@@ -339,19 +340,17 @@ class ProactiveThinkingPlanner:
                 logger.warning("LLM未返回有效响应")
                 return None
 
-            # 清理并解析JSON响应
-            cleaned_response = self._clean_json_response(response)
-            decision = json.loads(cleaned_response)
+            # 使用统一的 JSON 解析工具
+            decision = extract_and_parse_json(response, strict=False)
+            if not decision or not isinstance(decision, dict):
+                logger.error("解析决策JSON失败")
+                if response:
+                    logger.debug(f"原始响应: {response[:500]}")
+                return None
 
             logger.info(f"决策结果: {decision.get('action', 'unknown')} - {decision.get('reasoning', '无理由')}")
 
             return decision
-
-        except json.JSONDecodeError as e:
-            logger.error(f"解析决策JSON失败: {e}")
-            if response:
-                logger.debug(f"原始响应: {response}")
-            return None
         except Exception as e:
             logger.error(f"决策过程失败: {e}", exc_info=True)
             return None
@@ -469,21 +468,7 @@ class ProactiveThinkingPlanner:
             logger.warning(f"获取表达方式失败: {e}")
             return ""
 
-    def _clean_json_response(self, response: str) -> str:
-        """清理LLM响应中的JSON格式标记"""
-        import re
-
-        cleaned = response.strip()
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.MULTILINE | re.IGNORECASE)
-        cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
-
-        json_start = cleaned.find("{")
-        json_end = cleaned.rfind("}")
-
-        if json_start != -1 and json_end != -1 and json_end > json_start:
-            cleaned = cleaned[json_start : json_end + 1]
-
-        return cleaned.strip()
+    # 已移除自定义的 _clean_json_response 方法，统一使用 src.utils.json_parser.extract_and_parse_json
 
 
 # 全局规划器实例

@@ -19,6 +19,7 @@ from src.chat.memory_system.memory_builder import MemoryBuilder, MemoryExtractio
 from src.chat.memory_system.memory_chunk import MemoryChunk
 from src.chat.memory_system.memory_fusion import MemoryFusionEngine
 from src.chat.memory_system.memory_query_planner import MemoryQueryPlanner
+from src.utils.json_parser import extract_and_parse_json
 
 # 全局背景任务集合
 _background_tasks = set()
@@ -987,28 +988,7 @@ class MemorySystem:
 
         return [chunk]
 
-    @staticmethod
-    def _extract_json_payload(response: str) -> str | None:
-        """从模型响应中提取JSON部分，兼容Markdown代码块等格式"""
-        if not response:
-            return None
-
-        stripped = response.strip()
-
-        # 优先处理Markdown代码块格式 ```json ... ```
-        code_block_match = re.search(r"```(?:json)?\s*(.*?)```", stripped, re.IGNORECASE | re.DOTALL)
-        if code_block_match:
-            candidate = code_block_match.group(1).strip()
-            if candidate:
-                return candidate
-
-        # 回退到查找第一个 JSON 对象的大括号范围
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return stripped[start : end + 1].strip()
-
-        return stripped if stripped.startswith("{") and stripped.endswith("}") else None
+    # 已移除自定义的 _extract_json_payload 方法，统一使用 src.utils.json_parser.extract_and_parse_json
 
     def _normalize_context(
         self, raw_context: dict[str, Any] | None, user_id: str | None, timestamp: float | None
@@ -1414,13 +1394,13 @@ class MemorySystem:
                 return 0.5
             response, _ = await self.value_assessment_model.generate_response_async(prompt, temperature=0.3)
 
-            # 解析响应
-            try:
-                payload = self._extract_json_payload(response)
-                if not payload:
-                    raise ValueError("未在响应中找到有效的JSON负载")
+            # 解析响应 - 使用统一的 JSON 解析工具
+            result = extract_and_parse_json(response, strict=False)
+            if not result or not isinstance(result, dict):
+                logger.warning(f"解析价值评估响应失败，响应片段: {response[:200]}")
+                return 0.5  # 默认中等价值
 
-                result = orjson.loads(payload)
+            try:
                 value_score = float(result.get("value_score", 0.0))
                 reasoning = result.get("reasoning", "")
                 key_factors = result.get("key_factors", [])
@@ -1431,9 +1411,8 @@ class MemorySystem:
 
                 return max(0.0, min(1.0, value_score))
 
-            except (orjson.JSONDecodeError, ValueError) as e:
-                preview = response[:200].replace("\n", " ")
-                logger.warning(f"解析价值评估响应失败: {e}, 响应片段: {preview}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"解析价值评估数值失败: {e}")
                 return 0.5  # 默认中等价值
 
         except Exception as e:

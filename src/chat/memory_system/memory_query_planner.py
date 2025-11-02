@@ -11,6 +11,7 @@ import orjson
 from src.chat.memory_system.memory_chunk import MemoryType
 from src.common.logger import get_logger
 from src.llm_models.utils_model import LLMRequest
+from src.utils.json_parser import extract_and_parse_json
 
 logger = get_logger(__name__)
 
@@ -58,16 +59,10 @@ class MemoryQueryPlanner:
 
         try:
             response, _ = await self.model.generate_response_async(prompt, temperature=0.2)
-            payload = self._extract_json_payload(response)
-            if not payload:
-                logger.debug("查询规划模型未返回结构化结果，使用默认规划")
-                return self._default_plan(query_text)
-
-            try:
-                data = orjson.loads(payload)
-            except orjson.JSONDecodeError as exc:
-                preview = payload[:200]
-                logger.warning("解析查询规划JSON失败: %s，片段: %s", exc, preview)
+            # 使用统一的 JSON 解析工具
+            data = extract_and_parse_json(response, strict=False)
+            if not data or not isinstance(data, dict):
+                logger.debug("查询规划模型未返回有效的结构化结果，使用默认规划")
                 return self._default_plan(query_text)
 
             plan = self._parse_plan_dict(data, query_text)
@@ -204,24 +199,6 @@ class MemoryQueryPlanner:
 
 请直接输出符合要求的 JSON 对象，禁止添加额外文本或 Markdown 代码块。
 """
-
-    def _extract_json_payload(self, response: str) -> str | None:
-        if not response:
-            return None
-
-        stripped = response.strip()
-        code_block_match = re.search(r"```(?:json)?\s*(.*?)```", stripped, re.IGNORECASE | re.DOTALL)
-        if code_block_match:
-            candidate = code_block_match.group(1).strip()
-            if candidate:
-                return candidate
-
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            return stripped[start : end + 1]
-
-        return stripped if stripped.startswith("{") and stripped.endswith("}") else None
 
     @staticmethod
     def _safe_str(value: Any) -> str:
