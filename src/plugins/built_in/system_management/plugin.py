@@ -468,7 +468,7 @@ class SystemCommand(PlusCommand):
         total_plugins = len(plugins_dict)
         response_parts.append(f"📊 统计：共 {total_plugins} 个插件，{total_nodes} 个权限节点")
         response = "\n".join(response_parts)
-        
+
         if len(response) > 4000:
             await self._send_long_message(response)
         else:
