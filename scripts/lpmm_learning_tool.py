@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from threading import Lock
 
+import aiofiles
 import orjson
 from json_repair import repair_json
 
@@ -158,8 +159,9 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
     with file_lock:
         if os.path.exists(temp_file_path):
             try:
-                with open(temp_file_path, "rb") as f:
-                    return orjson.loads(f.read()), None
+                async with aiofiles.open(temp_file_path, "rb") as f:
+                    content = await f.read()
+                    return orjson.loads(content), None
             except orjson.JSONDecodeError:
                 os.remove(temp_file_path)
 
@@ -182,8 +184,8 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
             "extracted_triples": extracted_data.get("triples", []),
         }
         with file_lock:
-            with open(temp_file_path, "wb") as f:
-                f.write(orjson.dumps(doc_item))
+            async with aiofiles.open(temp_file_path, "wb") as f:
+                await f.write(orjson.dumps(doc_item))
         return doc_item, None
     except Exception as e:
         logger.error(f"提取信息失败：{pg_hash}, 错误：{e}")

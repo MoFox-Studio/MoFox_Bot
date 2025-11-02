@@ -330,10 +330,7 @@ class StreamLoopManager:
         try:
             start_time = time.time()
 
-            # 在处理开始前，先刷新缓存到未读消息
-            cached_messages = await self._flush_cached_messages_to_unread(stream_id)
-            if cached_messages:
-                logger.debug(f"处理开始前刷新缓存消息: stream={stream_id}, 数量={len(cached_messages)}")
+            # 注意：缓存消息刷新已移至planner开始时执行（动作修改器之后），此处不再刷新
 
             # 设置触发用户ID，以实现回复保护
             last_message = context.get_last_message()

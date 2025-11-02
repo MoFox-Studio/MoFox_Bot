@@ -168,6 +168,9 @@ class ChatterActionPlanner:
                 action_modifier = ActionModifier(self.action_manager, self.chat_id)
                 await action_modifier.modify_actions()
 
+                # 在生成初始计划前，刷新缓存消息到未读列表
+                await self._flush_cached_messages_to_unread(context)
+
                 initial_plan = await self.generator.generate(chat_mode)
 
                 # 确保Plan中包含所有当前可用的动作
@@ -258,6 +261,9 @@ class ChatterActionPlanner:
             # 重新运行主规划流程，这次将正确使用Focus模式
             return await self._enhanced_plan_flow(context)
         try:
+            # Normal模式开始时，刷新缓存消息到未读列表
+            await self._flush_cached_messages_to_unread(context)
+            
             unread_messages = context.get_unread_messages() if context else []
 
             if not unread_messages:
@@ -458,6 +464,45 @@ class ChatterActionPlanner:
                     logger.debug(f"已同步chat_mode {context.chat_mode.value} 到ChatStream {context.stream_id}")
         except Exception as e:
             logger.warning(f"同步chat_mode到ChatStream失败: {e}")
+
+    async def _flush_cached_messages_to_unread(self, context: "StreamContext | None") -> list:
+        """在planner开始时将缓存消息刷新到未读消息列表
+        
+        此方法在动作修改器执行后、生成初始计划前调用，确保计划阶段能看到所有积累的消息。
+        
+        Args:
+            context: 流上下文
+            
+        Returns:
+            list: 刷新的消息列表
+        """
+        if not context:
+            return []
+            
+        try:
+            from src.chat.message_manager.message_manager import message_manager
+            
+            stream_id = context.stream_id
+            
+            if message_manager.is_running and message_manager.has_cached_messages(stream_id):
+                # 获取缓存消息
+                cached_messages = message_manager.flush_cached_messages(stream_id)
+                
+                if cached_messages:
+                    # 直接添加到上下文的未读消息列表
+                    for message in cached_messages:
+                        context.unread_messages.append(message)
+                    logger.info(f"Planner开始前刷新缓存消息到未读列表: stream={stream_id}, 数量={len(cached_messages)}")
+                    return cached_messages
+                    
+            return []
+            
+        except ImportError:
+            logger.debug("MessageManager不可用，跳过缓存刷新")
+            return []
+        except Exception as e:
+            logger.warning(f"Planner刷新缓存消息失败: error={e}")
+            return []
 
     def _update_stats_from_execution_result(self, execution_result: dict[str, Any]):
         """根据执行结果更新规划器统计"""

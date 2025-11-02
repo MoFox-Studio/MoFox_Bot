@@ -19,6 +19,9 @@ from .distribution_manager import stream_loop_manager
 
 logger = get_logger("context_manager")
 
+# 全局背景任务集合
+_background_tasks = set()
+
 
 class SingleStreamContextManager:
     """单流上下文管理器 - 每个实例只管理一个 stream 的上下文"""
@@ -42,7 +45,9 @@ class SingleStreamContextManager:
         logger.debug(f"单流上下文管理器初始化: {stream_id}")
 
         # 异步初始化历史消息（不阻塞构造函数）
-        asyncio.create_task(self._initialize_history_from_db())
+        task = asyncio.create_task(self._initialize_history_from_db())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     def get_context(self) -> StreamContext:
         """获取流上下文"""
@@ -93,7 +98,9 @@ class SingleStreamContextManager:
                             logger.debug(f"消息已缓存，等待当前处理完成: stream={self.stream_id}")
 
                         # 启动流的循环任务（如果还未启动）
-                        asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
+                        task = asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
+                        _background_tasks.add(task)
+                        task.add_done_callback(_background_tasks.discard)
                         logger.debug(f"添加消息到缓存系统: {self.stream_id}")
                         return True
                     else:
@@ -113,7 +120,9 @@ class SingleStreamContextManager:
                 self.total_messages += 1
                 self.last_access_time = time.time()
                 # 启动流的循环任务（如果还未启动）
-                asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
+                task = asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
                 logger.debug(f"添加消息{message.processed_plain_text}到单流上下文: {self.stream_id}")
                 return True
         except Exception as e:

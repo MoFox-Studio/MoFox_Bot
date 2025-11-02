@@ -214,9 +214,9 @@ class AdaptiveBatchScheduler:
             for priority in sorted(Priority, reverse=True):
                 queue = self.operation_queues[priority]
                 count = min(len(queue), self.current_batch_size - len(operations))
-                for _ in range(count):
-                    if queue:
-                        operations.append(queue.popleft())
+                if queue and count > 0:
+                    # 使用 list.extend 代替循环 append
+                    operations.extend(queue.popleft() for _ in range(count))
 
             if not operations:
                 return

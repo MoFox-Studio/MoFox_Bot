@@ -19,6 +19,9 @@ from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
 from src.common.logger import get_logger
 from src.common.message import get_global_api
+
+# 全局背景任务集合
+_background_tasks = set()
 from src.common.remote import TelemetryHeartBeatTask
 from src.common.server import Server, get_global_server
 from src.config.config import global_config
@@ -461,7 +464,9 @@ MoFox_Bot(第三方修改版)
         logger.info("情绪管理器初始化成功")
 
         # 启动聊天管理器的自动保存任务
-        asyncio.create_task(get_chat_manager()._auto_save_task())
+        task = asyncio.create_task(get_chat_manager()._auto_save_task())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
         # 初始化增强记忆系统
         if global_config.memory.enable_memory:

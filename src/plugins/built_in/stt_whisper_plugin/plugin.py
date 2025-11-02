@@ -13,6 +13,8 @@ logger = get_logger("stt_whisper_plugin")
 # 全局变量来缓存模型，避免重复加载
 _whisper_model = None
 _is_loading = False
+_model_ready_event = asyncio.Event()
+_background_tasks = set()  # 背景任务集合
 
 class LocalASRTool(BaseTool):
     """
@@ -29,7 +31,7 @@ class LocalASRTool(BaseTool):
         """
         一个类方法，用于在插件加载时触发一次模型加载。
         """
-        global _whisper_model, _is_loading
+        global _whisper_model, _is_loading, _model_ready_event
         if _whisper_model is None and not _is_loading:
             _is_loading = True
             try:
@@ -47,6 +49,7 @@ class LocalASRTool(BaseTool):
                 _whisper_model = None
             finally:
                 _is_loading = False
+                _model_ready_event.set()  # 通知等待的任务
 
     async def execute(self, function_args: dict) -> str:
         audio_path = function_args.get("audio_path")
@@ -55,9 +58,9 @@ class LocalASRTool(BaseTool):
             return "错误：缺少 audio_path 参数。"
 
         global _whisper_model
-        # 增强的等待逻辑：只要模型还没准备好，就一直等待后台加载任务完成
-        while _is_loading:
-            await asyncio.sleep(0.2)
+        # 使用 Event 等待模型加载完成
+        if _is_loading:
+            await _model_ready_event.wait()
 
         if _whisper_model is None:
             return "Whisper 模型加载失败，无法识别语音。"
@@ -90,7 +93,9 @@ class STTWhisperPlugin(BasePlugin):
             from src.config.config import global_config
             if global_config.voice.asr_provider == "local":
                 # 使用 create_task 在后台开始加载，不阻塞主流程
-                asyncio.create_task(LocalASRTool.load_model_once(self.config or {}))
+                task = asyncio.create_task(LocalASRTool.load_model_once(self.config or {}))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
         except Exception as e:
             logger.error(f"触发 Whisper 模型预加载时出错: {e}")
 
