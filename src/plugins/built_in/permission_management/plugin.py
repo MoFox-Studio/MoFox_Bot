@@ -38,17 +38,6 @@ class PermissionCommand(PlusCommand):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    permission_nodes: ClassVar[list[PermissionNodeField]] = [
-        PermissionNodeField(
-            node_name="manage",
-            description="权限管理：可以授权和撤销其他用户的权限",
-        ),
-        PermissionNodeField(
-            node_name="view",
-            description="权限查看：可以查看权限节点和用户权限信息",
-        ),
-    ]
-
     async def execute(self, args: CommandArgs) -> tuple[bool, str | None, bool]:
         """执行权限管理命令"""
         if args.is_empty:
@@ -57,7 +46,7 @@ class PermissionCommand(PlusCommand):
 
         subcommand = args.get_first.lower()
         remaining_args = args.get_args()[1:]  # 获取除第一个参数外的所有参数
-        chat_stream = self.message.chat_stream
+        chat_stream = self.message.chat_info.stream_id
 
         if subcommand in ["grant", "授权", "give"]:
             await self._grant_permission(chat_stream, remaining_args)
@@ -396,3 +385,14 @@ class PermissionManagerPlugin(BasePlugin):
     def get_plugin_components(self) -> list[tuple[PlusCommandInfo, type[PlusCommand]]]:
         """返回插件的PlusCommand组件"""
         return [(PermissionCommand.get_plus_command_info(), PermissionCommand)]
+
+    permission_nodes: ClassVar[list[PermissionNodeField]] = [
+        PermissionNodeField(
+            node_name="manage",
+            description="权限管理：可以授权和撤销其他用户的权限",
+        ),
+        PermissionNodeField(
+            node_name="view",
+            description="权限查看：可以查看权限节点和用户权限信息",
+        ),
+    ]
