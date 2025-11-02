@@ -487,7 +487,7 @@ class ManagementCommand(PlusCommand):
 @register_plugin
 class PluginManagementPlugin(BasePlugin):
     plugin_name: str = "plugin_management_plugin"
-    enable_plugin: bool = True
+    enable_plugin: bool = False
     dependencies: ClassVar[list[str]] = []
     python_dependencies: ClassVar[list[str]] = []
     config_file_name: str = "config.toml"

@@ -371,7 +371,7 @@ class PermissionCommand(PlusCommand):
 @register_plugin
 class PermissionManagerPlugin(BasePlugin):
     plugin_name: str = "permission_manager_plugin"
-    enable_plugin: bool = True
+    enable_plugin: bool = False
     dependencies: ClassVar[list[str]] = []
     python_dependencies: ClassVar[list[str]] = []
     config_file_name: str = "config.toml"
