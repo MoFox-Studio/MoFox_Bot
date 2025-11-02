@@ -41,6 +41,7 @@ class SystemCommand(PlusCommand):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    @require_permission("system.access", "❌ 你没有权限使用此命令")
     async def execute(self, args: CommandArgs) -> tuple[bool, str | None, bool]:
         """执行系统管理命令"""
         if args.is_empty:
@@ -508,6 +509,10 @@ class SystemManagementPlugin(BasePlugin):
         return [(SystemCommand.get_plus_command_info(), SystemCommand)]
 
     permission_nodes: ClassVar[list[PermissionNodeField]] = [
+        PermissionNodeField(
+            node_name="system.access",
+            description="权限管理：授权和撤销权限",
+        ),
         PermissionNodeField(
             node_name="permission.manage",
             description="权限管理：授权和撤销权限",
