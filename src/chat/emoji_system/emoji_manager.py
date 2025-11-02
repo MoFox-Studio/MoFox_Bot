@@ -411,6 +411,7 @@ class EmojiManager:
         self.emoji_num_max_reach_deletion = global_config.emoji.do_replace
         self.emoji_objects: list[MaiEmoji] = []  # 存储MaiEmoji对象的列表，使用类型注解明确列表元素类型
         logger.info("启动表情包管理器")
+        _ensure_emoji_dir()
         self._initialized = True
         logger.info("启动表情包管理器")
 
