@@ -240,6 +240,8 @@ class ActionModifier:
                 action_instance = cast(BaseAction, action_instance)
                 # 设置必要的属性
                 action_instance.log_prefix = self.log_prefix
+                # 强制注入 chat_content 以供 go_activate 内部的辅助函数使用
+                setattr(action_instance, "_activation_chat_content", chat_content)
                 # 调用 go_activate 方法
                 task = action_instance.go_activate(
                     llm_judge_model=self.llm_judge
