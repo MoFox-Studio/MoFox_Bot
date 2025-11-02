@@ -137,6 +137,7 @@ class LRUCache(Generic[T]):
         key: str,
         value: T,
         size: int | None = None,
+        ttl: float | None = None,
     ) -> None:
         """设置缓存值
 
@@ -144,6 +145,7 @@ class LRUCache(Generic[T]):
             key: 缓存键
             value: 缓存值
             size: 数据大小（字节），如果为None则尝试估算
+            ttl: 自定义过期时间（秒），如果为None则使用默认TTL
         """
         async with self._lock:
             now = time.time()
@@ -157,10 +159,21 @@ class LRUCache(Generic[T]):
             if size is None:
                 size = self._estimate_size(value)
 
-            # 创建新条目
+            # 创建新条目（如果指定了ttl，则修改created_at来实现自定义TTL）
+            # 通过调整created_at，使得: now - created_at + custom_ttl = self.ttl
+            # 即: created_at = now - (self.ttl - custom_ttl)
+            if ttl is not None and ttl != self.ttl:
+                # 调整创建时间以实现自定义TTL
+                adjusted_created_at = now - (self.ttl - ttl)
+                logger.debug(
+                    f"[{self.name}] 使用自定义TTL {ttl}s (默认{self.ttl}s) for key: {key}"
+                )
+            else:
+                adjusted_created_at = now
+            
             entry = CacheEntry(
                 value=value,
-                created_at=now,
+                created_at=adjusted_created_at,
                 last_accessed=now,
                 access_count=0,
                 size=size,
@@ -245,6 +258,7 @@ class MultiLevelCache:
         l1_ttl: float = 60,
         l2_max_size: int = 10000,
         l2_ttl: float = 300,
+        max_memory_mb: int = 100,
     ):
         """初始化多级缓存
 
@@ -253,14 +267,16 @@ class MultiLevelCache:
             l1_ttl: L1缓存TTL（秒）
             l2_max_size: L2缓存最大条目数
             l2_ttl: L2缓存TTL（秒）
+            max_memory_mb: 最大内存占用（MB）
         """
         self.l1_cache: LRUCache[Any] = LRUCache(l1_max_size, l1_ttl, "L1")
         self.l2_cache: LRUCache[Any] = LRUCache(l2_max_size, l2_ttl, "L2")
+        self.max_memory_bytes = max_memory_mb * 1024 * 1024
         self._cleanup_task: asyncio.Task | None = None
 
         logger.info(
             f"多级缓存初始化: L1({l1_max_size}项/{l1_ttl}s) "
-            f"L2({l2_max_size}项/{l2_ttl}s)"
+            f"L2({l2_max_size}项/{l2_ttl}s) 内存上限({max_memory_mb}MB)"
         )
 
     async def get(
@@ -309,6 +325,7 @@ class MultiLevelCache:
         key: str,
         value: Any,
         size: int | None = None,
+        ttl: float | None = None,
     ) -> None:
         """设置缓存值
 
@@ -318,9 +335,25 @@ class MultiLevelCache:
             key: 缓存键
             value: 缓存值
             size: 数据大小（字节）
+            ttl: 自定义过期时间（秒），如果为None则使用默认TTL
         """
-        await self.l1_cache.set(key, value, size)
-        await self.l2_cache.set(key, value, size)
+        # 根据TTL决定写入哪个缓存层
+        if ttl is not None:
+            # 有自定义TTL，根据TTL大小决定写入层级
+            if ttl <= self.l1_cache.ttl:
+                # 短TTL，只写入L1
+                await self.l1_cache.set(key, value, size, ttl)
+            elif ttl <= self.l2_cache.ttl:
+                # 中等TTL，写入L1和L2
+                await self.l1_cache.set(key, value, size, ttl)
+                await self.l2_cache.set(key, value, size, ttl)
+            else:
+                # 长TTL，只写入L2
+                await self.l2_cache.set(key, value, size, ttl)
+        else:
+            # 没有自定义TTL，使用默认行为（同时写入L1和L2）
+            await self.l1_cache.set(key, value, size)
+            await self.l2_cache.set(key, value, size)
 
     async def delete(self, key: str) -> None:
         """删除缓存条目
@@ -339,12 +372,43 @@ class MultiLevelCache:
         await self.l2_cache.clear()
         logger.info("所有缓存已清空")
 
-    async def get_stats(self) -> dict[str, CacheStats]:
+    async def get_stats(self) -> dict[str, Any]:
         """获取所有缓存层的统计信息"""
+        l1_stats = await self.l1_cache.get_stats()
+        l2_stats = await self.l2_cache.get_stats()
+        total_size_bytes = l1_stats.total_size + l2_stats.total_size
+        
         return {
-            "l1": await self.l1_cache.get_stats(),
-            "l2": await self.l2_cache.get_stats(),
+            "l1": l1_stats,
+            "l2": l2_stats,
+            "total_memory_mb": total_size_bytes / (1024 * 1024),
+            "max_memory_mb": self.max_memory_bytes / (1024 * 1024),
+            "memory_usage_percent": (total_size_bytes / self.max_memory_bytes * 100) if self.max_memory_bytes > 0 else 0,
         }
+
+    async def check_memory_limit(self) -> None:
+        """检查并强制清理超出内存限制的缓存"""
+        stats = await self.get_stats()
+        total_size = stats["l1"].total_size + stats["l2"].total_size
+        
+        if total_size > self.max_memory_bytes:
+            memory_mb = total_size / (1024 * 1024)
+            max_mb = self.max_memory_bytes / (1024 * 1024)
+            logger.warning(
+                f"缓存内存超限: {memory_mb:.2f}MB / {max_mb:.2f}MB "
+                f"({stats['memory_usage_percent']:.1f}%)，开始强制清理L2缓存"
+            )
+            # 优先清理L2缓存（温数据）
+            await self.l2_cache.clear()
+            
+            # 如果清理L2后仍超限，清理L1
+            stats_after_l2 = await self.get_stats()
+            total_after_l2 = stats_after_l2["l1"].total_size + stats_after_l2["l2"].total_size
+            if total_after_l2 > self.max_memory_bytes:
+                logger.warning("清理L2后仍超限，继续清理L1缓存")
+                await self.l1_cache.clear()
+            
+            logger.info("缓存强制清理完成")
 
     async def start_cleanup_task(self, interval: float = 60) -> None:
         """启动定期清理任务
@@ -361,12 +425,20 @@ class MultiLevelCache:
                 try:
                     await asyncio.sleep(interval)
                     stats = await self.get_stats()
+                    l1_stats = stats["l1"]
+                    l2_stats = stats["l2"]
                     logger.info(
-                        f"缓存统计 - L1: {stats['l1'].item_count}项, "
-                        f"命中率{stats['l1'].hit_rate:.2%} | "
-                        f"L2: {stats['l2'].item_count}项, "
-                        f"命中率{stats['l2'].hit_rate:.2%}"
+                        f"缓存统计 - L1: {l1_stats.item_count}项, "
+                        f"命中率{l1_stats.hit_rate:.2%} | "
+                        f"L2: {l2_stats.item_count}项, "
+                        f"命中率{l2_stats.hit_rate:.2%} | "
+                        f"内存: {stats['total_memory_mb']:.2f}MB/{stats['max_memory_mb']:.2f}MB "
+                        f"({stats['memory_usage_percent']:.1f}%)"
                     )
+                    
+                    # 检查内存限制
+                    await self.check_memory_limit()
+                    
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
@@ -393,14 +465,63 @@ _cache_lock = asyncio.Lock()
 
 
 async def get_cache() -> MultiLevelCache:
-    """获取全局缓存实例（单例）"""
+    """获取全局缓存实例（单例）
+    
+    从配置文件读取缓存参数，如果配置未加载则使用默认值
+    如果配置中禁用了缓存，返回一个最小化的缓存实例（容量为1）
+    """
     global _global_cache
 
     if _global_cache is None:
         async with _cache_lock:
             if _global_cache is None:
-                _global_cache = MultiLevelCache()
-                await _global_cache.start_cleanup_task()
+                # 尝试从配置读取参数
+                try:
+                    from src.config.config import global_config
+                    
+                    db_config = global_config.database
+                    
+                    # 检查是否启用缓存
+                    if not db_config.enable_database_cache:
+                        logger.info("数据库缓存已禁用，使用最小化缓存实例")
+                        _global_cache = MultiLevelCache(
+                            l1_max_size=1,
+                            l1_ttl=1,
+                            l2_max_size=1,
+                            l2_ttl=1,
+                            max_memory_mb=1,
+                        )
+                        return _global_cache
+                    
+                    l1_max_size = db_config.cache_l1_max_size
+                    l1_ttl = db_config.cache_l1_ttl
+                    l2_max_size = db_config.cache_l2_max_size
+                    l2_ttl = db_config.cache_l2_ttl
+                    max_memory_mb = db_config.cache_max_memory_mb
+                    cleanup_interval = db_config.cache_cleanup_interval
+                    
+                    logger.info(
+                        f"从配置加载缓存参数: L1({l1_max_size}/{l1_ttl}s), "
+                        f"L2({l2_max_size}/{l2_ttl}s), 内存限制({max_memory_mb}MB)"
+                    )
+                except Exception as e:
+                    # 配置未加载，使用默认值
+                    logger.warning(f"无法从配置加载缓存参数，使用默认值: {e}")
+                    l1_max_size = 1000
+                    l1_ttl = 60
+                    l2_max_size = 10000
+                    l2_ttl = 300
+                    max_memory_mb = 100
+                    cleanup_interval = 60
+                
+                _global_cache = MultiLevelCache(
+                    l1_max_size=l1_max_size,
+                    l1_ttl=l1_ttl,
+                    l2_max_size=l2_max_size,
+                    l2_ttl=l2_ttl,
+                    max_memory_mb=max_memory_mb,
+                )
+                await _global_cache.start_cleanup_task(interval=cleanup_interval)
 
     return _global_cache
 

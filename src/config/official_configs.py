@@ -30,7 +30,7 @@ class DatabaseConfig(ValidatedConfigBase):
     )
     mysql_ssl_ca: str = Field(default="", description="SSL CA证书路径")
     mysql_ssl_cert: str = Field(default="", description="SSL客户端证书路径")
-    mysql_ssl_key: str = Field(default="", description="SSL客户端密钥路径")
+    mysql_ssl_key: str = Field(default="", description="SSL密钥路径")
     mysql_autocommit: bool = Field(default=True, description="自动提交事务")
     mysql_sql_mode: str = Field(default="TRADITIONAL", description="SQL模式")
     connection_pool_size: int = Field(default=10, ge=1, description="连接池大小")
@@ -40,6 +40,15 @@ class DatabaseConfig(ValidatedConfigBase):
     batch_action_storage_enabled: bool = Field(
         default=True, description="是否启用批量保存动作记录（开启后将多个动作一次性写入数据库，提升性能）"
     )
+
+    # 数据库缓存配置
+    enable_database_cache: bool = Field(default=True, description="是否启用数据库查询缓存系统")
+    cache_l1_max_size: int = Field(default=1000, ge=100, le=50000, description="L1缓存最大条目数（热数据，内存占用约1-5MB）")
+    cache_l1_ttl: int = Field(default=60, ge=10, le=3600, description="L1缓存生存时间（秒）")
+    cache_l2_max_size: int = Field(default=10000, ge=1000, le=100000, description="L2缓存最大条目数（温数据，内存占用约10-50MB）")
+    cache_l2_ttl: int = Field(default=300, ge=60, le=7200, description="L2缓存生存时间（秒）")
+    cache_cleanup_interval: int = Field(default=60, ge=30, le=600, description="缓存清理任务执行间隔（秒）")
+    cache_max_memory_mb: int = Field(default=100, ge=10, le=1000, description="缓存最大内存占用（MB），超过此值将触发强制清理")
 
 
 class BotConfig(ValidatedConfigBase):

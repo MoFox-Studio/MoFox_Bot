@@ -198,9 +198,12 @@ def cached(
             # 执行函数
             result = await func(*args, **kwargs)
 
-            # 写入缓存（注意：MultiLevelCache.set不支持ttl参数，使用L1缓存的默认TTL）
-            await cache.set(cache_key, result)
-            logger.debug(f"缓存写入: {cache_key}")
+            # 写入缓存，传递自定义TTL参数
+            await cache.set(cache_key, result, ttl=ttl)
+            if ttl is not None:
+                logger.debug(f"缓存写入: {cache_key} (TTL={ttl}s)")
+            else:
+                logger.debug(f"缓存写入: {cache_key} (使用默认TTL)")
 
             return result
 
