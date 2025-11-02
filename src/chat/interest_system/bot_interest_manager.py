@@ -15,6 +15,7 @@ from src.common.config_helpers import resolve_embedding_dimension
 from src.common.data_models.bot_interest_data_model import BotInterestTag, BotPersonalityInterests, InterestMatchResult
 from src.common.logger import get_logger
 from src.config.config import global_config
+from src.utils.json_parser import extract_and_parse_json
 
 logger = get_logger("bot_interest_manager")
 
@@ -194,7 +195,10 @@ class BotInterestManager:
                 raise RuntimeError("❌ LLM未返回有效响应")
 
             logger.info("✅ LLM响应成功，开始解析兴趣标签...")
-            interests_data = orjson.loads(response)
+            # 使用统一的 JSON 解析工具
+            interests_data = extract_and_parse_json(response, strict=False)
+            if not interests_data or not isinstance(interests_data, dict):
+                raise RuntimeError("❌ 解析LLM响应失败，未获取到有效的JSON数据")
 
             bot_interests = BotPersonalityInterests(
                 personality_id=personality_id, personality_description=personality_description
@@ -225,9 +229,6 @@ class BotInterestManager:
             logger.info("✅ 兴趣标签生成完成")
             return bot_interests
 
-        except orjson.JSONDecodeError as e:
-            logger.error(f"❌ 解析LLM响应JSON失败: {e}")
-            raise
         except Exception as e:
             logger.error(f"❌ 根据人设生成兴趣标签失败: {e}")
             traceback.print_exc()
@@ -270,9 +271,8 @@ class BotInterestManager:
                 if reasoning_content:
                     logger.debug(f"🧠 推理内容: {reasoning_content[:100]}...")
 
-                # 清理响应内容，移除可能的代码块标记
-                cleaned_response = self._clean_llm_response(response)
-                return cleaned_response
+                # 直接返回原始响应，后续使用统一的 JSON 解析工具
+                return response
             else:
                 logger.warning("⚠️ LLM返回空响应或调用失败")
                 return None
@@ -282,25 +282,6 @@ class BotInterestManager:
             logger.error("🔍 错误详情:")
             traceback.print_exc()
             return None
-
-    def _clean_llm_response(self, response: str) -> str:
-        """清理LLM响应，移除代码块标记和其他非JSON内容"""
-        import re
-
-        # 移除 ```json 和 ``` 标记
-        cleaned = re.sub(r"```json\s*", "", response)
-        cleaned = re.sub(r"\s*```", "", cleaned)
-
-        # 移除可能的多余空格和换行
-        cleaned = cleaned.strip()
-
-        # 尝试提取JSON对象（如果响应中有其他文本）
-        json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if json_match:
-            cleaned = json_match.group(0)
-
-        logger.debug(f"🧹 清理后的响应: {cleaned[:200]}..." if len(cleaned) > 200 else f"🧹 清理后的响应: {cleaned}")
-        return cleaned
 
     async def _generate_embeddings_for_tags(self, interests: BotPersonalityInterests):
         """为所有兴趣标签生成embedding"""

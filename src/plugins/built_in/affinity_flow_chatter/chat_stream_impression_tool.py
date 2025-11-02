@@ -13,6 +13,7 @@ from src.common.logger import get_logger
 from src.config.config import model_config
 from src.llm_models.utils_model import LLMRequest
 from src.plugin_system import BaseTool, ToolParamType
+from src.utils.json_parser import extract_and_parse_json
 
 logger = get_logger("chat_stream_impression_tool")
 
@@ -290,9 +291,11 @@ class ChatStreamImpressionTool(BaseTool):
                 logger.warning("LLM未返回有效响应")
                 return None
 
-            # 清理并解析响应
-            cleaned_response = self._clean_llm_json_response(llm_response)
-            response_data = json.loads(cleaned_response)
+            # 使用统一的 JSON 解析工具
+            response_data = extract_and_parse_json(llm_response, strict=False)
+            if not response_data or not isinstance(response_data, dict):
+                logger.warning("解析LLM响应失败")
+                return None
 
             # 提取最终决定的数据
             final_impression = {
@@ -373,35 +376,18 @@ class ChatStreamImpressionTool(BaseTool):
             logger.error(f"更新聊天流印象到数据库失败: {e}", exc_info=True)
             raise
 
-    def _clean_llm_json_response(self, response: str) -> str:
-        """清理LLM响应，移除可能的JSON格式标记
-
-        Args:
-            response: LLM原始响应
-
-        Returns:
-            str: 清理后的JSON字符串
+    # 已移除自定义的 _clean_llm_json_response 方法，统一使用 src.utils.json_parser.extract_and_parse_json
+    
+    def _clean_llm_json_response_deprecated(self, response: str) -> str:
+        """已废弃，保留仅用于兼容性
+        
+        请使用 src.utils.json_parser.extract_and_parse_json 替代
         """
+        from src.utils.json_parser import extract_and_parse_json
         try:
-            import re
-
-            cleaned = response.strip()
-
-            # 移除 ```json 或 ``` 等标记
-            cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.MULTILINE | re.IGNORECASE)
-            cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
-
-            # 尝试找到JSON对象的开始和结束
-            json_start = cleaned.find("{")
-            json_end = cleaned.rfind("}")
-
-            if json_start != -1 and json_end != -1 and json_end > json_start:
-                cleaned = cleaned[json_start : json_end + 1]
-
-            cleaned = cleaned.strip()
-
-            return cleaned
-
+            import json
+            result = extract_and_parse_json(response, strict=False)
+            return json.dumps(result) if result else response
         except Exception as e:
             logger.warning(f"清理LLM响应失败: {e}")
             return response
