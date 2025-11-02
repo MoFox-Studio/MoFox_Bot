@@ -182,11 +182,12 @@ class ExpressionLearner:
         if time_diff < min_interval:
             return False
 
-        # 检查消息数量（只检查指定聊天流的消息）
+        # 检查消息数量（只检查指定聊天流的消息，排除机器人自己的消息）
         recent_messages = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_learning_time,
             timestamp_end=time.time(),
+            filter_bot=True,  # 过滤掉机器人自己的消息
         )
 
         if not recent_messages or len(recent_messages) < self.min_messages_for_learning:
@@ -506,12 +507,13 @@ class ExpressionLearner:
 
         current_time = time.time()
 
-        # 获取上次学习时间
+        # 获取上次学习时间，过滤掉机器人自己的消息
         random_msg: list[dict[str, Any]] | None = await get_raw_msg_by_timestamp_with_chat_inclusive(
             chat_id=self.chat_id,
             timestamp_start=self.last_learning_time,
             timestamp_end=current_time,
             limit=num,
+            filter_bot=True,  # 过滤掉机器人自己的消息，防止学习自己的表达方式
         )
 
         # print(random_msg)
