@@ -386,6 +386,9 @@ class NapcatAdapterPlugin(BasePlugin):
         return components
 
     async def on_plugin_loaded(self):
+        # 初始化数据库表
+        await self._init_database_tables()
+        
         # 设置插件配置
         message_send_instance.set_plugin_config(self.config)
         # 设置chunker的插件配置
@@ -410,3 +413,18 @@ class NapcatAdapterPlugin(BasePlugin):
         stream_router.cleanup_interval = config_api.get_plugin_config(self.config, "stream_router.cleanup_interval", 60)
         
         # 设置其他handler的插件配置（现在由component_registry在注册时自动设置）
+    
+    async def _init_database_tables(self):
+        """初始化插件所需的数据库表"""
+        try:
+            from src.common.database.core.engine import get_engine
+            from .src.database import NapcatBanRecord
+            
+            engine = await get_engine()
+            async with engine.begin() as conn:
+                # 创建 napcat_ban_records 表
+                await conn.run_sync(NapcatBanRecord.metadata.create_all)
+            
+            logger.info("Napcat 插件数据库表初始化成功")
+        except Exception as e:
+            logger.error(f"Napcat 插件数据库表初始化失败: {e}", exc_info=True)

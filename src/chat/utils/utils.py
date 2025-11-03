@@ -49,23 +49,22 @@ def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
         message: DatabaseMessages 消息对象
 
     Returns:
-        tuple[bool, float]: (是否提及, 提及概率)
+        tuple[bool, float]: (是否提及, 提及类型)
+        提及类型: 0=未提及, 1=弱提及（文本匹配）, 2=强提及（@/回复/私聊）
     """
-    keywords = [global_config.bot.nickname]
     nicknames = global_config.bot.alias_names
-    reply_probability = 0.0
-    is_at = False
-    is_mentioned = False
+    mention_type = 0  # 0=未提及, 1=弱提及, 2=强提及
 
-    # 检查 is_mentioned 属性
+    # 检查 is_mentioned 属性（保持向后兼容）
     mentioned_attr = getattr(message, "is_mentioned", None)
     if mentioned_attr is not None:
         try:
-            return bool(mentioned_attr), float(mentioned_attr)
+            # 如果已有 is_mentioned，直接返回（假设是强提及）
+            return bool(mentioned_attr), 2.0 if mentioned_attr else 0.0
         except (ValueError, TypeError):
             pass
 
-    # 检查 additional_config
+    # 检查 additional_config（保持向后兼容）
     additional_config = None
 
     # DatabaseMessages: additional_config 是 JSON 字符串
@@ -78,62 +77,66 @@ def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
 
     if additional_config and additional_config.get("is_mentioned") is not None:
         try:
-            reply_probability = float(additional_config.get("is_mentioned"))  # type: ignore
-            is_mentioned = True
-            return is_mentioned, reply_probability
+            mentioned_value = float(additional_config.get("is_mentioned"))  # type: ignore
+            # 如果配置中有提及值，假设是强提及
+            return True, 2.0 if mentioned_value > 0 else 0.0
         except Exception as e:
             logger.warning(str(e))
             logger.warning(
                 f"消息中包含不合理的设置 is_mentioned: {additional_config.get('is_mentioned')}"
             )
 
-    # 检查消息文本内容
     processed_text = message.processed_plain_text or ""
-    if global_config.bot.nickname in processed_text:
-        is_mentioned = True
-
-    for alias_name in global_config.bot.alias_names:
-        if alias_name in processed_text:
-            is_mentioned = True
-
-    # 判断是否被@
-    if re.search(rf"@<(.+?):{global_config.bot.qq_account}>", message.processed_plain_text):
+    
+    # 1. 判断是否为私聊（强提及）
+    group_info = getattr(message, "group_info", None)
+    if not group_info or not getattr(group_info, "group_id", None):
+        is_private = True
+        mention_type = 2
+        logger.debug("检测到私聊消息 - 强提及")
+    
+    # 2. 判断是否被@（强提及）
+    if re.search(rf"@<(.+?):{global_config.bot.qq_account}>", processed_text):
         is_at = True
-        is_mentioned = True
-
-    # print(f"message.processed_plain_text: {message.processed_plain_text}")
-    # print(f"is_mentioned: {is_mentioned}")
-    # print(f"is_at: {is_at}")
-
-    if is_at and global_config.chat.at_bot_inevitable_reply:
-        reply_probability = 1.0
-        logger.debug("被@，回复概率设置为100%")
-    else:
-        if not is_mentioned:
-            # 判断是否被回复
-            if re.match(
-                rf"\[回复 (.+?)\({global_config.bot.qq_account!s}\)：(.+?)\]，说：", message.processed_plain_text
-            ) or re.match(
-                rf"\[回复<(.+?)(?=:{global_config.bot.qq_account!s}>)\:{global_config.bot.qq_account!s}>：(.+?)\]，说：",
-                message.processed_plain_text,
-            ):
-                is_mentioned = True
-            else:
-                # 判断内容中是否被提及
-                message_content = re.sub(r"@(.+?)（(\d+)）", "", message.processed_plain_text)
-                message_content = re.sub(r"@<(.+?)(?=:(\d+))\:(\d+)>", "", message_content)
-                message_content = re.sub(r"\[回复 (.+?)\(((\d+)|未知id)\)：(.+?)\]，说：", "", message_content)
-                message_content = re.sub(r"\[回复<(.+?)(?=:(\d+))\:(\d+)>：(.+?)\]，说：", "", message_content)
-                for keyword in keywords:
-                    if keyword in message_content:
-                        is_mentioned = True
-                for nickname in nicknames:
-                    if nickname in message_content:
-                        is_mentioned = True
-        if is_mentioned and global_config.chat.mentioned_bot_inevitable_reply:
-            reply_probability = 1.0
-            logger.debug("被提及，回复概率设置为100%")
-    return is_mentioned, reply_probability
+        mention_type = 2
+        logger.debug("检测到@提及 - 强提及")
+    
+    # 3. 判断是否被回复（强提及）
+    if re.match(
+        rf"\[回复 (.+?)\({global_config.bot.qq_account!s}\)：(.+?)\]，说：", processed_text
+    ) or re.match(
+        rf"\[回复<(.+?)(?=:{global_config.bot.qq_account!s}>)\:{global_config.bot.qq_account!s}>：(.+?)\]，说：",
+        processed_text,
+    ):
+        is_replied = True
+        mention_type = 2
+        logger.debug("检测到回复消息 - 强提及")
+    
+    # 4. 判断文本中是否提及bot名字或别名（弱提及）
+    if mention_type == 0:  # 只有在没有强提及时才检查弱提及
+        # 移除@和回复标记后再检查
+        message_content = re.sub(r"@(.+?)（(\d+)）", "", processed_text)
+        message_content = re.sub(r"@<(.+?)(?=:(\d+))\:(\d+)>", "", message_content)
+        message_content = re.sub(r"\[回复 (.+?)\(((\d+)|未知id)\)：(.+?)\]，说：", "", message_content)
+        message_content = re.sub(r"\[回复<(.+?)(?=:(\d+))\:(\d+)>：(.+?)\]，说：", "", message_content)
+        
+        # 检查bot主名字
+        if global_config.bot.nickname in message_content:
+            is_text_mentioned = True
+            mention_type = 1
+            logger.debug(f"检测到文本提及bot主名字 '{global_config.bot.nickname}' - 弱提及")
+        # 如果主名字没匹配，再检查别名
+        elif nicknames:
+            for alias_name in nicknames:
+                if alias_name in message_content:
+                    is_text_mentioned = True
+                    mention_type = 1
+                    logger.debug(f"检测到文本提及bot别名 '{alias_name}' - 弱提及")
+                    break
+    
+    # 返回结果
+    is_mentioned = mention_type > 0
+    return is_mentioned, float(mention_type)
 
 async def get_embedding(text, request_type="embedding") -> list[float] | None:
     """获取文本的embedding向量"""

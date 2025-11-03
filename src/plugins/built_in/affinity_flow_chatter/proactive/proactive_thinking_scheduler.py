@@ -256,7 +256,7 @@ class ProactiveThinkingScheduler:
                 logger.debug(f"[调度器] 触发间隔={interval_seconds}秒 ({interval_seconds / 60:.1f}分钟)")
 
                 # 导入回调函数（延迟导入避免循环依赖）
-                from src.plugins.built_in.affinity_flow_chatter.proactive_thinking_executor import (
+                from src.plugins.built_in.affinity_flow_chatter.proactive.proactive_thinking_executor import (
                     execute_proactive_thinking,
                 )
 

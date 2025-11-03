@@ -11,9 +11,9 @@ from src.common.logger import get_logger
 from src.config.config import global_config
 from src.mood.mood_manager import mood_manager
 from src.plugin_system.base.component_types import ChatMode
-from src.plugins.built_in.affinity_flow_chatter.plan_executor import ChatterPlanExecutor
-from src.plugins.built_in.affinity_flow_chatter.plan_filter import ChatterPlanFilter
-from src.plugins.built_in.affinity_flow_chatter.plan_generator import ChatterPlanGenerator
+from src.plugins.built_in.affinity_flow_chatter.planner.plan_executor import ChatterPlanExecutor
+from src.plugins.built_in.affinity_flow_chatter.planner.plan_filter import ChatterPlanFilter
+from src.plugins.built_in.affinity_flow_chatter.planner.plan_generator import ChatterPlanGenerator
 
 if TYPE_CHECKING:
     from src.chat.planner_actions.action_manager import ChatterActionManager
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from src.common.data_models.message_manager_data_model import StreamContext
 
 # 导入提示词模块以确保其被初始化
-from src.plugins.built_in.affinity_flow_chatter import planner_prompts  # noqa
+from src.plugins.built_in.affinity_flow_chatter.planner import planner_prompts
 
 logger = get_logger("planner")
 

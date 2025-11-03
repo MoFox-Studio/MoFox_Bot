@@ -9,7 +9,7 @@ from typing import ClassVar
 from src.common.logger import get_logger
 from src.plugin_system import BaseEventHandler, EventType
 from src.plugin_system.base.base_event import HandlerResult
-from src.plugins.built_in.affinity_flow_chatter.proactive_thinking_scheduler import (
+from src.plugins.built_in.affinity_flow_chatter.proactive.proactive_thinking_scheduler import (
     proactive_thinking_scheduler,
 )
 

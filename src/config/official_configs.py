@@ -703,6 +703,12 @@ class AffinityFlowConfig(ValidatedConfigBase):
     reply_cooldown_reduction: int = Field(default=2, description="回复后减少的不回复计数")
     max_no_reply_count: int = Field(default=5, description="最大不回复计数次数")
 
+    # 回复后连续对话机制参数
+    enable_post_reply_boost: bool = Field(default=True, description="是否启用回复后阈值降低机制，使bot在回复后更容易进行连续对话")
+    post_reply_threshold_reduction: float = Field(default=0.15, description="回复后初始阈值降低值（建议0.1-0.2）")
+    post_reply_boost_max_count: int = Field(default=3, description="回复后阈值降低的最大持续次数（建议2-5）")
+    post_reply_boost_decay_rate: float = Field(default=0.5, description="每次回复后阈值降低衰减率（0-1，建议0.3-0.7）")
+
     # 综合评分权重
     keyword_match_weight: float = Field(default=0.4, description="兴趣关键词匹配度权重")
     mention_bot_weight: float = Field(default=0.3, description="提及bot分数权重")
@@ -710,7 +716,9 @@ class AffinityFlowConfig(ValidatedConfigBase):
 
     # 提及bot相关参数
     mention_bot_adjustment_threshold: float = Field(default=0.3, description="提及bot后的调整阈值")
-    mention_bot_interest_score: float = Field(default=0.6, description="提及bot的兴趣分")
+    mention_bot_interest_score: float = Field(default=0.6, description="提及bot的兴趣分（已弃用，改用strong/weak_mention）")
+    strong_mention_interest_score: float = Field(default=2.5, description="强提及的兴趣分（被@、被回复、私聊）")
+    weak_mention_interest_score: float = Field(default=1.5, description="弱提及的兴趣分（文本匹配bot名字或别名）")
     base_relationship_score: float = Field(default=0.5, description="基础人物关系分")
 
     # 关系追踪系统参数
