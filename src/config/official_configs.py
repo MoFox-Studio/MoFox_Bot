@@ -49,6 +49,7 @@ class DatabaseConfig(ValidatedConfigBase):
     cache_l2_ttl: int = Field(default=300, ge=60, le=7200, description="L2缓存生存时间（秒）")
     cache_cleanup_interval: int = Field(default=60, ge=30, le=600, description="缓存清理任务执行间隔（秒）")
     cache_max_memory_mb: int = Field(default=100, ge=10, le=1000, description="缓存最大内存占用（MB），超过此值将触发强制清理")
+    cache_max_item_size_mb: int = Field(default=1, ge=1, le=100, description="单个缓存条目最大大小（MB），超过此值将不缓存")
 
 
 class BotConfig(ValidatedConfigBase):

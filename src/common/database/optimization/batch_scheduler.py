@@ -19,6 +19,7 @@ from sqlalchemy import delete, insert, select, update
 
 from src.common.database.core.session import get_db_session
 from src.common.logger import get_logger
+from src.common.memory_utils import estimate_size_smart
 
 logger = get_logger("batch_scheduler")
 
@@ -65,6 +66,10 @@ class BatchStats:
     last_batch_duration: float = 0.0
     last_batch_size: int = 0
     congestion_score: float = 0.0  # 拥塞评分 (0-1)
+    
+    # 🔧 新增：缓存统计
+    cache_size: int = 0  # 缓存条目数
+    cache_memory_mb: float = 0.0  # 缓存内存占用（MB）
 
 
 class AdaptiveBatchScheduler:
@@ -118,8 +123,11 @@ class AdaptiveBatchScheduler:
         # 统计信息
         self.stats = BatchStats()
 
-        # 简单的结果缓存
+        # 🔧 改进的结果缓存（带大小限制和内存统计）
         self._result_cache: dict[str, tuple[Any, float]] = {}
+        self._cache_max_size = 1000  # 最大缓存条目数
+        self._cache_memory_estimate = 0  # 缓存内存估算（字节）
+        self._cache_size_map: dict[str, int] = {}  # 每个缓存条目的大小
 
         logger.info(
             f"自适应批量调度器初始化: "
@@ -530,11 +538,53 @@ class AdaptiveBatchScheduler:
         return None
 
     def _set_cache(self, cache_key: str, result: Any) -> None:
-        """设置缓存"""
+        """设置缓存（改进版，带大小限制和内存统计）"""
+        import sys
+        
+        # 🔧 检查缓存大小限制
+        if len(self._result_cache) >= self._cache_max_size:
+            # 首先清理过期条目
+            current_time = time.time()
+            expired_keys = [
+                k for k, (_, ts) in self._result_cache.items()
+                if current_time - ts >= self.cache_ttl
+            ]
+            
+            for k in expired_keys:
+                # 更新内存统计
+                if k in self._cache_size_map:
+                    self._cache_memory_estimate -= self._cache_size_map[k]
+                    del self._cache_size_map[k]
+                del self._result_cache[k]
+            
+            # 如果还是太大，清理最老的条目（LRU）
+            if len(self._result_cache) >= self._cache_max_size:
+                oldest_key = min(
+                    self._result_cache.keys(), 
+                    key=lambda k: self._result_cache[k][1]
+                )
+                # 更新内存统计
+                if oldest_key in self._cache_size_map:
+                    self._cache_memory_estimate -= self._cache_size_map[oldest_key]
+                    del self._cache_size_map[oldest_key]
+                del self._result_cache[oldest_key]
+                logger.debug(f"缓存已满，淘汰最老条目: {oldest_key}")
+        
+        # 🔧 使用准确的内存估算方法
+        try:
+            total_size = estimate_size_smart(cache_key) + estimate_size_smart(result)
+            self._cache_size_map[cache_key] = total_size
+            self._cache_memory_estimate += total_size
+        except Exception as e:
+            logger.debug(f"估算缓存大小失败: {e}")
+            # 使用默认值
+            self._cache_size_map[cache_key] = 1024
+            self._cache_memory_estimate += 1024
+        
         self._result_cache[cache_key] = (result, time.time())
 
     async def get_stats(self) -> BatchStats:
-        """获取统计信息"""
+        """获取统计信息（改进版，包含缓存统计）"""
         async with self._lock:
             return BatchStats(
                 total_operations=self.stats.total_operations,
@@ -547,6 +597,9 @@ class AdaptiveBatchScheduler:
                 last_batch_duration=self.stats.last_batch_duration,
                 last_batch_size=self.stats.last_batch_size,
                 congestion_score=self.stats.congestion_score,
+                # 🔧 新增：缓存统计
+                cache_size=len(self._result_cache),
+                cache_memory_mb=self._cache_memory_estimate / (1024 * 1024),
             )
 
 

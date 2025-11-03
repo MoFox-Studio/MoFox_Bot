@@ -175,7 +175,8 @@ async def db_query(
 
         if query_type == "get":
             # 使用QueryBuilder
-            query_builder = QueryBuilder(model_class)
+            # 🔧 兼容层默认禁用缓存（避免旧代码产生大量缓存）
+            query_builder = QueryBuilder(model_class).no_cache()
 
             # 应用过滤条件
             if filters:

@@ -33,12 +33,12 @@ class CacheManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, default_ttl: int = 3600):
+    def __init__(self, default_ttl: int | None = None):
         """
         初始化缓存管理器。
         """
         if not hasattr(self, "_initialized"):
-            self.default_ttl = default_ttl
+            self.default_ttl = default_ttl or 3600
             self.semantic_cache_collection_name = "semantic_cache"
 
             # L1 缓存 (内存)
@@ -360,6 +360,60 @@ class CacheManager:
 
         if expired_keys:
             logger.info(f"清理了 {len(expired_keys)} 个过期的L1缓存条目")
+    
+    def get_health_stats(self) -> dict[str, Any]:
+        """获取缓存健康统计信息"""
+        from src.common.memory_utils import format_size
+        
+        return {
+            "l1_count": len(self.l1_kv_cache),
+            "l1_memory": self.l1_current_memory,
+            "l1_memory_formatted": format_size(self.l1_current_memory),
+            "l1_max_memory": self.l1_max_memory,
+            "l1_memory_usage_percent": round((self.l1_current_memory / self.l1_max_memory) * 100, 2),
+            "l1_max_size": self.l1_max_size,
+            "l1_size_usage_percent": round((len(self.l1_kv_cache) / self.l1_max_size) * 100, 2),
+            "average_item_size": self.l1_current_memory // len(self.l1_kv_cache) if self.l1_kv_cache else 0,
+            "average_item_size_formatted": format_size(self.l1_current_memory // len(self.l1_kv_cache)) if self.l1_kv_cache else "0 B",
+            "largest_item_size": max(self.l1_size_map.values()) if self.l1_size_map else 0,
+            "largest_item_size_formatted": format_size(max(self.l1_size_map.values())) if self.l1_size_map else "0 B",
+        }
+    
+    def check_health(self) -> tuple[bool, list[str]]:
+        """检查缓存健康状态
+        
+        Returns:
+            (is_healthy, warnings) - 是否健康，警告列表
+        """
+        warnings = []
+        
+        # 检查内存使用
+        memory_usage = (self.l1_current_memory / self.l1_max_memory) * 100
+        if memory_usage > 90:
+            warnings.append(f"⚠️ L1缓存内存使用率过高: {memory_usage:.1f}%")
+        elif memory_usage > 75:
+            warnings.append(f"⚡ L1缓存内存使用率较高: {memory_usage:.1f}%")
+        
+        # 检查条目数
+        size_usage = (len(self.l1_kv_cache) / self.l1_max_size) * 100
+        if size_usage > 90:
+            warnings.append(f"⚠️ L1缓存条目数过多: {size_usage:.1f}%")
+        
+        # 检查平均条目大小
+        if self.l1_kv_cache:
+            avg_size = self.l1_current_memory // len(self.l1_kv_cache)
+            if avg_size > 100 * 1024:  # >100KB
+                from src.common.memory_utils import format_size
+                warnings.append(f"⚡ 平均缓存条目过大: {format_size(avg_size)}")
+        
+        # 检查最大单条目
+        if self.l1_size_map:
+            max_size = max(self.l1_size_map.values())
+            if max_size > 500 * 1024:  # >500KB
+                from src.common.memory_utils import format_size
+                warnings.append(f"⚠️ 发现超大缓存条目: {format_size(max_size)}")
+        
+        return len(warnings) == 0, warnings
 
 
 # 全局实例

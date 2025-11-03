@@ -1,5 +1,5 @@
 [inner]
-version = "7.5.5"
+version = "7.5.6"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -50,7 +50,8 @@ cache_l1_ttl = 60 # L1缓存生存时间（秒）
 cache_l2_max_size = 10000 # L2缓存最大条目数（温数据，内存占用约10-50MB）
 cache_l2_ttl = 300 # L2缓存生存时间（秒）
 cache_cleanup_interval = 60 # 缓存清理任务执行间隔（秒）
-cache_max_memory_mb = 100 # 缓存最大内存占用（MB），超过此值将触发强制清理
+cache_max_memory_mb = 500 # 缓存最大内存占用（MB），超过此值将触发强制清理
+cache_max_item_size_mb = 5 # 单个缓存条目最大大小（MB），超过此值将不缓存
 
 [permission] # 权限系统配置
 # Master用户配置（拥有最高权限，无视所有权限节点）
