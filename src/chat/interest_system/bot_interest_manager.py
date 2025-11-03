@@ -124,6 +124,10 @@ class BotInterestManager:
             tags_info = [f"  - '{tag.tag_name}' (权重: {tag.weight:.2f})" for tag in loaded_interests.get_active_tags()]
             tags_str = "\n".join(tags_info)
             logger.info(f"当前兴趣标签:\n{tags_str}")
+            
+            # 为加载的标签生成embedding（数据库不存储embedding，启动时动态生成）
+            logger.info("🧠 为加载的标签生成embedding向量...")
+            await self._generate_embeddings_for_tags(loaded_interests)
         else:
             # 生成新的兴趣标签
             logger.info("数据库中未找到兴趣标签，开始生成...")
@@ -317,23 +321,35 @@ class BotInterestManager:
             return None
 
     async def _generate_embeddings_for_tags(self, interests: BotPersonalityInterests):
-        """为所有兴趣标签生成embedding（仅缓存在内存中）"""
+        """为所有兴趣标签生成embedding（缓存在内存和文件中）"""
         if not hasattr(self, "embedding_request"):
             raise RuntimeError("❌ Embedding客户端未初始化，无法生成embedding")
 
         total_tags = len(interests.interest_tags)
-        logger.info(f"🧠 开始为 {total_tags} 个兴趣标签生成embedding向量（动态生成，仅内存缓存）...")
+        
+        # 尝试从文件加载缓存
+        file_cache = await self._load_embedding_cache_from_file(interests.personality_id)
+        if file_cache:
+            logger.info(f"📂 从文件加载 {len(file_cache)} 个embedding缓存")
+            self.embedding_cache.update(file_cache)
+        
+        logger.info(f"🧠 开始为 {total_tags} 个兴趣标签生成embedding向量...")
 
-        cached_count = 0
+        memory_cached_count = 0
+        file_cached_count = 0
         generated_count = 0
         failed_count = 0
 
         for i, tag in enumerate(interests.interest_tags, 1):
             if tag.tag_name in self.embedding_cache:
-                # 使用内存缓存的embedding
+                # 使用缓存的embedding（可能来自内存或文件）
                 tag.embedding = self.embedding_cache[tag.tag_name]
-                cached_count += 1
-                logger.debug(f"   [{i}/{total_tags}] 🏷️  '{tag.tag_name}' - 使用内存缓存")
+                if file_cache and tag.tag_name in file_cache:
+                    file_cached_count += 1
+                    logger.debug(f"   [{i}/{total_tags}] 📂 '{tag.tag_name}' - 使用文件缓存")
+                else:
+                    memory_cached_count += 1
+                    logger.debug(f"   [{i}/{total_tags}] 💾 '{tag.tag_name}' - 使用内存缓存")
             else:
                 # 动态生成新的embedding
                 embedding_text = tag.tag_name
@@ -343,9 +359,9 @@ class BotInterestManager:
 
                 if embedding:
                     tag.embedding = embedding  # 设置到 tag 对象（内存中）
-                    self.embedding_cache[tag.tag_name] = embedding  # 同时缓存
+                    self.embedding_cache[tag.tag_name] = embedding  # 同时缓存到内存
                     generated_count += 1
-                    logger.debug(f"   ✅ '{tag.tag_name}' embedding动态生成成功并缓存到内存")
+                    logger.debug(f"   ✅ '{tag.tag_name}' embedding动态生成成功")
                 else:
                     failed_count += 1
                     logger.warning(f"   ❌ '{tag.tag_name}' embedding生成失败")
@@ -353,14 +369,20 @@ class BotInterestManager:
         if failed_count > 0:
             raise RuntimeError(f"❌ 有 {failed_count} 个兴趣标签embedding生成失败")
 
+        # 如果有新生成的embedding，保存到文件
+        if generated_count > 0:
+            await self._save_embedding_cache_to_file(interests.personality_id)
+            logger.info(f"💾 已将 {generated_count} 个新生成的embedding保存到缓存文件")
+
         interests.last_updated = datetime.now()
         logger.info("=" * 50)
-        logger.info("✅ Embedding动态生成完成（仅存储在内存中）!")
+        logger.info("✅ Embedding生成完成!")
         logger.info(f"📊 总标签数: {total_tags}")
-        logger.info(f"💾 内存缓存命中: {cached_count}")
+        logger.info(f"� 文件缓存命中: {file_cached_count}")
+        logger.info(f"�💾 内存缓存命中: {memory_cached_count}")
         logger.info(f"🆕 新生成: {generated_count}")
         logger.info(f"❌ 失败: {failed_count}")
-        logger.info(f"🗃️  内存缓存总大小: {len(self.embedding_cache)}")
+        logger.info(f"🗃️  总缓存大小: {len(self.embedding_cache)}")
         logger.info("=" * 50)
 
     async def _get_embedding(self, text: str) -> list[float]:
@@ -581,6 +603,13 @@ class BotInterestManager:
         logger.debug(
             f"最终结果: 总分={result.overall_score:.3f}, 置信度={result.confidence:.3f}, 匹配标签数={len(result.matched_tags)}"
         )
+        
+        # 如果有新生成的扩展embedding，保存到缓存文件
+        if hasattr(self, '_new_expanded_embeddings_generated') and self._new_expanded_embeddings_generated:
+            await self._save_embedding_cache_to_file(self.current_interests.personality_id)
+            self._new_expanded_embeddings_generated = False
+            logger.debug("💾 已保存新生成的扩展embedding到缓存文件")
+        
         return result
 
     async def _get_expanded_tag_embedding(self, tag_name: str) -> list[float] | None:
@@ -602,6 +631,7 @@ class BotInterestManager:
                 # 缓存结果
                 self.expanded_tag_cache[tag_name] = expanded_tag
                 self.expanded_embedding_cache[tag_name] = embedding
+                self._new_expanded_embeddings_generated = True  # 标记有新生成的embedding
                 logger.debug(f"✅ 为标签'{tag_name}'生成并缓存扩展embedding: {expanded_tag[:50]}...")
                 return embedding
         except Exception as e:
@@ -977,6 +1007,79 @@ class BotInterestManager:
             logger.error(f"❌ 保存兴趣标签到数据库失败: {e}")
             logger.error("🔍 错误详情:")
             traceback.print_exc()
+
+    async def _load_embedding_cache_from_file(self, personality_id: str) -> dict[str, list[float]] | None:
+        """从文件加载embedding缓存"""
+        try:
+            import orjson
+            from pathlib import Path
+            
+            cache_dir = Path("data/embedding")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_file = cache_dir / f"{personality_id}_embeddings.json"
+            
+            if not cache_file.exists():
+                logger.debug(f"📂 Embedding缓存文件不存在: {cache_file}")
+                return None
+            
+            # 读取缓存文件
+            with open(cache_file, "rb") as f:
+                cache_data = orjson.loads(f.read())
+            
+            # 验证缓存版本和embedding模型
+            cache_version = cache_data.get("version", 1)
+            cache_embedding_model = cache_data.get("embedding_model", "")
+            current_embedding_model = self.embedding_config.model_list[0] if hasattr(self.embedding_config, "model_list") else ""
+            
+            if cache_embedding_model != current_embedding_model:
+                logger.warning(f"⚠️ Embedding模型已变更 ({cache_embedding_model} → {current_embedding_model})，忽略旧缓存")
+                return None
+            
+            embeddings = cache_data.get("embeddings", {})
+            
+            # 同时加载扩展标签的embedding缓存
+            expanded_embeddings = cache_data.get("expanded_embeddings", {})
+            if expanded_embeddings:
+                self.expanded_embedding_cache.update(expanded_embeddings)
+                logger.info(f"📂 加载 {len(expanded_embeddings)} 个扩展标签embedding缓存")
+            
+            logger.info(f"✅ 成功从文件加载 {len(embeddings)} 个标签embedding缓存 (版本: {cache_version}, 模型: {cache_embedding_model})")
+            return embeddings
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 加载embedding缓存文件失败: {e}")
+            return None
+    
+    async def _save_embedding_cache_to_file(self, personality_id: str):
+        """保存embedding缓存到文件（包括扩展标签的embedding）"""
+        try:
+            import orjson
+            from pathlib import Path
+            from datetime import datetime
+            
+            cache_dir = Path("data/embedding")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_file = cache_dir / f"{personality_id}_embeddings.json"
+            
+            # 准备缓存数据
+            current_embedding_model = self.embedding_config.model_list[0] if hasattr(self.embedding_config, "model_list") and self.embedding_config.model_list else ""
+            cache_data = {
+                "version": 1,
+                "personality_id": personality_id,
+                "embedding_model": current_embedding_model,
+                "last_updated": datetime.now().isoformat(),
+                "embeddings": self.embedding_cache,
+                "expanded_embeddings": self.expanded_embedding_cache,  # 同时保存扩展标签的embedding
+            }
+            
+            # 写入文件
+            with open(cache_file, "wb") as f:
+                f.write(orjson.dumps(cache_data, option=orjson.OPT_INDENT_2))
+            
+            logger.debug(f"💾 已保存 {len(self.embedding_cache)} 个标签embedding和 {len(self.expanded_embedding_cache)} 个扩展embedding到缓存文件: {cache_file}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 保存embedding缓存文件失败: {e}")
 
     def get_current_interests(self) -> BotPersonalityInterests | None:
         """获取当前的兴趣标签配置"""

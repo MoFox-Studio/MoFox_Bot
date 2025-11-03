@@ -117,17 +117,23 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             relationship_score = float(relationship_score) if relationship_score is not None else 0.0
             mentioned_score = float(mentioned_score) if mentioned_score is not None else 0.0
 
-            total_score = (
+            raw_total_score = (
                 interest_match_score * self.score_weights["interest_match"]
                 + relationship_score * self.score_weights["relationship"]
                 + mentioned_score * self.score_weights["mentioned"]
             )
+            
+            # 限制总分上限为1.0，确保分数在合理范围内
+            total_score = min(raw_total_score, 1.0)
 
             logger.debug(
                 f"[Affinity兴趣计算] 综合得分计算: {interest_match_score:.3f}*{self.score_weights['interest_match']} + "
                 f"{relationship_score:.3f}*{self.score_weights['relationship']} + "
-                f"{mentioned_score:.3f}*{self.score_weights['mentioned']} = {total_score:.3f}"
+                f"{mentioned_score:.3f}*{self.score_weights['mentioned']} = {raw_total_score:.3f}"
             )
+            
+            if raw_total_score > 1.0:
+                logger.debug(f"[Affinity兴趣计算] 原始分数 {raw_total_score:.3f} 超过1.0，已限制为 {total_score:.3f}")
 
             # 5. 考虑连续不回复的阈值调整
             adjusted_score = total_score
@@ -202,7 +208,9 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                     len(match_result.matched_tags) * affinity_config.match_count_bonus, affinity_config.max_match_bonus
                 )
                 final_score = match_result.overall_score * 1.15 * match_result.confidence + match_count_bonus
-                logger.debug(f"兴趣匹配最终得分: {final_score}")
+                # 限制兴趣匹配分数上限为1.0，防止总分超标
+                final_score = min(final_score, 1.0)
+                logger.debug(f"兴趣匹配最终得分: {final_score:.3f} (原始: {match_result.overall_score * 1.15 * match_result.confidence + match_count_bonus:.3f})")
                 return final_score
             else:
                 logger.debug("兴趣匹配返回0.0: match_result为None")
