@@ -159,6 +159,10 @@ class ChatterActionPlanner:
                     action_data={},
                     action_message=None,
                 )
+                
+                # 更新连续不回复计数
+                await self._update_interest_calculator_state(replied=False)
+                
                 initial_plan = await self.generator.generate(chat_mode)
                 filtered_plan = initial_plan
                 filtered_plan.decided_actions = [no_action]
@@ -218,24 +222,27 @@ class ChatterActionPlanner:
             # 6. 根据执行结果更新统计信息
             self._update_stats_from_execution_result(execution_result)
 
-            # 7. Focus模式下如果执行了reply动作，根据focus_energy概率切换到Normal模式
+            # 7. 更新兴趣计算器状态
+            if filtered_plan.decided_actions:
+                has_reply = any(
+                    action.action_type in ["reply", "proactive_reply"]
+                    for action in filtered_plan.decided_actions
+                )
+            else:
+                has_reply = False
+            await self._update_interest_calculator_state(replied=has_reply)
+
+            # 8. Focus模式下如果执行了reply动作，根据focus_energy概率切换到Normal模式
             if chat_mode == ChatMode.FOCUS and context:
-                if filtered_plan.decided_actions:
-                    has_reply = any(
-                        action.action_type in ["reply", "proactive_reply"]
-                        for action in filtered_plan.decided_actions
-                    )
-                else:
-                    has_reply = False
                 if has_reply and global_config.affinity_flow.enable_normal_mode:
                     await self._check_enter_normal_mode(context)
 
-            # 8. 清理处理标记
+            # 9. 清理处理标记
             if context:
                 context.processing_message_id = None
                 logger.debug("已清理处理标记，完成规划流程")
 
-            # 9. 返回结果
+            # 10. 返回结果
             return self._build_return_result(filtered_plan)
 
         except Exception as e:
@@ -340,6 +347,9 @@ class ChatterActionPlanner:
                 self._update_stats_from_execution_result(execution_result)
 
                 logger.info("Normal模式: 执行reply动作完成")
+                
+                # 更新兴趣计算器状态（回复成功，重置不回复计数）
+                await self._update_interest_calculator_state(replied=True)
 
                 # 清理处理标记
                 if context:
@@ -360,6 +370,9 @@ class ChatterActionPlanner:
                     action_data={},
                     action_message=None,
                 )
+
+                # 更新连续不回复计数
+                await self._update_interest_calculator_state(replied=False)
 
                 # 无论是否回复，都进行退出normal模式的判定
                 await self._check_exit_normal_mode(context)
@@ -449,6 +462,30 @@ class ChatterActionPlanner:
 
         except Exception as e:
             logger.warning(f"检查退出Normal模式失败: {e}")
+
+    async def _update_interest_calculator_state(self, replied: bool) -> None:
+        """更新兴趣计算器状态（连续不回复计数和回复后降低机制）
+        
+        Args:
+            replied: 是否回复了消息
+        """
+        try:
+            from src.chat.interest_system.interest_manager import get_interest_manager
+            from src.plugins.built_in.affinity_flow_chatter.core.affinity_interest_calculator import (
+                AffinityInterestCalculator,
+            )
+
+            interest_manager = get_interest_manager()
+            calculator = interest_manager.get_current_calculator()
+
+            if calculator and isinstance(calculator, AffinityInterestCalculator):
+                calculator.on_message_processed(replied)
+                logger.debug(f"已更新兴趣计算器状态: replied={replied}")
+            else:
+                logger.debug("未找到 AffinityInterestCalculator，跳过状态更新")
+
+        except Exception as e:
+            logger.warning(f"更新兴趣计算器状态失败: {e}")
 
     async def _sync_chat_mode_to_stream(self, context: "StreamContext") -> None:
         """同步chat_mode到ChatStream"""

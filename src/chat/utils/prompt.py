@@ -1086,9 +1086,6 @@ class Prompt:
         Returns:
             str: 格式化后的关系信息字符串，或在失败时返回空字符串。
         """
-        if not global_config.affinity_flow.enable_relationship_tracking:
-            return ""
-
         from src.person_info.relationship_fetcher import relationship_fetcher_manager
 
         relationship_fetcher = relationship_fetcher_manager.get_fetcher(chat_id)
