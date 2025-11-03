@@ -678,12 +678,13 @@ class EmojiManager:
     async def get_all_emoji_from_db(self) -> None:
         """获取所有表情包并初始化为MaiEmoji类对象，更新 self.emoji_objects"""
         try:
-            async with get_db_session() as session:
-                logger.debug("[数据库] 开始加载所有表情包记录 ...")
-
-                result = await session.execute(select(Emoji))
-                emoji_instances = result.scalars().all()
-                emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
+            # 🔧 使用 QueryBuilder 以启用数据库缓存
+            from src.common.database.api.query import QueryBuilder
+            
+            logger.debug("[数据库] 开始加载所有表情包记录 ...")
+            
+            emoji_instances = await QueryBuilder(Emoji).all()
+            emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
 
             # 更新内存中的列表和数量
             self.emoji_objects = emoji_objects
@@ -798,12 +799,11 @@ class EmojiManager:
                 logger.info(f"[缓存命中] 从内存获取表情包描述: {emoji.description[:50]}...")
                 return emoji.description
 
-            # 如果内存中没有，从数据库查找
+            # 如果内存中没有，从数据库查找（使用 QueryBuilder 启用数据库缓存）
             try:
-                async with get_db_session() as session:
-                    stmt = select(Emoji).where(Emoji.emoji_hash == emoji_hash)
-                    result = await session.execute(stmt)
-                    emoji_record = result.scalar_one_or_none()
+                from src.common.database.api.query import QueryBuilder
+                
+                emoji_record = await QueryBuilder(Emoji).filter(emoji_hash=emoji_hash).first()
                 if emoji_record and emoji_record.description:
                     logger.info(f"[缓存命中] 从数据库获取表情包描述: {emoji_record.description[:50]}...")
                     return emoji_record.description
@@ -962,16 +962,15 @@ class EmojiManager:
             image_hash = hashlib.md5(image_bytes).hexdigest()
             image_format = (Image.open(io.BytesIO(image_bytes)).format or "jpeg").lower()
 
-            # 2. 检查数据库中是否已存在该表情包的描述，实现复用
+            # 2. 检查数据库中是否已存在该表情包的描述，实现复用（使用 QueryBuilder 启用数据库缓存）
             existing_description = None
             try:
-                async with get_db_session() as session:
-                    stmt = select(Images).where(Images.emoji_hash == image_hash, Images.type == "emoji")
-                    result = await session.execute(stmt)
-                    existing_image = result.scalar_one_or_none()
-                    if existing_image and existing_image.description:
-                        existing_description = existing_image.description
-                        logger.info(f"[复用描述] 找到已有详细描述: {existing_description[:50]}...")
+                from src.common.database.api.query import QueryBuilder
+                
+                existing_image = await QueryBuilder(Images).filter(emoji_hash=image_hash, type="emoji").first()
+                if existing_image and existing_image.description:
+                    existing_description = existing_image.description
+                    logger.info(f"[复用描述] 找到已有详细描述: {existing_description[:50]}...")
             except Exception as e:
                 logger.debug(f"查询已有表情包描述时出错: {e}")
 

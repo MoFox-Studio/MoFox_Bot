@@ -251,7 +251,7 @@ async def update_person_affinity(
 
 
 # ===== ChatStreams 业务API =====
-@cached(ttl=300, key_prefix="chat_stream")  # 缓存5分钟
+@cached(ttl=600, key_prefix="chat_stream")  # 缓存10分钟
 async def get_or_create_chat_stream(
     stream_id: str,
     platform: str,
@@ -401,7 +401,7 @@ async def get_usage_statistics(
 
 
 # ===== UserRelationships 业务API =====
-@cached(ttl=300, key_prefix="user_relationship")  # 缓存5分钟
+@cached(ttl=600, key_prefix="user_relationship")  # 缓存10分钟
 async def get_user_relationship(
     platform: str,
     user_id: str,
