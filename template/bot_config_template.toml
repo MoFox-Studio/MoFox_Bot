@@ -576,12 +576,6 @@ strong_mention_interest_score = 2.5 # 强提及的兴趣分（被@、被回复�
 weak_mention_interest_score = 1.5 # 弱提及的兴趣分（文本匹配bot名字或别名）
 base_relationship_score = 0.3 # 基础人物关系分
 
-# 关系追踪系统参数
-enable_relationship_tracking = true # 是否启用关系追踪系统
-relationship_tracking_probability = 0.7 # 关系追踪执行概率 (0.0-1.0)，用于减少API调用压力
-relationship_tracking_interval_min = 300 # 关系追踪最小间隔时间（秒）
-relationship_tracking_cooldown_hours = 1.0 # 同一用户关系追踪冷却时间（小时）
-
 [proactive_thinking] # 主动思考（主动发起对话）功能配置
 # 详细配置说明请参考：docs/proactive_thinking_config_guide.md
 

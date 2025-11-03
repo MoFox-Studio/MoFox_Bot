@@ -721,13 +721,6 @@ class AffinityFlowConfig(ValidatedConfigBase):
     weak_mention_interest_score: float = Field(default=1.5, description="弱提及的兴趣分（文本匹配bot名字或别名）")
     base_relationship_score: float = Field(default=0.5, description="基础人物关系分")
 
-    # 关系追踪系统参数
-    enable_relationship_tracking: bool = Field(default=True, description="是否启用关系追踪系统")
-    relationship_tracking_probability: float = Field(default=0.7, description="关系追踪执行概率 (0.0-1.0)，用于减少API调用压力")
-    relationship_tracking_interval_min: int = Field(default=300, description="关系追踪最小间隔时间（秒）")
-    relationship_tracking_cooldown_hours: float = Field(default=1.0, description="同一用户关系追踪冷却时间（小时）")
-
-
 class ProactiveThinkingConfig(ValidatedConfigBase):
     """主动思考（主动发起对话）功能配置"""
 
