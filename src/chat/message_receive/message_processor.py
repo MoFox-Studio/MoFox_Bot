@@ -202,7 +202,6 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
                     # 标准格式: "昵称:QQ号"
                     nickname, qq_id = segment.data.split(":", 1)
                     result = f"@<{nickname}:{qq_id}>"
-                    logger.info(f"[at处理] 标准格式 -> {result}")
                     return result
                 else:
                     logger.warning(f"[at处理] 无法解析格式: '{segment.data}'")
