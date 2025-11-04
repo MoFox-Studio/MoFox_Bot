@@ -110,6 +110,11 @@ class MessageManager:
         """添加消息到指定聊天流"""
 
         try:
+            # 硬编码过滤表情包消息
+            if message.processed_plain_text and message.processed_plain_text.startswith("[表情包"):
+                logger.info(f"检测到表情包消息，已过滤: {message.processed_plain_text}")
+                return
+
             # 检查是否为notice消息
             if self._is_notice_message(message):
                 # Notice消息处理 - 添加到全局管理器
