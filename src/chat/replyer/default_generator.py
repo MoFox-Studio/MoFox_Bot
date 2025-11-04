@@ -982,7 +982,7 @@ class DefaultReplyer:
 
                     # 按时间排序并限制数量
                     sorted_messages = sorted(read_messages_dicts, key=lambda x: x.get("time", 0))
-                    final_history = sorted_messages[-50:]  # 限制最多50条
+                    final_history = sorted_messages[-global_config.chat.max_context_size:]  # 使用配置的上下文长度
 
                     read_content = await build_readable_messages(
                         final_history,
@@ -1087,7 +1087,7 @@ class DefaultReplyer:
         read_history_prompt = ""
         if read_messages:
             read_content = await build_readable_messages(
-                read_messages[-50:],
+                read_messages[-global_config.chat.max_context_size:],
                 replace_bot_name=True,
                 timestamp_mode="normal_no_YMD",
                 truncate=True,
@@ -1293,7 +1293,7 @@ class DefaultReplyer:
 
             # 转换为字典格式
             message_list_before_now_long = [msg.flatten() for msg in all_messages[-(global_config.chat.max_context_size * 2):]]
-            message_list_before_short = [msg.flatten() for msg in all_messages[-int(global_config.chat.max_context_size * 0.33):]]
+            message_list_before_short = [msg.flatten() for msg in all_messages[-int(global_config.chat.max_context_size):]]
 
             logger.debug(f"使用内存中的消息: long={len(message_list_before_now_long)}, short={len(message_list_before_short)}")
         else:
@@ -1307,7 +1307,7 @@ class DefaultReplyer:
             message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
                 chat_id=chat_id,
                 timestamp=time.time(),
-                limit=int(global_config.chat.max_context_size * 0.33),
+                limit=int(global_config.chat.max_context_size),
             )
 
         chat_talking_prompt_short = await build_readable_messages(
@@ -1655,7 +1655,7 @@ class DefaultReplyer:
             )
 
             # 转换为字典格式，限制数量
-            limit = min(int(global_config.chat.max_context_size * 0.33), 15)
+            limit = int(global_config.chat.max_context_size)
             message_list_before_now_half = [msg.flatten() for msg in all_messages[-limit:]]
 
             logger.debug(f"Rewrite使用内存中的 {len(message_list_before_now_half)} 条消息")
@@ -1665,7 +1665,7 @@ class DefaultReplyer:
             message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
                 chat_id=chat_id,
                 timestamp=time.time(),
-                limit=min(int(global_config.chat.max_context_size * 0.33), 15),
+                limit=int(global_config.chat.max_context_size),
             )
 
         chat_talking_prompt_half = await build_readable_messages(
@@ -2100,7 +2100,7 @@ class DefaultReplyer:
                 )
 
                 # 转换为字典格式，限制数量
-                limit = int(global_config.chat.max_context_size * 0.33)
+                limit = int(global_config.chat.max_context_size)
                 message_list_before_short = [msg.flatten() for msg in all_messages[-limit:]]
 
                 logger.debug(f"记忆存储使用内存中的 {len(message_list_before_short)} 条消息")
@@ -2110,7 +2110,7 @@ class DefaultReplyer:
                 message_list_before_short = await get_raw_msg_before_timestamp_with_chat(
                     chat_id=stream.stream_id,
                     timestamp=time.time(),
-                    limit=int(global_config.chat.max_context_size * 0.33),
+                    limit=int(global_config.chat.max_context_size),
                 )
             chat_history = await build_readable_messages(
                 message_list_before_short,
