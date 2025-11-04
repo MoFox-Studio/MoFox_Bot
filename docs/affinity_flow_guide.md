@@ -70,6 +70,11 @@
 - `mention_bot_adjustment_threshold`  
   提及 Bot 后的调整阈值。当bot被提及后，回复阈值会改变为这个值。
 
+- `strong_mention_interest_score`  
+  强提及的兴趣分。强提及包括：被@、被回复、私聊消息。这类提及表示用户明确想与bot交互。
+
+- `weak_mention_interest_score`  
+  弱提及的兴趣分。弱提及包括：消息中包含bot的名字或别名（文本匹配）。这类提及可能只是在讨论中提到bot。
 
 - `base_relationship_score`  
 ---
@@ -80,13 +85,16 @@
 2. **Bot 太热情/回复太多**
    - 提高 `reply_action_interest_threshold`，或降低关键词相关倍率。
 
-3. **希望 Bot 更关注被 @ 的消息**
-   - 提高 `mention_bot_interest_score` 或 `mention_bot_weight`。
+3. **希望 Bot 更关注被 @ 或回复的消息**
+   - 提高 `strong_mention_interest_score` 或 `mention_bot_weight`。
 
-4. **希望 Bot 更看重关系好的用户**
+4. **希望 Bot 对文本提及也积极回应**
+   - 提高 `weak_mention_interest_score`。
+
+5. **希望 Bot 更看重关系好的用户**
    - 提高 `relationship_weight` 或 `base_relationship_score`。
 
-5. **表情包行为过于频繁/稀少**
+6. **表情包行为过于频繁/稀少**
    - 调整 `non_reply_action_interest_threshold`。
 
 ---
@@ -121,7 +129,8 @@ keyword_match_weight = 0.4
 mention_bot_weight = 0.3
 relationship_weight = 0.3
 mention_bot_adjustment_threshold = 0.5
-mention_bot_interest_score = 2.5
+strong_mention_interest_score = 2.5  # 强提及（@/回复/私聊）
+weak_mention_interest_score = 1.5    # 弱提及（文本匹配）
 base_relationship_score = 0.3
 ```
 
@@ -134,7 +143,10 @@ MoFox-Bot 在收到每条消息时，会通过一套“兴趣度评分（afc）�
 - 不同匹配度的关键词会乘以对应的倍率（high/medium/low_match_keyword_multiplier），并根据匹配数量叠加加成（match_count_bonus，max_match_bonus）。
 
 ### 2. 提及与关系加分
-- 如果消息中提及了 Bot（如被@），会直接获得一部分兴趣分（mention_bot_interest_score），并按权重（mention_bot_weight）计入总分。
+- 如果消息中提及了 Bot，会根据提及类型获得不同的兴趣分：
+  * **强提及**（被@、被回复、私聊）: 获得 `strong_mention_interest_score` 分值，表示用户明确想与bot交互
+  * **弱提及**（文本中包含bot名字或别名）: 获得 `weak_mention_interest_score` 分值，表示在讨论中提到bot
+  * 提及分按权重（`mention_bot_weight`）计入总分
 - 与用户的关系分（base_relationship_score 及动态关系分）也会按 relationship_weight 计入总分。
 
 ### 3. 综合评分计算

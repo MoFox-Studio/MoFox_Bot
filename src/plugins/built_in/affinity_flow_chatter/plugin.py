@@ -39,48 +39,48 @@ class AffinityChatterPlugin(BasePlugin):
         components: ClassVar = []
 
         try:
-            # 延迟导入 AffinityChatter
-            from .affinity_chatter import AffinityChatter
+            # 延迟导入 AffinityChatter（从 core 子模块）
+            from .core.affinity_chatter import AffinityChatter
 
             components.append((AffinityChatter.get_chatter_info(), AffinityChatter))
         except Exception as e:
             logger.error(f"加载 AffinityChatter 时出错: {e}")
 
         try:
-            # 延迟导入 AffinityInterestCalculator
-            from .affinity_interest_calculator import AffinityInterestCalculator
+            # 延迟导入 AffinityInterestCalculator（从 core 子模块）
+            from .core.affinity_interest_calculator import AffinityInterestCalculator
 
             components.append((AffinityInterestCalculator.get_interest_calculator_info(), AffinityInterestCalculator))
         except Exception as e:
             logger.error(f"加载 AffinityInterestCalculator 时出错: {e}")
 
         try:
-            # 延迟导入 UserProfileTool
-            from .user_profile_tool import UserProfileTool
+            # 延迟导入 UserProfileTool（从 tools 子模块）
+            from .tools.user_profile_tool import UserProfileTool
 
             components.append((UserProfileTool.get_tool_info(), UserProfileTool))
         except Exception as e:
             logger.error(f"加载 UserProfileTool 时出错: {e}")
 
         try:
-            # 延迟导入 ChatStreamImpressionTool
-            from .chat_stream_impression_tool import ChatStreamImpressionTool
+            # 延迟导入 ChatStreamImpressionTool（从 tools 子模块）
+            from .tools.chat_stream_impression_tool import ChatStreamImpressionTool
 
             components.append((ChatStreamImpressionTool.get_tool_info(), ChatStreamImpressionTool))
         except Exception as e:
             logger.error(f"加载 ChatStreamImpressionTool 时出错: {e}")
 
         try:
-            # 延迟导入 ProactiveThinkingReplyHandler
-            from .proactive_thinking_event import ProactiveThinkingReplyHandler
+            # 延迟导入 ProactiveThinkingReplyHandler（从 proactive 子模块）
+            from .proactive.proactive_thinking_event import ProactiveThinkingReplyHandler
 
             components.append((ProactiveThinkingReplyHandler.get_handler_info(), ProactiveThinkingReplyHandler))
         except Exception as e:
             logger.error(f"加载 ProactiveThinkingReplyHandler 时出错: {e}")
 
         try:
-            # 延迟导入 ProactiveThinkingMessageHandler
-            from .proactive_thinking_event import ProactiveThinkingMessageHandler
+            # 延迟导入 ProactiveThinkingMessageHandler（从 proactive 子模块）
+            from .proactive.proactive_thinking_event import ProactiveThinkingMessageHandler
 
             components.append((ProactiveThinkingMessageHandler.get_handler_info(), ProactiveThinkingMessageHandler))
         except Exception as e:

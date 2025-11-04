@@ -33,9 +33,14 @@ class Individuality:
         personality_side = global_config.personality.personality_side
         identity = global_config.personality.identity
 
-        person_info_manager = get_person_info_manager()
-        self.bot_person_id = person_info_manager.get_person_id("system", "bot_id")
+        # 基于人设文本生成 personality_id（使用 MD5 hash）
+        # 这样当人设发生变化时会自动生成新的 ID，触发重新生成兴趣标签
+        personality_hash, _ = self._get_config_hash(bot_nickname, personality_core, personality_side, identity)
+        self.bot_person_id = personality_hash
         self.name = bot_nickname
+        logger.info(f"生成的 personality_id: {self.bot_person_id[:16]}... (基于人设文本 hash)")
+
+        person_info_manager = get_person_info_manager()
 
         # 检查配置变化，如果变化则清空
         personality_changed, identity_changed = await self._check_config_and_clear_if_changed(
@@ -72,8 +77,8 @@ class Individuality:
         if personality_changed or identity_changed:
             logger.info("将清空数据库中原有的关键词缓存")
             update_data = {
-                "platform": "system",
-                "user_id": "bot_id",
+                "platform": "personality",
+                "user_id": self.bot_person_id,  # 使用基于人设生成的 ID
                 "person_name": self.name,
                 "nickname": self.name,
             }
@@ -171,8 +176,8 @@ class Individuality:
         if personality_changed or identity_changed:
             logger.info("将清空原有的关键词缓存")
             update_data = {
-                "platform": "system",
-                "user_id": "bot_id",
+                "platform": "personality",
+                "user_id": current_personality_hash,  # 使用 personality hash 作为 user_id
                 "person_name": self.name,
                 "nickname": self.name,
             }

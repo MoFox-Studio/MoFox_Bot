@@ -16,6 +16,7 @@ class BotInterestTag(BaseDataModel):
 
     tag_name: str
     weight: float = 1.0  # 权重，表示对这个兴趣的喜好程度 (0.0-1.0)
+    expanded: str | None = None  # 标签的扩展描述，用于更精准的语义匹配
     embedding: list[float] | None = None  # 标签的embedding向量
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -26,6 +27,7 @@ class BotInterestTag(BaseDataModel):
         return {
             "tag_name": self.tag_name,
             "weight": self.weight,
+            "expanded": self.expanded,
             "embedding": self.embedding,
             "created_at": self.created_at.isoformat(),
             "updated_at": self.updated_at.isoformat(),
@@ -38,6 +40,7 @@ class BotInterestTag(BaseDataModel):
         return cls(
             tag_name=data["tag_name"],
             weight=data.get("weight", 1.0),
+            expanded=data.get("expanded"),
             embedding=data.get("embedding"),
             created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
             updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else datetime.now(),

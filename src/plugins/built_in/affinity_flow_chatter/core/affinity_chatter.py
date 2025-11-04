@@ -15,7 +15,7 @@ from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.plugin_system.base.base_chatter import BaseChatter
 from src.plugin_system.base.component_types import ChatType
-from src.plugins.built_in.affinity_flow_chatter.planner import ChatterActionPlanner
+from src.plugins.built_in.affinity_flow_chatter.planner.planner import ChatterActionPlanner
 
 logger = get_logger("affinity_chatter")
 

@@ -226,7 +226,7 @@ class ProactiveThinkingPlanner:
             # 5. 获取上次决策
             last_decision = None
             try:
-                from src.plugins.built_in.affinity_flow_chatter.proactive_thinking_scheduler import (
+                from src.plugins.built_in.affinity_flow_chatter.proactive.proactive_thinking_scheduler import (
                     proactive_thinking_scheduler,
                 )
 
@@ -520,7 +520,7 @@ async def execute_proactive_thinking(stream_id: str):
         stream_id: 聊天流ID
     """
     from src.config.config import global_config
-    from src.plugins.built_in.affinity_flow_chatter.proactive_thinking_scheduler import (
+    from src.plugins.built_in.affinity_flow_chatter.proactive.proactive_thinking_scheduler import (
         proactive_thinking_scheduler,
     )
 

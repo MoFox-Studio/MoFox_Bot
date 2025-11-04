@@ -35,13 +35,17 @@ class MetaEventHandler:
                 self_id = message.get("self_id")
                 self.last_heart_beat = time.time()
                 logger.info(f"Bot {self_id} 连接成功")
-                asyncio.create_task(self.check_heartbeat(self_id))
+                # 不在连接时立即启动心跳检查，等第一个心跳包到达后再启动
         elif event_type == MetaEventType.heartbeat:
             if message["status"].get("online") and message["status"].get("good"):
-                if not self._interval_checking:
-                    asyncio.create_task(self.check_heartbeat())
+                self_id = message.get("self_id")
+                if not self._interval_checking and self_id:
+                    # 第一次收到心跳包时才启动心跳检查
+                    asyncio.create_task(self.check_heartbeat(self_id))
                 self.last_heart_beat = time.time()
-                self.interval = message.get("interval") / 1000
+                interval = message.get("interval")
+                if interval:
+                    self.interval = interval / 1000
             else:
                 self_id = message.get("self_id")
                 logger.warning(f"Bot {self_id} Napcat 端异常！")

@@ -26,6 +26,8 @@ class BotInterestManager:
     def __init__(self):
         self.current_interests: BotPersonalityInterests | None = None
         self.embedding_cache: dict[str, list[float]] = {}  # embedding缓存
+        self.expanded_tag_cache: dict[str, str] = {}  # 扩展标签缓存
+        self.expanded_embedding_cache: dict[str, list[float]] = {}  # 扩展标签的embedding缓存
         self._initialized = False
 
         # Embedding客户端配置
@@ -122,6 +124,10 @@ class BotInterestManager:
             tags_info = [f"  - '{tag.tag_name}' (权重: {tag.weight:.2f})" for tag in loaded_interests.get_active_tags()]
             tags_str = "\n".join(tags_info)
             logger.info(f"当前兴趣标签:\n{tags_str}")
+            
+            # 为加载的标签生成embedding（数据库不存储embedding，启动时动态生成）
+            logger.info("🧠 为加载的标签生成embedding向量...")
+            await self._generate_embeddings_for_tags(loaded_interests)
         else:
             # 生成新的兴趣标签
             logger.info("数据库中未找到兴趣标签，开始生成...")
@@ -169,22 +175,47 @@ class BotInterestManager:
 1. 标签应该符合人设特点和性格
 2. 每个标签都有权重（0.1-1.0），表示对该兴趣的喜好程度
 3. 生成15-25个不等的标签
-4. 标签应该是具体的关键词，而不是抽象概念
-5. 每个标签的长度不超过10个字符
+4. 每个标签包含两个部分：
+   - name: 简短的标签名（2-6个字符），用于显示和管理，如"Python"、"追番"、"撸猫"
+   - expanded: 完整的描述性文本（20-50个字符），用于语义匹配，描述这个兴趣的具体内容和场景
+5. expanded 扩展描述要求：
+   - 必须是完整的句子或短语，包含丰富的语义信息
+   - 描述具体的对话场景、活动内容、相关话题
+   - 避免过于抽象，要有明确的语境
+   - 示例：
+     * "Python" -> "讨论Python编程语言、写Python代码、Python脚本开发、Python技术问题"
+     * "追番" -> "讨论正在播出的动漫番剧、追番进度、动漫剧情、番剧推荐、动漫角色"
+     * "撸猫" -> "讨论猫咪宠物、晒猫分享、萌宠日常、可爱猫猫、养猫心得"
+     * "社恐" -> "表达社交焦虑、不想见人、想躲起来、害怕社交的心情"
+     * "深夜码代码" -> "深夜写代码、熬夜编程、夜猫子程序员、深夜调试bug"
 
 请以JSON格式返回，格式如下：
 {{
     "interests": [
-        {{"name": "标签名", "weight": 0.8}},
-        {{"name": "标签名", "weight": 0.6}},
-        {{"name": "标签名", "weight": 0.9}}
+        {{
+            "name": "Python",
+            "expanded": "讨论Python编程语言、写Python代码、Python脚本开发、Python技术问题",
+            "weight": 0.9
+        }},
+        {{
+            "name": "追番",
+            "expanded": "讨论正在播出的动漫番剧、追番进度、动漫剧情、番剧推荐、动漫角色",
+            "weight": 0.85
+        }},
+        {{
+            "name": "撸猫",
+            "expanded": "讨论猫咪宠物、晒猫分享、萌宠日常、可爱猫猫、养猫心得",
+            "weight": 0.95
+        }}
     ]
 }}
 
 注意：
-- 权重范围0.1-1.0，权重越高表示越感兴趣
-- 标签要具体，如"编程"、"游戏"、"旅行"等
-- 根据人设生成个性化的标签
+- name: 简短标签名，2-6个字符，方便显示
+- expanded: 完整描述，20-50个字符，用于精准的语义匹配
+- weight: 权重范围0.1-1.0，权重越高表示越感兴趣
+- 根据人设生成个性化、具体的标签和描述
+- expanded 描述要有具体场景，避免泛化
 """
 
             # 调用LLM生成兴趣标签
@@ -211,16 +242,22 @@ class BotInterestManager:
             for i, tag_data in enumerate(interests_list):
                 tag_name = tag_data.get("name", f"标签_{i}")
                 weight = tag_data.get("weight", 0.5)
+                expanded = tag_data.get("expanded")  # 获取扩展描述
 
                 # 检查标签长度，如果过长则截断
                 if len(tag_name) > 10:
                     logger.warning(f"⚠️ 标签 '{tag_name}' 过长，将截断为10个字符")
                     tag_name = tag_name[:10]
 
-                tag = BotInterestTag(tag_name=tag_name, weight=weight)
-                bot_interests.interest_tags.append(tag)
+                # 验证扩展描述
+                if expanded:
+                    logger.debug(f"   🏷️  {tag_name} (权重: {weight:.2f})")
+                    logger.debug(f"      📝 扩展: {expanded}")
+                else:
+                    logger.warning(f"   ⚠️ 标签 '{tag_name}' 缺少扩展描述，将使用回退方案")
 
-                logger.debug(f"   🏷️  {tag_name} (权重: {weight:.2f})")
+                tag = BotInterestTag(tag_name=tag_name, weight=weight, expanded=expanded)
+                bot_interests.interest_tags.append(tag)
 
             # 为所有标签生成embedding
             logger.info("🧠 开始为兴趣标签生成embedding向量...")
@@ -284,35 +321,47 @@ class BotInterestManager:
             return None
 
     async def _generate_embeddings_for_tags(self, interests: BotPersonalityInterests):
-        """为所有兴趣标签生成embedding"""
+        """为所有兴趣标签生成embedding（缓存在内存和文件中）"""
         if not hasattr(self, "embedding_request"):
             raise RuntimeError("❌ Embedding客户端未初始化，无法生成embedding")
 
         total_tags = len(interests.interest_tags)
+        
+        # 尝试从文件加载缓存
+        file_cache = await self._load_embedding_cache_from_file(interests.personality_id)
+        if file_cache:
+            logger.info(f"📂 从文件加载 {len(file_cache)} 个embedding缓存")
+            self.embedding_cache.update(file_cache)
+        
         logger.info(f"🧠 开始为 {total_tags} 个兴趣标签生成embedding向量...")
 
-        cached_count = 0
+        memory_cached_count = 0
+        file_cached_count = 0
         generated_count = 0
         failed_count = 0
 
         for i, tag in enumerate(interests.interest_tags, 1):
             if tag.tag_name in self.embedding_cache:
-                # 使用缓存的embedding
+                # 使用缓存的embedding（可能来自内存或文件）
                 tag.embedding = self.embedding_cache[tag.tag_name]
-                cached_count += 1
-                logger.debug(f"   [{i}/{total_tags}] 🏷️  '{tag.tag_name}' - 使用缓存")
+                if file_cache and tag.tag_name in file_cache:
+                    file_cached_count += 1
+                    logger.debug(f"   [{i}/{total_tags}] 📂 '{tag.tag_name}' - 使用文件缓存")
+                else:
+                    memory_cached_count += 1
+                    logger.debug(f"   [{i}/{total_tags}] 💾 '{tag.tag_name}' - 使用内存缓存")
             else:
-                # 生成新的embedding
+                # 动态生成新的embedding
                 embedding_text = tag.tag_name
 
-                logger.debug(f"   [{i}/{total_tags}] 🔄 正在为 '{tag.tag_name}' 生成embedding...")
+                logger.debug(f"   [{i}/{total_tags}] 🔄 正在为 '{tag.tag_name}' 动态生成embedding...")
                 embedding = await self._get_embedding(embedding_text)
 
                 if embedding:
-                    tag.embedding = embedding
-                    self.embedding_cache[tag.tag_name] = embedding
+                    tag.embedding = embedding  # 设置到 tag 对象（内存中）
+                    self.embedding_cache[tag.tag_name] = embedding  # 同时缓存到内存
                     generated_count += 1
-                    logger.debug(f"   ✅ '{tag.tag_name}' embedding生成成功")
+                    logger.debug(f"   ✅ '{tag.tag_name}' embedding动态生成成功")
                 else:
                     failed_count += 1
                     logger.warning(f"   ❌ '{tag.tag_name}' embedding生成失败")
@@ -320,11 +369,17 @@ class BotInterestManager:
         if failed_count > 0:
             raise RuntimeError(f"❌ 有 {failed_count} 个兴趣标签embedding生成失败")
 
+        # 如果有新生成的embedding，保存到文件
+        if generated_count > 0:
+            await self._save_embedding_cache_to_file(interests.personality_id)
+            logger.info(f"💾 已将 {generated_count} 个新生成的embedding保存到缓存文件")
+
         interests.last_updated = datetime.now()
         logger.info("=" * 50)
         logger.info("✅ Embedding生成完成!")
         logger.info(f"📊 总标签数: {total_tags}")
-        logger.info(f"💾 缓存命中: {cached_count}")
+        logger.info(f"� 文件缓存命中: {file_cached_count}")
+        logger.info(f"�💾 内存缓存命中: {memory_cached_count}")
         logger.info(f"🆕 新生成: {generated_count}")
         logger.info(f"❌ 失败: {failed_count}")
         logger.info(f"🗃️  总缓存大小: {len(self.embedding_cache)}")
@@ -421,7 +476,19 @@ class BotInterestManager:
     async def calculate_interest_match(
         self, message_text: str, keywords: list[str] | None = None
     ) -> InterestMatchResult:
-        """计算消息与机器人兴趣的匹配度"""
+        """计算消息与机器人兴趣的匹配度（优化版 - 标签扩展策略）
+        
+        核心优化：将短标签扩展为完整的描述性句子，解决语义粒度不匹配问题
+        
+        原问题：
+        - 消息: "今天天气不错" (完整句子)
+        - 标签: "蹭人治愈" (2-4字短语) 
+        - 结果: 误匹配，因为短标签的 embedding 过于抽象
+        
+        解决方案：
+        - 标签扩展: "蹭人治愈" -> "表达亲近、寻求安慰、撒娇的内容"
+        - 现在是: 句子 vs 句子，匹配更准确
+        """
         if not self.current_interests or not self._initialized:
             raise RuntimeError("❌ 兴趣标签系统未初始化")
 
@@ -442,13 +509,13 @@ class BotInterestManager:
         message_embedding = await self._get_embedding(message_text)
         logger.debug(f"消息 embedding 生成成功, 维度: {len(message_embedding)}")
 
-        # 计算与每个兴趣标签的相似度
+        # 计算与每个兴趣标签的相似度（使用扩展标签）
         match_count = 0
         high_similarity_count = 0
         medium_similarity_count = 0
         low_similarity_count = 0
 
-        # 分级相似度阈值
+        # 分级相似度阈值 - 优化后可以提高阈值，因为匹配更准确了
         affinity_config = global_config.affinity_flow
         high_threshold = affinity_config.high_match_interest_threshold
         medium_threshold = affinity_config.medium_match_interest_threshold
@@ -458,27 +525,45 @@ class BotInterestManager:
 
         for tag in active_tags:
             if tag.embedding:
-                similarity = self._calculate_cosine_similarity(message_embedding, tag.embedding)
+                # 🔧 优化：获取扩展标签的 embedding（带缓存）
+                expanded_embedding = await self._get_expanded_tag_embedding(tag.tag_name)
+                
+                if expanded_embedding:
+                    # 使用扩展标签的 embedding 进行匹配
+                    similarity = self._calculate_cosine_similarity(message_embedding, expanded_embedding)
+                    
+                    # 同时计算原始标签的相似度作为参考
+                    original_similarity = self._calculate_cosine_similarity(message_embedding, tag.embedding)
+                    
+                    # 混合策略：扩展标签权重更高（70%），原始标签作为补充（30%）
+                    # 这样可以兼顾准确性（扩展）和灵活性（原始）
+                    final_similarity = similarity * 0.7 + original_similarity * 0.3
+                    
+                    logger.debug(f"标签'{tag.tag_name}': 原始={original_similarity:.3f}, 扩展={similarity:.3f}, 最终={final_similarity:.3f}")
+                else:
+                    # 如果扩展 embedding 获取失败，使用原始 embedding
+                    final_similarity = self._calculate_cosine_similarity(message_embedding, tag.embedding)
+                    logger.debug(f"标签'{tag.tag_name}': 使用原始相似度={final_similarity:.3f}")
 
                 # 基础加权分数
-                weighted_score = similarity * tag.weight
+                weighted_score = final_similarity * tag.weight
 
                 # 根据相似度等级应用不同的加成
-                if similarity > high_threshold:
+                if final_similarity > high_threshold:
                     # 高相似度：强加成
                     enhanced_score = weighted_score * affinity_config.high_match_keyword_multiplier
                     match_count += 1
                     high_similarity_count += 1
                     result.add_match(tag.tag_name, enhanced_score, [tag.tag_name])
 
-                elif similarity > medium_threshold:
+                elif final_similarity > medium_threshold:
                     # 中相似度：中等加成
                     enhanced_score = weighted_score * affinity_config.medium_match_keyword_multiplier
                     match_count += 1
                     medium_similarity_count += 1
                     result.add_match(tag.tag_name, enhanced_score, [tag.tag_name])
 
-                elif similarity > low_threshold:
+                elif final_similarity > low_threshold:
                     # 低相似度：轻微加成
                     enhanced_score = weighted_score * affinity_config.low_match_keyword_multiplier
                     match_count += 1
@@ -518,7 +603,130 @@ class BotInterestManager:
         logger.debug(
             f"最终结果: 总分={result.overall_score:.3f}, 置信度={result.confidence:.3f}, 匹配标签数={len(result.matched_tags)}"
         )
+        
+        # 如果有新生成的扩展embedding，保存到缓存文件
+        if hasattr(self, '_new_expanded_embeddings_generated') and self._new_expanded_embeddings_generated:
+            await self._save_embedding_cache_to_file(self.current_interests.personality_id)
+            self._new_expanded_embeddings_generated = False
+            logger.debug("💾 已保存新生成的扩展embedding到缓存文件")
+        
         return result
+
+    async def _get_expanded_tag_embedding(self, tag_name: str) -> list[float] | None:
+        """获取扩展标签的 embedding（带缓存）
+        
+        优先使用缓存，如果没有则生成并缓存
+        """
+        # 检查缓存
+        if tag_name in self.expanded_embedding_cache:
+            return self.expanded_embedding_cache[tag_name]
+        
+        # 扩展标签
+        expanded_tag = self._expand_tag_for_matching(tag_name)
+        
+        # 生成 embedding
+        try:
+            embedding = await self._get_embedding(expanded_tag)
+            if embedding:
+                # 缓存结果
+                self.expanded_tag_cache[tag_name] = expanded_tag
+                self.expanded_embedding_cache[tag_name] = embedding
+                self._new_expanded_embeddings_generated = True  # 标记有新生成的embedding
+                logger.debug(f"✅ 为标签'{tag_name}'生成并缓存扩展embedding: {expanded_tag[:50]}...")
+                return embedding
+        except Exception as e:
+            logger.warning(f"为标签'{tag_name}'生成扩展embedding失败: {e}")
+        
+        return None
+
+    def _expand_tag_for_matching(self, tag_name: str) -> str:
+        """将短标签扩展为完整的描述性句子
+        
+        这是解决"标签太短导致误匹配"的核心方法
+        
+        策略：
+        1. 优先使用 LLM 生成的 expanded 字段（最准确）
+        2. 如果没有，使用基于规则的回退方案
+        3. 最后使用通用模板
+        
+        示例：
+        - "Python" + expanded -> "讨论Python编程语言、写Python代码、Python脚本开发、Python技术问题"
+        - "蹭人治愈" + expanded -> "想要获得安慰、寻求温暖关怀、撒娇卖萌、表达亲昵、求抱抱求陪伴的对话"
+        """
+        # 使用缓存
+        if tag_name in self.expanded_tag_cache:
+            return self.expanded_tag_cache[tag_name]
+        
+        # 🎯 优先策略：使用 LLM 生成的 expanded 字段
+        if self.current_interests:
+            for tag in self.current_interests.interest_tags:
+                if tag.tag_name == tag_name and tag.expanded:
+                    logger.debug(f"✅ 使用LLM生成的扩展描述: {tag_name} -> {tag.expanded[:50]}...")
+                    self.expanded_tag_cache[tag_name] = tag.expanded
+                    return tag.expanded
+        
+        # 🔧 回退策略：基于规则的扩展（用于兼容旧数据或LLM未生成扩展的情况）
+        logger.debug(f"⚠️ 标签'{tag_name}'没有LLM扩展描述，使用规则回退方案")
+        tag_lower = tag_name.lower()
+        
+        # 技术编程类标签（具体化描述）
+        if any(word in tag_lower for word in ['python', 'java', 'code', '代码', '编程', '脚本', '算法', '开发']):
+            if 'python' in tag_lower:
+                return f"讨论Python编程语言、写Python代码、Python脚本开发、Python技术问题"
+            elif '算法' in tag_lower:
+                return f"讨论算法题目、数据结构、编程竞赛、刷LeetCode题目、代码优化"
+            elif '代码' in tag_lower or '被窝' in tag_lower:
+                return f"讨论写代码、编程开发、代码实现、技术方案、编程技巧"
+            else:
+                return f"讨论编程开发、软件技术、代码编写、技术实现"
+        
+        # 情感表达类标签（具体化为真实对话场景）
+        elif any(word in tag_lower for word in ['治愈', '撒娇', '安慰', '呼噜', '蹭', '卖萌']):
+            return f"想要获得安慰、寻求温暖关怀、撒娇卖萌、表达亲昵、求抱抱求陪伴的对话"
+        
+        # 游戏娱乐类标签（具体游戏场景）
+        elif any(word in tag_lower for word in ['游戏', '网游', 'mmo', '游', '玩']):
+            return f"讨论网络游戏、MMO游戏、游戏玩法、组队打副本、游戏攻略心得"
+        
+        # 动漫影视类标签（具体观看行为）
+        elif any(word in tag_lower for word in ['番', '动漫', '视频', 'b站', '弹幕', '追番', '云新番']):
+            # 特别处理"云新番" - 它的意思是在网上看新动漫，不是泛泛的"新东西"
+            if '云' in tag_lower or '新番' in tag_lower:
+                return f"讨论正在播出的新动漫、新番剧集、动漫剧情、追番心得、动漫角色"
+            else:
+                return f"讨论动漫番剧内容、B站视频、弹幕文化、追番体验"
+        
+        # 社交平台类标签（具体平台行为）
+        elif any(word in tag_lower for word in ['小红书', '贴吧', '论坛', '社区', '吃瓜', '八卦']):
+            if '吃瓜' in tag_lower:
+                return f"聊八卦爆料、吃瓜看热闹、网络热点事件、社交平台热议话题"
+            else:
+                return f"讨论社交平台内容、网络社区话题、论坛讨论、分享生活"
+        
+        # 生活日常类标签（具体萌宠场景）
+        elif any(word in tag_lower for word in ['猫', '宠物', '尾巴', '耳朵', '毛绒']):
+            return f"讨论猫咪宠物、晒猫分享、萌宠日常、可爱猫猫、养猫心得"
+        
+        # 状态心情类标签（具体情绪状态）
+        elif any(word in tag_lower for word in ['社恐', '隐身', '流浪', '深夜', '被窝']):
+            if '社恐' in tag_lower:
+                return f"表达社交焦虑、不想见人、想躲起来、害怕社交的心情"
+            elif '深夜' in tag_lower:
+                return f"深夜睡不着、熬夜、夜猫子、深夜思考人生的对话"
+            else:
+                return f"表达当前心情状态、个人感受、生活状态"
+        
+        # 物品装备类标签（具体使用场景）
+        elif any(word in tag_lower for word in ['键盘', '耳机', '装备', '设备']):
+            return f"讨论键盘耳机装备、数码产品、使用体验、装备推荐评测"
+        
+        # 互动关系类标签
+        elif any(word in tag_lower for word in ['拾风', '互怼', '互动']):
+            return f"聊天互动、开玩笑、友好互怼、日常对话交流"
+        
+        # 默认：尽量具体化
+        else:
+            return f"明确讨论{tag_name}这个特定主题的具体内容和相关话题"
 
     def _calculate_keyword_match_bonus(self, keywords: list[str], matched_tags: list[str]) -> dict[str, float]:
         """计算关键词直接匹配奖励"""
@@ -668,11 +876,12 @@ class BotInterestManager:
                             last_updated=db_interests.last_updated,
                         )
 
-                        # 解析兴趣标签
+                        # 解析兴趣标签（embedding 从数据库加载后会被忽略，因为我们不再存储它）
                         for tag_data in tags_data:
                             tag = BotInterestTag(
                                 tag_name=tag_data.get("tag_name", ""),
                                 weight=tag_data.get("weight", 0.5),
+                                expanded=tag_data.get("expanded"),  # 加载扩展描述
                                 created_at=datetime.fromisoformat(
                                     tag_data.get("created_at", datetime.now().isoformat())
                                 ),
@@ -680,11 +889,11 @@ class BotInterestManager:
                                     tag_data.get("updated_at", datetime.now().isoformat())
                                 ),
                                 is_active=tag_data.get("is_active", True),
-                                embedding=tag_data.get("embedding"),
+                                embedding=None,  # 不再从数据库加载 embedding，改为动态生成
                             )
                             interests.interest_tags.append(tag)
 
-                        logger.debug(f"成功解析 {len(interests.interest_tags)} 个兴趣标签")
+                        logger.debug(f"成功解析 {len(interests.interest_tags)} 个兴趣标签（embedding 将在初始化时动态生成）")
                         return interests
 
                     except (orjson.JSONDecodeError, Exception) as e:
@@ -715,16 +924,17 @@ class BotInterestManager:
             from src.common.database.compatibility import get_db_session
             from src.common.database.core.models import BotPersonalityInterests as DBBotPersonalityInterests
 
-            # 将兴趣标签转换为JSON格式
+            # 将兴趣标签转换为JSON格式（不再保存embedding，启动时动态生成）
             tags_data = []
             for tag in interests.interest_tags:
                 tag_dict = {
                     "tag_name": tag.tag_name,
                     "weight": tag.weight,
+                    "expanded": tag.expanded,  # 保存扩展描述
                     "created_at": tag.created_at.isoformat(),
                     "updated_at": tag.updated_at.isoformat(),
                     "is_active": tag.is_active,
-                    "embedding": tag.embedding,
+                    # embedding 不再存储到数据库，改为内存缓存
                 }
                 tags_data.append(tag_dict)
 
@@ -797,6 +1007,79 @@ class BotInterestManager:
             logger.error(f"❌ 保存兴趣标签到数据库失败: {e}")
             logger.error("🔍 错误详情:")
             traceback.print_exc()
+
+    async def _load_embedding_cache_from_file(self, personality_id: str) -> dict[str, list[float]] | None:
+        """从文件加载embedding缓存"""
+        try:
+            import orjson
+            from pathlib import Path
+            
+            cache_dir = Path("data/embedding")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_file = cache_dir / f"{personality_id}_embeddings.json"
+            
+            if not cache_file.exists():
+                logger.debug(f"📂 Embedding缓存文件不存在: {cache_file}")
+                return None
+            
+            # 读取缓存文件
+            with open(cache_file, "rb") as f:
+                cache_data = orjson.loads(f.read())
+            
+            # 验证缓存版本和embedding模型
+            cache_version = cache_data.get("version", 1)
+            cache_embedding_model = cache_data.get("embedding_model", "")
+            current_embedding_model = self.embedding_config.model_list[0] if hasattr(self.embedding_config, "model_list") else ""
+            
+            if cache_embedding_model != current_embedding_model:
+                logger.warning(f"⚠️ Embedding模型已变更 ({cache_embedding_model} → {current_embedding_model})，忽略旧缓存")
+                return None
+            
+            embeddings = cache_data.get("embeddings", {})
+            
+            # 同时加载扩展标签的embedding缓存
+            expanded_embeddings = cache_data.get("expanded_embeddings", {})
+            if expanded_embeddings:
+                self.expanded_embedding_cache.update(expanded_embeddings)
+                logger.info(f"📂 加载 {len(expanded_embeddings)} 个扩展标签embedding缓存")
+            
+            logger.info(f"✅ 成功从文件加载 {len(embeddings)} 个标签embedding缓存 (版本: {cache_version}, 模型: {cache_embedding_model})")
+            return embeddings
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 加载embedding缓存文件失败: {e}")
+            return None
+    
+    async def _save_embedding_cache_to_file(self, personality_id: str):
+        """保存embedding缓存到文件（包括扩展标签的embedding）"""
+        try:
+            import orjson
+            from pathlib import Path
+            from datetime import datetime
+            
+            cache_dir = Path("data/embedding")
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_file = cache_dir / f"{personality_id}_embeddings.json"
+            
+            # 准备缓存数据
+            current_embedding_model = self.embedding_config.model_list[0] if hasattr(self.embedding_config, "model_list") and self.embedding_config.model_list else ""
+            cache_data = {
+                "version": 1,
+                "personality_id": personality_id,
+                "embedding_model": current_embedding_model,
+                "last_updated": datetime.now().isoformat(),
+                "embeddings": self.embedding_cache,
+                "expanded_embeddings": self.expanded_embedding_cache,  # 同时保存扩展标签的embedding
+            }
+            
+            # 写入文件
+            with open(cache_file, "wb") as f:
+                f.write(orjson.dumps(cache_data, option=orjson.OPT_INDENT_2))
+            
+            logger.debug(f"💾 已保存 {len(self.embedding_cache)} 个标签embedding和 {len(self.expanded_embedding_cache)} 个扩展embedding到缓存文件: {cache_file}")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ 保存embedding缓存文件失败: {e}")
 
     def get_current_interests(self) -> BotPersonalityInterests | None:
         """获取当前的兴趣标签配置"""

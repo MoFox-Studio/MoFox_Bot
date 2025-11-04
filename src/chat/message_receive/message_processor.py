@@ -196,10 +196,17 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
             state["is_emoji"] = False
             state["is_video"] = False
             state["is_at"] = True
-            # 处理at消息，格式为"昵称:QQ号"
-            if isinstance(segment.data, str) and ":" in segment.data:
-                nickname, qq_id = segment.data.split(":", 1)
-                return f"@{nickname}"
+            # 处理at消息，格式为"@<昵称:QQ号>"
+            if isinstance(segment.data, str):
+                if ":" in segment.data:
+                    # 标准格式: "昵称:QQ号"
+                    nickname, qq_id = segment.data.split(":", 1)
+                    result = f"@<{nickname}:{qq_id}>"
+                    return result
+                else:
+                    logger.warning(f"[at处理] 无法解析格式: '{segment.data}'")
+                    return f"@{segment.data}"        
+            logger.warning(f"[at处理] 数据类型异常: {type(segment.data)}")
             return f"@{segment.data}" if isinstance(segment.data, str) else "@未知用户"
 
         elif segment.type == "image":

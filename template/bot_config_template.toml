@@ -1,5 +1,5 @@
 [inner]
-version = "7.5.6"
+version = "7.5.7"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -558,6 +558,12 @@ no_reply_threshold_adjustment = 0.01 # 不回复兴趣阈值调整值
 reply_cooldown_reduction = 5 # 回复后减少的不回复计数
 max_no_reply_count = 20 # 最大不回复计数次数
 
+# 回复后连续对话机制参数
+enable_post_reply_boost = true # 是否启用回复后阈值降低机制，使bot在回复后更容易进行连续对话
+post_reply_threshold_reduction = 0.15 # 回复后初始阈值降低值（建议0.1-0.2）
+post_reply_boost_max_count = 3 # 回复后阈值降低的最大持续次数（建议2-5）
+post_reply_boost_decay_rate = 0.5 # 每次回复后阈值降低衰减率（0-1，建议0.3-0.7）
+
 # 综合评分权重
 keyword_match_weight = 0.4 # 兴趣关键词匹配度权重
 mention_bot_weight = 0.3 # 提及bot分数权重
@@ -565,14 +571,10 @@ relationship_weight = 0.3 # 人物关系分数权重
 
 # 提及bot相关参数
 mention_bot_adjustment_threshold = 0.5 # 提及bot后的调整阈值
-mention_bot_interest_score = 2.5 # 提及bot的兴趣分
+# 强提及（被@、被回复、私聊）和弱提及（文本匹配名字/别名）使用不同分值
+strong_mention_interest_score = 2.5 # 强提及的兴趣分（被@、被回复、私聊）
+weak_mention_interest_score = 1.5 # 弱提及的兴趣分（文本匹配bot名字或别名）
 base_relationship_score = 0.3 # 基础人物关系分
-
-# 关系追踪系统参数
-enable_relationship_tracking = true # 是否启用关系追踪系统
-relationship_tracking_probability = 0.7 # 关系追踪执行概率 (0.0-1.0)，用于减少API调用压力
-relationship_tracking_interval_min = 300 # 关系追踪最小间隔时间（秒）
-relationship_tracking_cooldown_hours = 1.0 # 同一用户关系追踪冷却时间（小时）
 
 [proactive_thinking] # 主动思考（主动发起对话）功能配置
 # 详细配置说明请参考：docs/proactive_thinking_config_guide.md
