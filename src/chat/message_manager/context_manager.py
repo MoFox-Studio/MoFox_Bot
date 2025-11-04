@@ -15,11 +15,9 @@ from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.base.component_types import ChatType
 
-from .distribution_manager import stream_loop_manager
-
 logger = get_logger("context_manager")
 
-# 全局背景任务集合
+# 全局背景任务集合（用于异步初始化等后台任务）
 _background_tasks = set()
 
 
@@ -59,18 +57,26 @@ class SingleStreamContextManager:
 
         Args:
             message: 消息对象
-                skip_energy_update: 是否跳过能量更新（兼容参数，当前忽略）
+            skip_energy_update: 是否跳过能量更新（兼容参数，当前忽略）
 
         Returns:
             bool: 是否成功添加
         """
         try:
-            # 使用MessageManager的内置缓存系统
+            # 尝试使用MessageManager的内置缓存系统
+            use_cache_system = False
+            message_manager = None
             try:
-                from .message_manager import message_manager
+                from .message_manager import message_manager as mm
+                message_manager = mm
+                use_cache_system = message_manager.is_running
+            except Exception as e:
+                logger.debug(f"MessageManager不可用，使用直接添加: {e}")
+                use_cache_system = False
 
-                # 如果MessageManager正在运行，使用缓存系统
-                if message_manager.is_running:
+            if use_cache_system and message_manager:
+                # 使用缓存系统
+                try:
                     # 先计算兴趣值（需要在缓存前计算）
                     await self._calculate_message_interest(message)
                     message.is_read = False
@@ -97,18 +103,18 @@ class SingleStreamContextManager:
                         else:
                             logger.debug(f"消息已缓存，等待当前处理完成: stream={self.stream_id}")
 
-                        # 启动流的循环任务（如果还未启动）
-                        task = asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
-                        _background_tasks.add(task)
-                        task.add_done_callback(_background_tasks.discard)
                         logger.debug(f"添加消息到缓存系统: {self.stream_id}")
                         return True
                     else:
                         logger.warning(f"消息缓存系统添加失败，回退到直接添加: {self.stream_id}")
-            except Exception as e:
-                logger.warning(f"消息缓存系统异常，回退到直接添加: {self.stream_id}, error={e}")
+                        use_cache_system = False
+                except Exception as e:
+                    logger.warning(f"消息缓存系统异常，回退到直接添加: {self.stream_id}, error={e}")
+                    use_cache_system = False
 
-                # 回退方案：直接添加到未读消息
+            # 回退方案：直接添加到未读消息
+            # 这部分代码在缓存系统失败或不可用时执行
+            if not use_cache_system:
                 message.is_read = False
                 self.context.unread_messages.append(message)
 
@@ -119,12 +125,13 @@ class SingleStreamContextManager:
                 await self._calculate_message_interest(message)
                 self.total_messages += 1
                 self.last_access_time = time.time()
-                # 启动流的循环任务（如果还未启动）
-                task = asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
-                _background_tasks.add(task)
-                task.add_done_callback(_background_tasks.discard)
+                
                 logger.debug(f"添加消息{message.processed_plain_text}到单流上下文: {self.stream_id}")
                 return True
+            
+            # 不应该到达这里，但为了类型检查添加返回值
+            return True
+            
         except Exception as e:
             logger.error(f"添加消息到单流上下文失败 {self.stream_id}: {e}", exc_info=True)
             return False

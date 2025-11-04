@@ -81,6 +81,7 @@ class UnifiedScheduler:
         self._check_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
         self._event_subscriptions: set[str] = set()  # 追踪已订阅的事件
+        self._executing_tasks: dict[str, asyncio.Task] = {}  # 追踪正在执行的任务
 
     async def _handle_event_trigger(self, event_name: str | EventType, event_params: dict[str, Any]) -> None:
         """处理来自 event_manager 的事件通知
@@ -182,9 +183,20 @@ class UnifiedScheduler:
         except ImportError:
             pass
 
+        # 取消所有正在执行的任务
+        executing_tasks = list(self._executing_tasks.values())
+        if executing_tasks:
+            logger.debug(f"取消 {len(executing_tasks)} 个正在执行的任务")
+            for task in executing_tasks:
+                if not task.done():
+                    task.cancel()
+            # 等待所有任务取消完成
+            await asyncio.gather(*executing_tasks, return_exceptions=True)
+
         logger.info("统一调度器已停止")
         self._tasks.clear()
         self._event_subscriptions.clear()
+        self._executing_tasks.clear()
 
     async def _check_loop(self):
         """主循环：每秒检查一次所有任务"""
@@ -202,7 +214,7 @@ class UnifiedScheduler:
     async def _check_and_trigger_tasks(self):
         """检查并触发到期任务
 
-        注意：为了避免死锁，回调执行必须在锁外进行
+        注意：为了避免死锁和阻塞，回调执行必须在锁外并且并发进行
         """
         current_time = datetime.now()
 
@@ -221,33 +233,70 @@ class UnifiedScheduler:
                 except Exception as e:
                     logger.error(f"检查任务 {task.task_name} 时发生错误: {e}", exc_info=True)
 
-        # 第二阶段：在锁外执行回调（避免死锁）
-        tasks_to_remove = []
+        # 第二阶段：在锁外并发执行所有回调（避免死锁和阻塞）
+        if not tasks_to_trigger:
+            return
 
+        # 为每个任务创建独立的异步任务，确保并发执行
+        execution_tasks = []
         for task in tasks_to_trigger:
-            try:
-                logger.debug(f"[调度器] 触发定时任务: {task.task_name}")
+            execution_task = asyncio.create_task(
+                self._execute_task_callback(task, current_time),
+                name=f"execute_{task.task_name}"
+            )
+            execution_tasks.append(execution_task)
+            
+            # 追踪正在执行的任务，以便在 remove_schedule 时可以取消
+            self._executing_tasks[task.schedule_id] = execution_task
 
-                # 执行回调
-                await self._execute_callback(task)
+        # 等待所有任务完成（使用 return_exceptions=True 避免单个任务失败影响其他任务）
+        results = await asyncio.gather(*execution_tasks, return_exceptions=True)
+        
+        # 清理执行追踪
+        for task in tasks_to_trigger:
+            self._executing_tasks.pop(task.schedule_id, None)
 
-                # 更新任务状态
-                task.last_triggered_at = current_time
-                task.trigger_count += 1
+        # 第三阶段：收集需要移除的任务并在锁内移除
+        tasks_to_remove = []
+        for task, result in zip(tasks_to_trigger, results):
+            if isinstance(result, Exception):
+                logger.error(f"[调度器] 执行任务 {task.task_name} 时发生错误: {result}", exc_info=result)
+            elif result is True and not task.is_recurring:
+                # 成功执行且是一次性任务，标记为删除
+                tasks_to_remove.append(task.schedule_id)
+                logger.debug(f"[调度器] 一次性任务 {task.task_name} 已完成，将被移除")
 
-                # 如果不是循环任务，标记为删除
-                if not task.is_recurring:
-                    tasks_to_remove.append(task.schedule_id)
-                    logger.debug(f"[调度器] 一次性任务 {task.task_name} 已完成，将被移除")
-
-            except Exception as e:
-                logger.error(f"[调度器] 执行任务 {task.task_name} 时发生错误: {e}", exc_info=True)
-
-        # 第三阶段：在锁内移除已完成的任务
         if tasks_to_remove:
             async with self._lock:
                 for schedule_id in tasks_to_remove:
                     await self._remove_task_internal(schedule_id)
+
+    async def _execute_task_callback(self, task: ScheduleTask, current_time: datetime) -> bool:
+        """执行单个任务的回调（用于并发执行）
+
+        Args:
+            task: 要执行的任务
+            current_time: 当前时间
+
+        Returns:
+            bool: 执行是否成功
+        """
+        try:
+            logger.debug(f"[调度器] 触发任务: {task.task_name}")
+
+            # 执行回调
+            await self._execute_callback(task)
+
+            # 更新任务状态
+            task.last_triggered_at = current_time
+            task.trigger_count += 1
+
+            logger.debug(f"[调度器] 任务 {task.task_name} 执行完成")
+            return True
+
+        except Exception as e:
+            logger.error(f"[调度器] 执行任务 {task.task_name} 时发生错误: {e}", exc_info=True)
+            return False
 
     async def _should_trigger_task(self, task: ScheduleTask, current_time: datetime) -> bool:
         """判断任务是否应该触发"""
@@ -375,13 +424,25 @@ class UnifiedScheduler:
         return schedule_id
 
     async def remove_schedule(self, schedule_id: str) -> bool:
-        """移除调度任务"""
+        """移除调度任务
+        
+        如果任务正在执行，会取消执行中的任务
+        """
         async with self._lock:
             if schedule_id not in self._tasks:
                 logger.warning(f"尝试移除不存在的任务: {schedule_id}")
                 return False
 
             task = self._tasks[schedule_id]
+            
+            # 检查是否有正在执行的任务
+            executing_task = self._executing_tasks.get(schedule_id)
+            if executing_task and not executing_task.done():
+                logger.debug(f"取消正在执行的任务: {task.task_name}")
+                executing_task.cancel()
+                # 不需要等待，让它在后台取消
+                self._executing_tasks.pop(schedule_id, None)
+            
             await self._remove_task_internal(schedule_id)
             logger.debug(f"移除调度任务: {task.task_name}")
             return True

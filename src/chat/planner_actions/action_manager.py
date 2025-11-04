@@ -204,20 +204,19 @@ class ChatterActionManager:
                         action_prompt_display=reason,
                     )
                 else:
-                    asyncio.create_task(  # noqa: RUF006
-                        database_api.store_action_info(
-                            chat_stream=chat_stream,
-                            action_build_into_prompt=False,
-                            action_prompt_display=reason,
-                            action_done=True,
-                            thinking_id=thinking_id or "",
-                            action_data={"reason": reason},
-                            action_name="no_reply",
-                        )
+                    # 改为同步等待，确保存储完成
+                    await database_api.store_action_info(
+                        chat_stream=chat_stream,
+                        action_build_into_prompt=False,
+                        action_prompt_display=reason,
+                        action_done=True,
+                        thinking_id=thinking_id or "",
+                        action_data={"reason": reason},
+                        action_name="no_reply",
                     )
 
-                # 自动清空所有未读消息
-                asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "no_reply"))  # noqa: RUF006
+                # 自动清空所有未读消息（改为同步等待）
+                await self._clear_all_unread_messages(chat_stream.stream_id, "no_reply")
 
                 return {"action_type": "no_reply", "success": True, "reply_text": "", "command": ""}
 
@@ -233,16 +232,14 @@ class ChatterActionManager:
                     target_message,
                 )
 
-                # 记录执行的动作到目标消息
+                # 记录执行的动作到目标消息（改为同步等待）
                 if success:
-                    asyncio.create_task(  # noqa: RUF006
-                        self._record_action_to_message(chat_stream, action_name, target_message, action_data)
-                    )
+                    await self._record_action_to_message(chat_stream, action_name, target_message, action_data)
                     # 自动清空所有未读消息
                     if clear_unread_messages:
-                        asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, action_name))  # noqa: RUF006
+                        await self._clear_all_unread_messages(chat_stream.stream_id, action_name)
                     # 重置打断计数
-                    asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))  # noqa: RUF006
+                    await self._reset_interruption_count_after_action(chat_stream.stream_id)
 
                 return {
                     "action_type": action_name,
@@ -292,14 +289,14 @@ class ChatterActionManager:
                     should_quote_reply,  # 传递should_quote_reply参数
                 )
 
-                # 记录回复动作到目标消息
-                asyncio.create_task(self._record_action_to_message(chat_stream, "reply", target_message, action_data))  # noqa: RUF006
+                # 记录回复动作到目标消息（改为同步等待）
+                await self._record_action_to_message(chat_stream, "reply", target_message, action_data)
 
                 if clear_unread_messages:
-                    asyncio.create_task(self._clear_all_unread_messages(chat_stream.stream_id, "reply"))  # noqa: RUF006
+                    await self._clear_all_unread_messages(chat_stream.stream_id, "reply")
 
-                # 回复成功，重置打断计数
-                asyncio.create_task(self._reset_interruption_count_after_action(chat_stream.stream_id))  # noqa: RUF006
+                # 回复成功，重置打断计数（改为同步等待）
+                await self._reset_interruption_count_after_action(chat_stream.stream_id)
 
                 return {"action_type": "reply", "success": True, "reply_text": reply_text, "loop_info": loop_info}
 
