@@ -52,6 +52,12 @@ class TimeParser:
 
         time_str = time_str.strip()
 
+        # 先尝试组合解析（如"今天下午"、"昨天晚上"）
+        combined_result = self._parse_combined_time(time_str)
+        if combined_result:
+            logger.debug(f"时间解析: '{time_str}' → {combined_result.isoformat()}")
+            return combined_result
+
         # 尝试各种解析方法
         parsers = [
             self._parse_relative_day,
@@ -104,11 +110,11 @@ class TimeParser:
 
     def _parse_days_ago(self, time_str: str) -> Optional[datetime]:
         """
-        解析 X天前/X天后
+        解析 X天前/X天后、X周前/X周后、X个月前/X个月后
         """
         # 匹配：3天前、5天后、一天前
-        pattern = r"([一二三四五六七八九十\d]+)天(前|后)"
-        match = re.search(pattern, time_str)
+        pattern_day = r"([一二三四五六七八九十\d]+)天(前|后)"
+        match = re.search(pattern_day, time_str)
 
         if match:
             num_str, direction = match.groups()
@@ -118,6 +124,50 @@ class TimeParser:
                 num = -num
 
             result = self.reference_time + timedelta(days=num)
+            return result.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # 匹配：2周前、3周后、一周前
+        pattern_week = r"([一二三四五六七八九十\d]+)[个]?周(前|后)"
+        match = re.search(pattern_week, time_str)
+
+        if match:
+            num_str, direction = match.groups()
+            num = self._chinese_num_to_int(num_str)
+
+            if direction == "前":
+                num = -num
+
+            result = self.reference_time + timedelta(weeks=num)
+            return result.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # 匹配：2个月前、3月后
+        pattern_month = r"([一二三四五六七八九十\d]+)[个]?月(前|后)"
+        match = re.search(pattern_month, time_str)
+
+        if match:
+            num_str, direction = match.groups()
+            num = self._chinese_num_to_int(num_str)
+
+            if direction == "前":
+                num = -num
+
+            # 简单处理：1个月 = 30天
+            result = self.reference_time + timedelta(days=num * 30)
+            return result.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # 匹配：2年前、3年后
+        pattern_year = r"([一二三四五六七八九十\d]+)[个]?年(前|后)"
+        match = re.search(pattern_year, time_str)
+
+        if match:
+            num_str, direction = match.groups()
+            num = self._chinese_num_to_int(num_str)
+
+            if direction == "前":
+                num = -num
+
+            # 简单处理：1年 = 365天
+            result = self.reference_time + timedelta(days=num * 365)
             return result.replace(hour=0, minute=0, second=0, microsecond=0)
 
         return None
@@ -263,6 +313,59 @@ class TimeParser:
             return result.replace(hour=hour)
 
         return None
+
+    def _parse_combined_time(self, time_str: str) -> Optional[datetime]:
+        """
+        解析组合时间表达：今天下午、昨天晚上、明天早上
+        """
+        # 先解析日期部分
+        date_result = None
+        
+        # 相对日期关键词
+        relative_days = {
+            "今天": 0, "今日": 0,
+            "明天": 1, "明日": 1,
+            "昨天": -1, "昨日": -1,
+            "前天": -2, "前日": -2,
+            "后天": 2, "后日": 2,
+            "大前天": -3, "大后天": 3,
+        }
+        
+        for keyword, days in relative_days.items():
+            if keyword in time_str:
+                date_result = self.reference_time + timedelta(days=days)
+                date_result = date_result.replace(hour=0, minute=0, second=0, microsecond=0)
+                break
+        
+        if not date_result:
+            return None
+        
+        # 再解析时间段部分
+        time_periods = {
+            "早上": 8, "早晨": 8,
+            "上午": 10,
+            "中午": 12,
+            "下午": 15,
+            "傍晚": 18,
+            "晚上": 20,
+            "深夜": 23,
+            "凌晨": 2,
+        }
+        
+        for period, hour in time_periods.items():
+            if period in time_str:
+                # 检查是否有具体时间点
+                pattern = rf"{period}(\d{{1,2}})点?"
+                match = re.search(pattern, time_str)
+                if match:
+                    hour = int(match.group(1))
+                    # 下午时间需要+12
+                    if period in ["下午", "晚上"] and hour < 12:
+                        hour += 12
+                return date_result.replace(hour=hour)
+        
+        # 如果没有时间段，返回日期（默认0点）
+        return date_result
 
     def _chinese_num_to_int(self, num_str: str) -> int:
         """
