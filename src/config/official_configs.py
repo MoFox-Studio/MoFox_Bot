@@ -120,6 +120,10 @@ class ChatConfig(ValidatedConfigBase):
     timestamp_display_mode: Literal["normal", "normal_no_YMD", "relative"] = Field(
         default="normal_no_YMD", description="时间戳显示模式"
     )
+    # 消息缓存系统配置
+    enable_message_cache: bool = Field(
+        default=True, description="是否启用消息缓存系统（启用后，处理中收到的消息会被缓存，处理完成后统一刷新到未读列表）"
+    )
     # 消息打断系统配置 - 线性概率模型
     interruption_enabled: bool = Field(default=True, description="是否启用消息打断系统")
     allow_reply_interruption: bool = Field(
@@ -180,6 +184,10 @@ class ExpressionConfig(ValidatedConfigBase):
     mode: Literal["classic", "exp_model"] = Field(
         default="classic",
         description="表达方式选择模式: classic=经典LLM评估, exp_model=机器学习模型预测"
+    )
+    expiration_days: int = Field(
+        default=90,
+        description="表达方式过期天数，超过此天数未激活的表达方式将被清理"
     )
     rules: list[ExpressionRule] = Field(default_factory=list, description="表达学习规则")
 

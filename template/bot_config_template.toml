@@ -1,5 +1,5 @@
 [inner]
-version = "7.5.7"
+version = "7.5.8"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -107,6 +107,9 @@ compress_identity = true # 是否压缩身份，压缩后会精简身份信息�
 #   - "exp_model": 表达模型模式，使用机器学习模型预测最合适的表达
 mode = "classic"
 
+# expiration_days: 表达方式过期天数，超过此天数未激活的表达方式将被清理
+expiration_days = 3
+
 # rules是一个列表，每个元素都是一个学习规则
 # chat_stream_id: 聊天流ID，格式为 "platform:id:type"，例如 "qq:123456:private"。空字符串""表示全局配置
 # use_expression: 是否使用学到的表达 (true/false)
@@ -138,6 +141,9 @@ allow_reply_self = false # 是否允许回复自己说的话
 
 max_context_size = 25 # 上下文长度
 thinking_timeout = 40 # MoFox-Bot一次回复最长思考规划时间，超过这个时间的思考会放弃（往往是api反应太慢）
+
+# 消息缓存系统配置
+enable_message_cache = true # 是否启用消息缓存系统（启用后，处理中收到的消息会被缓存，处理完成后统一刷新到未读列表）
 
 # 消息打断系统配置 - 反比例函数概率模型
 interruption_enabled = true # 是否启用消息打断系统
