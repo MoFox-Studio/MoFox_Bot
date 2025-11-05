@@ -12,6 +12,7 @@ from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.core import get_db_session
 from src.common.database.core.models import Images, Messages
 from src.common.logger import get_logger
+from src.config.config import global_config
 
 from .chat_stream import ChatStream
 from .message import MessageSending
@@ -275,6 +276,9 @@ class MessageStorageBatcher:
 
                 user_platform = user_info_dict.get("platform")
                 user_id = user_info_dict.get("user_id")
+                # 将机器人自己的user_id标记为"SELF"，增强对自我身份的识别
+                if user_id == global_config.bot.qq_account:
+                    user_id = "SELF"
                 user_nickname = user_info_dict.get("user_nickname")
                 user_cardname = user_info_dict.get("user_cardname")
 
@@ -612,6 +616,9 @@ class MessageStorage:
 
                 user_platform = user_info_dict.get("platform")
                 user_id = user_info_dict.get("user_id")
+                # 将机器人自己的user_id标记为"SELF"，增强对自我身份的识别
+                if user_id == global_config.bot.qq_account:
+                    user_id = "SELF"
                 user_nickname = user_info_dict.get("user_nickname")
                 user_cardname = user_info_dict.get("user_cardname")
 

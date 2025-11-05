@@ -44,8 +44,8 @@ def replace_user_references_sync(
 
     if name_resolver is None:
         def default_resolver(platform: str, user_id: str) -> str:
-            # 检查是否是机器人自己
-            if replace_bot_name and user_id == global_config.bot.qq_account:
+            # 检查是否是机器人自己（支持SELF标记或直接比对QQ号）
+            if replace_bot_name and (user_id == "SELF" or user_id == global_config.bot.qq_account):
                 return f"{global_config.bot.nickname}(你)"
             # 同步函数中无法使用异步的 get_value，直接返回 user_id
             # 建议调用方使用 replace_user_references_async 以获取完整的用户名
@@ -60,8 +60,8 @@ def replace_user_references_sync(
         aaa = match[1]
         bbb = match[2]
         try:
-            # 检查是否是机器人自己
-            if replace_bot_name and bbb == global_config.bot.qq_account:
+            # 检查是否是机器人自己（支持SELF标记或直接比对QQ号）
+            if replace_bot_name and (bbb == "SELF" or bbb == global_config.bot.qq_account):
                 reply_person_name = f"{global_config.bot.nickname}(你)"
             else:
                 reply_person_name = name_resolver(platform, bbb) or aaa
@@ -81,8 +81,8 @@ def replace_user_references_sync(
             aaa = m.group(1)
             bbb = m.group(2)
             try:
-                # 检查是否是机器人自己
-                if replace_bot_name and bbb == global_config.bot.qq_account:
+                # 检查是否是机器人自己（支持SELF标记或直接比对QQ号）
+                if replace_bot_name and (bbb == "SELF" or bbb == global_config.bot.qq_account):
                     at_person_name = f"{global_config.bot.nickname}(你)"
                 else:
                     at_person_name = name_resolver(platform, bbb) or aaa
@@ -120,8 +120,8 @@ async def replace_user_references_async(
         person_info_manager = get_person_info_manager()
 
         async def default_resolver(platform: str, user_id: str) -> str:
-            # 检查是否是机器人自己
-            if replace_bot_name and user_id == global_config.bot.qq_account:
+            # 检查是否是机器人自己（支持SELF标记或直接比对QQ号）
+            if replace_bot_name and (user_id == "SELF" or user_id == global_config.bot.qq_account):
                 return f"{global_config.bot.nickname}(你)"
             person_id = PersonInfoManager.get_person_id(platform, user_id)
             return await person_info_manager.get_value(person_id, "person_name") or user_id  # type: ignore
@@ -135,8 +135,8 @@ async def replace_user_references_async(
         aaa = match.group(1)
         bbb = match.group(2)
         try:
-            # 检查是否是机器人自己
-            if replace_bot_name and bbb == global_config.bot.qq_account:
+            # 检查是否是机器人自己（支持SELF标记或直接比对QQ号）
+            if replace_bot_name and (bbb == "SELF" or bbb == global_config.bot.qq_account):
                 reply_person_name = f"{global_config.bot.nickname}(你)"
             else:
                 reply_person_name = await name_resolver(platform, bbb) or aaa
@@ -156,8 +156,8 @@ async def replace_user_references_async(
             aaa = m.group(1)
             bbb = m.group(2)
             try:
-                # 检查是否是机器人自己
-                if replace_bot_name and bbb == global_config.bot.qq_account:
+                # 检查是否是机器人自己（支持SELF标记或直接比对QQ号）
+                if replace_bot_name and (bbb == "SELF" or bbb == global_config.bot.qq_account):
                     at_person_name = f"{global_config.bot.nickname}(你)"
                 else:
                     at_person_name = await name_resolver(platform, bbb) or aaa
@@ -638,13 +638,14 @@ async def _build_readable_messages_internal(
         if not all([platform, user_id, timestamp is not None]):
             continue
 
-        person_id = PersonInfoManager.get_person_id(platform, user_id)
-        person_info_manager = get_person_info_manager()
         # 根据 replace_bot_name 参数决定是否替换机器人名称
         person_name: str
-        if replace_bot_name and user_id == global_config.bot.qq_account:
+        # 检查是否是机器人自己（支持SELF标记或直接比对QQ号）
+        if replace_bot_name and (user_id == "SELF" or user_id == global_config.bot.qq_account):
             person_name = f"{global_config.bot.nickname}(你)"
         else:
+            person_id = PersonInfoManager.get_person_id(platform, user_id)
+            person_info_manager = get_person_info_manager()
             person_name = await person_info_manager.get_value(person_id, "person_name")  # type: ignore
 
         # 如果 person_name 未设置，则使用消息中的 nickname 或默认名称
@@ -656,8 +657,8 @@ async def _build_readable_messages_internal(
             else:
                 person_name = "某人"
 
-        # 在用户名后面添加 QQ 号, 但机器人本体不用
-        if user_id != global_config.bot.qq_account:
+        # 在用户名后面添加 QQ 号, 但机器人本体不用（包括SELF标记）
+        if user_id != global_config.bot.qq_account and user_id != "SELF":
             person_name = f"{person_name}({user_id})"
 
         # 使用独立函数处理用户引用格式
