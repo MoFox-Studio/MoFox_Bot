@@ -555,164 +555,8 @@ class DefaultReplyer:
 
         instant_memory = None
 
-        # 使用新的增强记忆系统检索记忆
-        running_memories = []
-        instant_memory = None
-
-        if global_config.memory.enable_memory:
-            try:
-                # 使用新的统一记忆系统
-                from src.chat.memory_system import get_memory_system
-
-                stream = self.chat_stream
-                user_info_obj = getattr(stream, "user_info", None)
-                group_info_obj = getattr(stream, "group_info", None)
-
-                memory_user_id = str(stream.stream_id)
-                memory_user_display = None
-                memory_aliases = []
-                user_info_dict = {}
-
-                if user_info_obj is not None:
-                    raw_user_id = getattr(user_info_obj, "user_id", None)
-                    if raw_user_id:
-                        memory_user_id = str(raw_user_id)
-
-                    if hasattr(user_info_obj, "to_dict"):
-                        try:
-                            user_info_dict = user_info_obj.to_dict()  # type: ignore[attr-defined]
-                        except Exception:
-                            user_info_dict = {}
-
-                    candidate_keys = [
-                        "user_cardname",
-                        "user_nickname",
-                        "nickname",
-                        "remark",
-                        "display_name",
-                        "user_name",
-                    ]
-
-                    for key in candidate_keys:
-                        value = user_info_dict.get(key)
-                        if isinstance(value, str) and value.strip():
-                            stripped = value.strip()
-                            if memory_user_display is None:
-                                memory_user_display = stripped
-                            elif stripped not in memory_aliases:
-                                memory_aliases.append(stripped)
-
-                    attr_keys = [
-                        "user_cardname",
-                        "user_nickname",
-                        "nickname",
-                        "remark",
-                        "display_name",
-                        "name",
-                    ]
-
-                    for attr in attr_keys:
-                        value = getattr(user_info_obj, attr, None)
-                        if isinstance(value, str) and value.strip():
-                            stripped = value.strip()
-                            if memory_user_display is None:
-                                memory_user_display = stripped
-                            elif stripped not in memory_aliases:
-                                memory_aliases.append(stripped)
-
-                    alias_values = (
-                        user_info_dict.get("aliases")
-                        or user_info_dict.get("alias_names")
-                        or user_info_dict.get("alias")
-                    )
-                    if isinstance(alias_values, list | tuple | set):
-                        for alias in alias_values:
-                            if isinstance(alias, str) and alias.strip():
-                                stripped = alias.strip()
-                                if stripped not in memory_aliases and stripped != memory_user_display:
-                                    memory_aliases.append(stripped)
-
-                memory_context = {
-                    "user_id": memory_user_id,
-                    "user_display_name": memory_user_display or "",
-                    "user_name": memory_user_display or "",
-                    "nickname": memory_user_display or "",
-                    "sender_name": memory_user_display or "",
-                    "platform": getattr(stream, "platform", None),
-                    "chat_id": stream.stream_id,
-                    "stream_id": stream.stream_id,
-                }
-
-                if memory_aliases:
-                    memory_context["user_aliases"] = memory_aliases
-
-                if group_info_obj is not None:
-                    group_name = getattr(group_info_obj, "group_name", None) or getattr(
-                        group_info_obj, "group_nickname", None
-                    )
-                    if group_name:
-                        memory_context["group_name"] = str(group_name)
-                    group_id = getattr(group_info_obj, "group_id", None)
-                    if group_id:
-                        memory_context["group_id"] = str(group_id)
-
-                memory_context = {key: value for key, value in memory_context.items() if value}
-
-                # 获取记忆系统实例
-                memory_system = get_memory_system()
-
-                # 使用统一记忆系统检索相关记忆
-                enhanced_memories = await memory_system.retrieve_relevant_memories(
-                    query=target, user_id=memory_user_id, scope_id=stream.stream_id, context=memory_context, limit=10
-                )
-
-                # 注意：记忆存储已迁移到回复生成完成后进行，不在查询阶段执行
-
-                # 转换格式以兼容现有代码
-                running_memories = []
-                if enhanced_memories:
-                    logger.debug(f"[记忆转换] 收到 {len(enhanced_memories)} 条原始记忆")
-                    for idx, memory_chunk in enumerate(enhanced_memories, 1):
-                        # 获取结构化内容的字符串表示
-                        structure_display = str(memory_chunk.content) if hasattr(memory_chunk, "content") else "unknown"
-
-                        # 获取记忆内容，优先使用display
-                        content = memory_chunk.display or memory_chunk.text_content or ""
-
-                        # 调试：记录每条记忆的内容获取情况
-                        logger.debug(
-                            f"[记忆转换] 第{idx}条: display={repr(memory_chunk.display)[:80]}, text_content={repr(memory_chunk.text_content)[:80]}, final_content={repr(content)[:80]}"
-                        )
-
-                        running_memories.append(
-                            {
-                                "content": content,
-                                "memory_type": memory_chunk.memory_type.value,
-                                "confidence": memory_chunk.metadata.confidence.value,
-                                "importance": memory_chunk.metadata.importance.value,
-                                "relevance": getattr(memory_chunk.metadata, "relevance_score", 0.5),
-                                "source": memory_chunk.metadata.source,
-                                "structure": structure_display,
-                            }
-                        )
-
-                # 构建瞬时记忆字符串
-                if running_memories:
-                    top_memory = running_memories[:1]
-                    if top_memory:
-                        instant_memory = top_memory[0].get("content", "")
-
-                logger.info(
-                    f"增强记忆系统检索到 {len(enhanced_memories)} 条原始记忆，转换为 {len(running_memories)} 条可用记忆"
-                )
-
-            except Exception as e:
-                logger.warning(f"增强记忆系统检索失败: {e}")
-                running_memories = []
-                instant_memory = ""
-
-        # 尝试从记忆图系统检索记忆
-        graph_memories = []
+        # 使用新的记忆图系统检索记忆
+        all_memories = []
         try:
             from src.memory_graph.manager_singleton import get_memory_manager, is_initialized
             
@@ -722,8 +566,8 @@ class DefaultReplyer:
                     # 搜索相关记忆
                     memories = await manager.search_memories(
                         query=target,
-                        top_k=5,
-                        min_importance=0.5,
+                        top_k=10,  # 增加检索数量
+                        min_importance=0.3,  # 降低最低重要性阈值，获取更多记忆
                         include_forgotten=False
                     )
                     
@@ -733,27 +577,29 @@ class DefaultReplyer:
                             topic = memory.metadata.get("topic", "")
                             mem_type = memory.metadata.get("memory_type", "未知")
                             if topic:
-                                graph_memories.append({
+                                all_memories.append({
                                     "content": topic,
                                     "memory_type": mem_type,
                                     "importance": memory.importance,
                                     "relevance": 0.7,  # 默认相关度
                                     "source": "memory_graph",
                                 })
+                        
+                        # 提取最重要的记忆作为瞬时记忆
+                        if all_memories:
+                            top_memory = max(all_memories, key=lambda m: m.get("importance", 0))
+                            instant_memory = top_memory.get("content", "")
                     else:
                         logger.debug("[记忆图] 未找到相关记忆")
         except Exception as e:
             logger.debug(f"[记忆图] 检索失败: {e}")
-            graph_memories = []
-
-        # 合并记忆（增强记忆系统 + 记忆图系统）
-        all_memories = running_memories + graph_memories
+            all_memories = []
         
         # 构建记忆字符串，使用方括号格式
         memory_str = ""
         has_any_memory = False
 
-        # 添加长期记忆（来自增强记忆系统 + 记忆图系统）
+        # 添加长期记忆（来自记忆图系统）
         if all_memories:
             # 使用方括号格式
             memory_parts = ["### 🧠 相关记忆 (Relevant Memories)", ""]
@@ -2159,23 +2005,9 @@ class DefaultReplyer:
                 show_actions=True,
             )
 
-            # 异步存储聊天历史（完全非阻塞）
-            memory_system = get_memory_system()
-            task = asyncio.create_task(
-                memory_system.process_conversation_memory(
-                    context={
-                        "conversation_text": chat_history,
-                        "user_id": memory_user_id,
-                        "scope_id": stream.stream_id,
-                        **memory_context,
-                    }
-                )
-            )
-            # 将任务添加到全局集合以防止被垃圾回收
-            _background_tasks.add(task)
-            task.add_done_callback(_background_tasks.discard)
-
-            logger.debug(f"已启动记忆存储任务，用户: {memory_user_display or memory_user_id}")
+            # 旧记忆系统的自动存储已禁用
+            # 新记忆系统通过 LLM 工具调用（create_memory）来创建记忆
+            logger.debug(f"记忆创建通过 LLM 工具调用进行，用户: {memory_user_display or memory_user_id}")
 
         except asyncio.CancelledError:
             logger.debug("记忆存储任务被取消")

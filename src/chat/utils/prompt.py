@@ -398,6 +398,9 @@ class Prompt:
         """
         start_time = time.time()
 
+        # 初始化预构建参数字典
+        pre_built_params = {}
+        
         try:
             # --- 步骤 1: 准备构建任务 ---
             tasks = []
@@ -406,7 +409,6 @@ class Prompt:
             # --- 步骤 1.1: 优先使用预构建的参数 ---
             # 如果参数对象中已经包含了某些block，说明它们是外部预构建的，
             # 我们将它们存起来，并跳过对应的实时构建任务。
-            pre_built_params = {}
             if self.parameters.expression_habits_block:
                 pre_built_params["expression_habits_block"] = self.parameters.expression_habits_block
             if self.parameters.relation_info_block:
@@ -428,11 +430,9 @@ class Prompt:
                 tasks.append(self._build_expression_habits())
                 task_names.append("expression_habits")
 
-            # 记忆块构建非常耗时，强烈建议预构建。如果没有预构建，这里会运行一个快速的后备版本。
-            if self.parameters.enable_memory and not pre_built_params.get("memory_block"):
-                logger.debug("memory_block未预构建，执行快速构建作为后备方案")
-                tasks.append(self._build_memory_block_fast())
-                task_names.append("memory_block")
+            # 记忆块构建已移至 default_generator.py 的 build_memory_block 方法
+            # 使用新的记忆图系统，不再在 prompt.py 中构建记忆
+            # 如果需要记忆，必须通过 pre_built_params 传入
 
             if self.parameters.enable_relation and not pre_built_params.get("relation_info_block"):
                 tasks.append(self._build_relation_info())
@@ -637,8 +637,12 @@ class Prompt:
             logger.error(f"构建表达习惯失败: {e}")
             return {"expression_habits_block": ""}
 
-    async def _build_memory_block(self) -> dict[str, Any]:
-        """构建与当前对话相关的记忆上下文块（完整版）."""
+    # _build_memory_block 和 _build_memory_block_fast 已移除
+    # 记忆构建现在完全由 default_generator.py 的 build_memory_block 方法处理
+    # 使用新的记忆图系统，通过 pre_built_params 传入
+    
+    async def _REMOVED_build_memory_block(self) -> dict[str, Any]:
+        """已废弃：构建与当前对话相关的记忆上下文块（完整版）."""
         if not global_config.memory.enable_memory:
             return {"memory_block": ""}
 
@@ -753,8 +757,8 @@ class Prompt:
             logger.error(f"构建记忆块失败: {e}")
             return {"memory_block": ""}
 
-    async def _build_memory_block_fast(self) -> dict[str, Any]:
-        """快速构建记忆块（简化版），作为未预构建时的后备方案."""
+    async def _REMOVED_build_memory_block_fast(self) -> dict[str, Any]:
+        """已废弃：快速构建记忆块（简化版），作为未预构建时的后备方案."""
         if not global_config.memory.enable_memory:
             return {"memory_block": ""}
 

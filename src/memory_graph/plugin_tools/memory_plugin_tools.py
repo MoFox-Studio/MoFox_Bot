@@ -107,7 +107,7 @@ class LinkMemoriesTool(BaseTool):
         ("strength", ToolParamType.FLOAT, "关系强度（0.0-1.0），默认0.7", False, None),
     ]
     
-    available_for_llm = True
+    available_for_llm = False  # 暂不对 LLM 开放
 
     async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:
         """执行关联记忆"""
@@ -166,7 +166,7 @@ class SearchMemoriesTool(BaseTool):
         ("min_importance", ToolParamType.FLOAT, "最低重要性阈值（0.0-1.0），只返回重要性不低于此值的记忆", False, None),
     ]
     
-    available_for_llm = True
+    available_for_llm = False  # 暂不对 LLM 开放，记忆检索在提示词构建时自动执行
 
     async def execute(self, function_args: dict[str, Any]) -> dict[str, Any]:
         """执行搜索记忆"""
@@ -183,7 +183,7 @@ class SearchMemoriesTool(BaseTool):
             query = function_args.get("query", "")
             top_k = function_args.get("top_k", 5)
             min_importance_raw = function_args.get("min_importance")
-            min_importance = float(min_importance_raw) if min_importance_raw is not None else None
+            min_importance = float(min_importance_raw) if min_importance_raw is not None else 0.0
             
             # 搜索记忆
             memories = await manager.search_memories(
