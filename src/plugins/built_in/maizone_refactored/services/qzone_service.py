@@ -274,7 +274,7 @@ class QZoneService:
 
                 # 检查是否是Cookie失效（-3000错误）
                 if "错误码: -3000" in error_msg and retry_count == 0:
-                    logger.warning(f"检测到Cookie失效（-3000错误），准备删除缓存并重试...")
+                    logger.warning("检测到Cookie失效（-3000错误），准备删除缓存并重试...")
 
                     # 删除Cookie缓存文件
                     cookie_file = self.cookie_service._get_cookie_file_path(qq_account)

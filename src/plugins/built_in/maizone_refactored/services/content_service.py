@@ -205,7 +205,7 @@ class ContentService:
 
                 if success and reply_set:
                     reply = "".join([content for type, content in reply_set if type == "text"])
-                    logger.info(f"成功为'{commenter_name}'的评论生成回复: '{reply}'")
+                    logger.debug(f"成功为'{commenter_name}'的评论生成回复: '{reply}'")
                     return reply
                 else:
                     if i < 2:
@@ -287,8 +287,8 @@ class ContentService:
             text_model = str(self.get_config("models.text_model", "replyer"))
 
             # 调试日志
-            logger.info(f"[DEBUG] 读取到的text_model配置: '{text_model}'")
-            logger.info(f"[DEBUG] 可用模型列表: {list(models.keys())[:10]}...")  # 只显示前10个
+            logger.debug(f"[DEBUG] 读取到的text_model配置: '{text_model}'")
+            logger.debug(f"[DEBUG] 可用模型列表: {list(models.keys())[:10]}...")  # 只显示前10个
 
             model_config = models.get(text_model)
 

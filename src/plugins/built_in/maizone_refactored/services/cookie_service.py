@@ -139,7 +139,6 @@ class CookieService:
         if cookies:
             logger.info(f"成功从Adapter API为 {qq_account} 获取Cookie，keys={list(cookies.keys())}")
             self._save_cookies_to_file(qq_account, cookies)
-            logger.info(f"[DEBUG] Cookie已保存，即将返回")
             return cookies
 
         logger.error(
