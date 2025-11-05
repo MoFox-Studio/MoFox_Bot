@@ -92,17 +92,27 @@ class VectorStore:
             return
 
         try:
+            # 准备元数据（ChromaDB 只支持 str, int, float, bool）
+            metadata = {
+                "content": node.content,
+                "node_type": node.node_type.value,
+                "created_at": node.created_at.isoformat(),
+            }
+            
+            # 处理额外的元数据，将 list 转换为 JSON 字符串
+            for key, value in node.metadata.items():
+                if isinstance(value, (list, dict)):
+                    import json
+                    metadata[key] = json.dumps(value, ensure_ascii=False)
+                elif isinstance(value, (str, int, float, bool)) or value is None:
+                    metadata[key] = value
+                else:
+                    metadata[key] = str(value)
+            
             self.collection.add(
                 ids=[node.id],
                 embeddings=[node.embedding.tolist()],
-                metadatas=[
-                    {
-                        "content": node.content,
-                        "node_type": node.node_type.value,
-                        "created_at": node.created_at.isoformat(),
-                        **node.metadata,
-                    }
-                ],
+                metadatas=[metadata],
                 documents=[node.content],  # 文本内容用于检索
             )
 
@@ -130,18 +140,28 @@ class VectorStore:
             return
 
         try:
+            # 准备元数据
+            import json
+            metadatas = []
+            for n in valid_nodes:
+                metadata = {
+                    "content": n.content,
+                    "node_type": n.node_type.value,
+                    "created_at": n.created_at.isoformat(),
+                }
+                for key, value in n.metadata.items():
+                    if isinstance(value, (list, dict)):
+                        metadata[key] = json.dumps(value, ensure_ascii=False)
+                    elif isinstance(value, (str, int, float, bool)) or value is None:
+                        metadata[key] = value  # type: ignore
+                    else:
+                        metadata[key] = str(value)
+                metadatas.append(metadata)
+            
             self.collection.add(
                 ids=[n.id for n in valid_nodes],
-                embeddings=[n.embedding.tolist() for n in valid_nodes],
-                metadatas=[
-                    {
-                        "content": n.content,
-                        "node_type": n.node_type.value,
-                        "created_at": n.created_at.isoformat(),
-                        **n.metadata,
-                    }
-                    for n in valid_nodes
-                ],
+                embeddings=[n.embedding.tolist() for n in valid_nodes],  # type: ignore
+                metadatas=metadatas,
                 documents=[n.content for n in valid_nodes],
             )
 
@@ -187,16 +207,26 @@ class VectorStore:
             )
 
             # 解析结果
+            import json
             similar_nodes = []
             if results["ids"] and results["ids"][0]:
                 for i, node_id in enumerate(results["ids"][0]):
                     # ChromaDB 返回的是距离，需要转换为相似度
                     # 余弦距离: distance = 1 - similarity
-                    distance = results["distances"][0][i]
+                    distance = results["distances"][0][i] if results["distances"] else 0.0  # type: ignore
                     similarity = 1.0 - distance
 
                     if similarity >= min_similarity:
-                        metadata = results["metadatas"][0][i] if results["metadatas"] else {}
+                        metadata = results["metadatas"][0][i] if results["metadatas"] else {}  # type: ignore
+                        
+                        # 解析 JSON 字符串回列表/字典
+                        for key, value in list(metadata.items()):
+                            if isinstance(value, str) and (value.startswith('[') or value.startswith('{')):
+                                try:
+                                    metadata[key] = json.loads(value)
+                                except:
+                                    pass  # 保持原值
+                        
                         similar_nodes.append((node_id, similarity, metadata))
 
             logger.debug(f"相似节点搜索: 找到 {len(similar_nodes)} 个结果")
