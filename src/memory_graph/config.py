@@ -86,6 +86,11 @@ class MemoryGraphConfig:
     consolidation_similarity_threshold: float = 0.85
     consolidation_time_window_hours: int = 24
     
+    # 自动关联配置
+    auto_link_enabled: bool = True  # 是否启用自动关联
+    auto_link_max_candidates: int = 5  # 每个记忆最多关联候选数
+    auto_link_min_confidence: float = 0.7  # 最低置信度阈值
+    
     # 遗忘配置
     forgetting_enabled: bool = True
     forgetting_activation_threshold: float = 0.1
@@ -145,6 +150,9 @@ class MemoryGraphConfig:
                     consolidation_interval_hours=getattr(mg_config, 'consolidation_interval_hours', 1.0),
                     consolidation_similarity_threshold=getattr(mg_config, 'consolidation_similarity_threshold', 0.85),
                     consolidation_time_window_hours=getattr(mg_config, 'consolidation_time_window_hours', 24),
+                    auto_link_enabled=getattr(mg_config, 'auto_link_enabled', True),
+                    auto_link_max_candidates=getattr(mg_config, 'auto_link_max_candidates', 5),
+                    auto_link_min_confidence=getattr(mg_config, 'auto_link_min_confidence', 0.7),
                     forgetting_enabled=getattr(mg_config, 'forgetting_enabled', True),
                     forgetting_activation_threshold=getattr(mg_config, 'forgetting_activation_threshold', 0.1),
                     forgetting_min_importance=getattr(mg_config, 'forgetting_min_importance', 0.8),
@@ -183,6 +191,9 @@ class MemoryGraphConfig:
             consolidation_interval_hours=config_dict.get("consolidation_interval_hours", 1.0),
             consolidation_similarity_threshold=config_dict.get("consolidation_similarity_threshold", 0.85),
             consolidation_time_window_hours=config_dict.get("consolidation_time_window_hours", 24),
+            auto_link_enabled=config_dict.get("auto_link_enabled", True),
+            auto_link_max_candidates=config_dict.get("auto_link_max_candidates", 5),
+            auto_link_min_confidence=config_dict.get("auto_link_min_confidence", 0.7),
             forgetting_enabled=config_dict.get("forgetting_enabled", True),
             forgetting_activation_threshold=config_dict.get("forgetting_activation_threshold", 0.1),
             forgetting_min_importance=config_dict.get("forgetting_min_importance", 0.8),

@@ -42,6 +42,7 @@ class EdgeType(Enum):
     ATTRIBUTE = "属性关系"  # 任意节点 → 属性
     CAUSALITY = "因果关系"  # 记忆 → 记忆
     REFERENCE = "引用关系"  # 记忆 → 记忆（转述）
+    RELATION = "关联关系"  # 记忆 → 记忆（自动关联发现的关系）
 
 
 class MemoryStatus(Enum):

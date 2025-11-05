@@ -73,38 +73,84 @@ class MemoryTools:
         """
         return {
             "name": "create_memory",
-            "description": "创建一个新的记忆。记忆由主体、类型、主题、客体（可选）和属性组成。",
+            "description": """创建一个新的记忆节点。
+
+⚠️ 记忆创建原则（必须遵守）：
+1. **价值判断**：只创建具有长期价值的关键信息，避免记录日常闲聊、礼貌用语、重复信息
+2. **细粒度原则**：每条记忆只包含一个明确的事实/事件/观点，避免泛化
+3. **原子性**：如果一句话包含多个重要信息点，拆分成多条独立记忆
+4. **具体性**：记录具体的人、事、物、时间、地点，避免模糊描述
+
+❌ 不应创建记忆的情况：
+- 普通问候、感谢、确认等礼貌性对话
+- 已存在的重复信息
+- 临时性、一次性的琐碎信息
+- 纯粹的功能操作指令（如"帮我查一下"）
+- 缺乏上下文的碎片化信息
+
+✅ 应该创建记忆的情况：
+- 用户的个人信息（姓名、职业、兴趣、联系方式等）
+- 重要事件（项目进展、重大决定、关键行动等）
+- 长期偏好/观点（喜好、价值观、习惯等）
+- 人际关系变化（新朋友、合作关系等）
+- 具体计划/目标（明确的待办事项、长期目标等）
+
+📝 拆分示例：
+- ❌ "用户喜欢编程，最近在学Python和机器学习" → 过于泛化
+- ✅ 拆分为3条：
+  1. "用户喜欢编程"（观点）
+  2. "用户正在学习Python"（事件）
+  3. "用户正在学习机器学习"（事件）
+
+记忆结构：主体 + 类型 + 主题 + 客体（可选）+ 属性""",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "subject": {
                         "type": "string",
-                        "description": "记忆的主体，通常是'我'、'用户'或具体的人名",
+                        "description": "记忆的主体，通常是'用户'或具体的人名（避免使用'我'）",
                     },
                     "memory_type": {
                         "type": "string",
                         "enum": ["事件", "事实", "关系", "观点"],
-                        "description": "记忆类型：事件（时间绑定的动作）、事实（稳定状态）、关系（人际关系）、观点（主观评价）",
+                        "description": "记忆类型：\n- 事件：时间绑定的具体动作（如'完成项目'、'学习课程'）\n- 事实：稳定的客观状态（如'职业是工程师'、'住在北京'）\n- 关系：人际关系（如'认识了朋友'、'同事关系'）\n- 观点：主观评价/偏好（如'喜欢Python'、'认为AI很重要'）",
                     },
                     "topic": {
                         "type": "string",
-                        "description": "记忆的主题，即发生的事情或状态",
+                        "description": "记忆的核心主题，必须具体且明确（如'学习PyTorch框架'而非'学习编程'）",
                     },
                     "object": {
                         "type": "string",
-                        "description": "记忆的客体，即主题作用的对象（可选）",
+                        "description": "记忆的客体/对象，作为主题的补充说明（如主题是'学习'，客体可以是'PyTorch框架'）",
                     },
                     "attributes": {
                         "type": "object",
-                        "description": "记忆的属性，如时间、地点、原因、方式等",
+                        "description": "记忆的具体属性（尽量填写以增加记忆的信息密度）",
                         "properties": {
                             "时间": {
                                 "type": "string",
-                                "description": "时间表达式，如'今天'、'昨天'、'3天前'、'2025-11-05'",
+                                "description": "具体时间表达式，如'2025-11-05'、'今天下午'、'最近一周'、'3天前'",
                             },
-                            "地点": {"type": "string", "description": "地点"},
-                            "原因": {"type": "string", "description": "原因"},
-                            "方式": {"type": "string", "description": "方式"},
+                            "地点": {
+                                "type": "string", 
+                                "description": "具体地点（如果相关）"
+                            },
+                            "原因": {
+                                "type": "string", 
+                                "description": "事件发生的原因或动机（如果明确）"
+                            },
+                            "方式": {
+                                "type": "string", 
+                                "description": "完成的方式或途径（如果相关）"
+                            },
+                            "结果": {
+                                "type": "string",
+                                "description": "事件的结果或影响（如果已知）"
+                            },
+                            "状态": {
+                                "type": "string",
+                                "description": "当前状态（如'进行中'、'已完成'、'计划中'）"
+                            },
                         },
                         "additionalProperties": True,
                     },
@@ -112,7 +158,7 @@ class MemoryTools:
                         "type": "number",
                         "minimum": 0.0,
                         "maximum": 1.0,
-                        "description": "记忆的重要性，0-1之间的浮点数，默认0.5",
+                        "description": "记忆的重要性评分（0.0-1.0）：\n- 0.3-0.4: 次要信息\n- 0.5-0.6: 一般信息\n- 0.7-0.8: 重要信息（用户明确表达的偏好、重要事件）\n- 0.9-1.0: 关键信息（核心个人信息、重大决定、强烈偏好）\n默认0.5",
                     },
                 },
                 "required": ["subject", "memory_type", "topic"],
@@ -129,27 +175,42 @@ class MemoryTools:
         """
         return {
             "name": "link_memories",
-            "description": "关联两个已存在的记忆，建立因果或引用关系。",
+            "description": """手动关联两个已存在的记忆。
+
+⚠️ 使用建议：
+- 系统会自动发现记忆间的关联关系，通常不需要手动调用此工具
+- 仅在以下情况使用：
+  1. 用户明确指出两个记忆之间的关系
+  2. 发现明显的因果关系但系统未自动关联
+  3. 需要建立特殊的引用关系
+
+关系类型说明：
+- 导致：A事件/行为导致B事件/结果（因果关系）
+- 引用：A记忆引用/基于B记忆（知识关联）
+- 相似：A和B描述相似的内容（主题相似）
+- 相反：A和B表达相反的观点（对比关系）
+- 关联：A和B存在一般性关联（其他关系）""",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "source_memory_description": {
                         "type": "string",
-                        "description": "源记忆的描述，用于查找对应的记忆",
+                        "description": "源记忆的关键描述（用于搜索定位，需要足够具体）",
                     },
                     "target_memory_description": {
                         "type": "string",
-                        "description": "目标记忆的描述，用于查找对应的记忆",
+                        "description": "目标记忆的关键描述（用于搜索定位，需要足够具体）",
                     },
                     "relation_type": {
                         "type": "string",
-                        "description": "关系类型，如'导致'、'引起'、'因为'、'所以'、'引用'、'基于'等",
+                        "enum": ["导致", "引用", "相似", "相反", "关联"],
+                        "description": "关系类型（从上述5种类型中选择最合适的）",
                     },
                     "importance": {
                         "type": "number",
                         "minimum": 0.0,
                         "maximum": 1.0,
-                        "description": "关系的重要性，0-1之间的浮点数，默认0.6",
+                        "description": "关系的重要性（0.0-1.0）：\n- 0.5-0.6: 一般关联\n- 0.7-0.8: 重要关联\n- 0.9-1.0: 关键关联\n默认0.6",
                     },
                 },
                 "required": [
@@ -170,13 +231,25 @@ class MemoryTools:
         """
         return {
             "name": "search_memories",
-            "description": "搜索相关的记忆。支持语义搜索、图遍历和时间过滤。",
+            "description": """搜索相关的记忆，用于回忆和查找历史信息。
+
+使用场景：
+- 用户询问之前的对话内容
+- 需要回忆用户的个人信息、偏好、经历
+- 查找相关的历史事件或观点
+- 基于上下文补充信息
+
+搜索特性：
+- 语义搜索：基于内容相似度匹配
+- 图遍历：自动扩展相关联的记忆
+- 时间过滤：按时间范围筛选
+- 类型过滤：按记忆类型筛选""",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "搜索查询，描述要查找的记忆内容",
+                        "description": "搜索查询（用自然语言描述要查找的内容，如'用户的职业'、'最近的项目'、'Python相关的记忆'）",
                     },
                     "memory_types": {
                         "type": "array",
@@ -184,33 +257,33 @@ class MemoryTools:
                             "type": "string",
                             "enum": ["事件", "事实", "关系", "观点"],
                         },
-                        "description": "要搜索的记忆类型，可多选",
+                        "description": "记忆类型过滤（可选，留空表示搜索所有类型）",
                     },
                     "time_range": {
                         "type": "object",
                         "properties": {
                             "start": {
                                 "type": "string",
-                                "description": "开始时间，如'3天前'、'2025-11-01'",
+                                "description": "开始时间（如'3天前'、'上周'、'2025-11-01'）",
                             },
                             "end": {
                                 "type": "string",
-                                "description": "结束时间，如'今天'、'2025-11-05'",
+                                "description": "结束时间（如'今天'、'现在'、'2025-11-05'）",
                             },
                         },
-                        "description": "时间范围过滤（可选）",
+                        "description": "时间范围（可选，用于查找特定时间段的记忆）",
                     },
                     "top_k": {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 50,
-                        "description": "返回结果数量，默认10",
+                        "description": "返回结果数量（1-50，默认10）。根据需求调整：\n- 快速查找：3-5条\n- 一般搜索：10条\n- 全面了解：20-30条",
                     },
                     "expand_depth": {
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 3,
-                        "description": "图遍历扩展深度，0表示不扩展，默认1",
+                        "description": "图扩展深度（0-3，默认1）：\n- 0: 仅返回直接匹配的记忆\n- 1: 包含一度相关的记忆（推荐）\n- 2-3: 包含更多间接相关的记忆（用于深度探索）",
                     },
                 },
                 "required": ["query"],

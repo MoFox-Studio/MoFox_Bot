@@ -387,8 +387,80 @@ class GraphStore:
         for node_id, mem_ids in data.get("node_to_memories", {}).items():
             store.node_to_memories[node_id] = set(mem_ids)
 
+        # 5. 同步图中的边到 Memory.edges（保证内存对象和图一致）
+        try:
+            store._sync_memory_edges_from_graph()
+        except Exception:
+            logger.exception("同步图边到记忆.edges 失败")
+
         logger.info(f"从字典加载图: {store.get_statistics()}")
         return store
+
+    def _sync_memory_edges_from_graph(self) -> None:
+        """
+        将 NetworkX 图中的边重建为 MemoryEdge 并注入到对应的 Memory.edges 列表中。
+
+        目的：当从持久化数据加载时，确保 memory_index 中的 Memory 对象的
+        edges 列表反映图中实际存在的边（避免只有图中存在而 memory.edges 为空的不同步情况）。
+
+        规则：对于图中每条边(u, v, data)，会尝试将该边注入到所有包含 u 或 v 的记忆中（避免遗漏跨记忆边）。
+        已存在的边（通过 edge.id 检查）将不会重复添加。
+        """
+        from src.memory_graph.models import MemoryEdge
+
+        # 构建快速查重索引：memory_id -> set(edge_id)
+        existing_edges = {mid: {e.id for e in mem.edges} for mid, mem in self.memory_index.items()}
+
+        for u, v, data in self.graph.edges(data=True):
+            # 兼容旧数据：edge_id 可能在 data 中，或叫 id
+            edge_id = data.get("edge_id") or data.get("id") or ""
+
+            edge_dict = {
+                "id": edge_id or "",
+                "source_id": u,
+                "target_id": v,
+                "relation": data.get("relation", ""),
+                "edge_type": data.get("edge_type", data.get("edge_type", "")),
+                "importance": data.get("importance", 0.5),
+                "metadata": data.get("metadata", {}),
+                "created_at": data.get("created_at", "1970-01-01T00:00:00"),
+            }
+
+            # 找到相关记忆（包含源或目标节点）
+            related_memory_ids = set()
+            if u in self.node_to_memories:
+                related_memory_ids.update(self.node_to_memories[u])
+            if v in self.node_to_memories:
+                related_memory_ids.update(self.node_to_memories[v])
+
+            for mid in related_memory_ids:
+                mem = self.memory_index.get(mid)
+                if mem is None:
+                    continue
+
+                # 检查是否已存在
+                if edge_dict["id"] and edge_dict["id"] in existing_edges.get(mid, set()):
+                    continue
+
+                try:
+                    # 使用 MemoryEdge.from_dict 构建对象
+                    mem_edge = MemoryEdge.from_dict(edge_dict)
+                except Exception:
+                    # 兼容性：直接构造对象
+                    mem_edge = MemoryEdge(
+                        id=edge_dict["id"] or "",
+                        source_id=edge_dict["source_id"],
+                        target_id=edge_dict["target_id"],
+                        relation=edge_dict["relation"],
+                        edge_type=edge_dict["edge_type"],
+                        importance=edge_dict.get("importance", 0.5),
+                        metadata=edge_dict.get("metadata", {}),
+                    )
+
+                mem.edges.append(mem_edge)
+                existing_edges.setdefault(mid, set()).add(mem_edge.id)
+
+        logger.info("已将图中的边同步到 Memory.edges（保证 graph 与 memory 对象一致）")
 
     def remove_memory(self, memory_id: str) -> bool:
         """
