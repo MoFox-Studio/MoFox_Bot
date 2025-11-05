@@ -66,6 +66,41 @@ class StorageConfig:
 class MemoryGraphConfig:
     """记忆图系统总配置"""
 
+    # 基础配置
+    enable: bool = True  # 是否启用记忆图系统
+    data_dir: Path = field(default_factory=lambda: Path("data/memory_graph"))
+    
+    # 向量存储配置
+    vector_collection_name: str = "memory_nodes"
+    vector_db_path: Path = field(default_factory=lambda: Path("data/memory_graph/chroma_db"))
+    
+    # 检索配置
+    search_top_k: int = 10
+    search_min_importance: float = 0.3
+    search_similarity_threshold: float = 0.5
+    enable_query_optimization: bool = True
+    
+    # 整合配置
+    consolidation_enabled: bool = True
+    consolidation_interval_hours: float = 1.0
+    consolidation_similarity_threshold: float = 0.85
+    consolidation_time_window_hours: int = 24
+    
+    # 遗忘配置
+    forgetting_enabled: bool = True
+    forgetting_activation_threshold: float = 0.1
+    forgetting_min_importance: float = 0.8
+    
+    # 激活配置
+    activation_decay_rate: float = 0.9
+    activation_propagation_strength: float = 0.5
+    activation_propagation_depth: int = 1
+    
+    # 性能配置
+    max_memory_nodes_per_memory: int = 10
+    max_related_memories: int = 5
+    
+    # 旧配置（向后兼容）
     consolidation: ConsolidationConfig = field(default_factory=ConsolidationConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     node_merger: NodeMergerConfig = field(default_factory=NodeMergerConfig)
@@ -90,9 +125,73 @@ class MemoryGraphConfig:
     enable_visualization: bool = False  # 是否启用记忆可视化
 
     @classmethod
+    def from_bot_config(cls, bot_config) -> MemoryGraphConfig:
+        """从bot_config加载配置"""
+        try:
+            # 尝试获取新配置
+            if hasattr(bot_config, 'memory_graph'):
+                mg_config = bot_config.memory_graph
+                
+                config = cls(
+                    enable=getattr(mg_config, 'enable', True),
+                    data_dir=Path(getattr(mg_config, 'data_dir', 'data/memory_graph')),
+                    vector_collection_name=getattr(mg_config, 'vector_collection_name', 'memory_nodes'),
+                    vector_db_path=Path(getattr(mg_config, 'vector_db_path', 'data/memory_graph/chroma_db')),
+                    search_top_k=getattr(mg_config, 'search_top_k', 10),
+                    search_min_importance=getattr(mg_config, 'search_min_importance', 0.3),
+                    search_similarity_threshold=getattr(mg_config, 'search_similarity_threshold', 0.5),
+                    enable_query_optimization=getattr(mg_config, 'enable_query_optimization', True),
+                    consolidation_enabled=getattr(mg_config, 'consolidation_enabled', True),
+                    consolidation_interval_hours=getattr(mg_config, 'consolidation_interval_hours', 1.0),
+                    consolidation_similarity_threshold=getattr(mg_config, 'consolidation_similarity_threshold', 0.85),
+                    consolidation_time_window_hours=getattr(mg_config, 'consolidation_time_window_hours', 24),
+                    forgetting_enabled=getattr(mg_config, 'forgetting_enabled', True),
+                    forgetting_activation_threshold=getattr(mg_config, 'forgetting_activation_threshold', 0.1),
+                    forgetting_min_importance=getattr(mg_config, 'forgetting_min_importance', 0.8),
+                    activation_decay_rate=getattr(mg_config, 'activation_decay_rate', 0.9),
+                    activation_propagation_strength=getattr(mg_config, 'activation_propagation_strength', 0.5),
+                    activation_propagation_depth=getattr(mg_config, 'activation_propagation_depth', 1),
+                    max_memory_nodes_per_memory=getattr(mg_config, 'max_memory_nodes_per_memory', 10),
+                    max_related_memories=getattr(mg_config, 'max_related_memories', 5),
+                )
+                
+                return config
+            else:
+                # 没有找到memory_graph配置，使用默认值
+                return cls()
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"从bot_config加载memory_graph配置失败，使用默认配置: {e}")
+            return cls()
+    
+    @classmethod
     def from_dict(cls, config_dict: Dict) -> MemoryGraphConfig:
         """从字典创建配置"""
         return cls(
+            # 新配置字段
+            enable=config_dict.get("enable", True),
+            data_dir=Path(config_dict.get("data_dir", "data/memory_graph")),
+            vector_collection_name=config_dict.get("vector_collection_name", "memory_nodes"),
+            vector_db_path=Path(config_dict.get("vector_db_path", "data/memory_graph/chroma_db")),
+            search_top_k=config_dict.get("search_top_k", 10),
+            search_min_importance=config_dict.get("search_min_importance", 0.3),
+            search_similarity_threshold=config_dict.get("search_similarity_threshold", 0.5),
+            enable_query_optimization=config_dict.get("enable_query_optimization", True),
+            consolidation_enabled=config_dict.get("consolidation_enabled", True),
+            consolidation_interval_hours=config_dict.get("consolidation_interval_hours", 1.0),
+            consolidation_similarity_threshold=config_dict.get("consolidation_similarity_threshold", 0.85),
+            consolidation_time_window_hours=config_dict.get("consolidation_time_window_hours", 24),
+            forgetting_enabled=config_dict.get("forgetting_enabled", True),
+            forgetting_activation_threshold=config_dict.get("forgetting_activation_threshold", 0.1),
+            forgetting_min_importance=config_dict.get("forgetting_min_importance", 0.8),
+            activation_decay_rate=config_dict.get("activation_decay_rate", 0.9),
+            activation_propagation_strength=config_dict.get("activation_propagation_strength", 0.5),
+            activation_propagation_depth=config_dict.get("activation_propagation_depth", 1),
+            max_memory_nodes_per_memory=config_dict.get("max_memory_nodes_per_memory", 10),
+            max_related_memories=config_dict.get("max_related_memories", 5),
+            # 旧配置字段（向后兼容）
             consolidation=ConsolidationConfig(**config_dict.get("consolidation", {})),
             retrieval=RetrievalConfig(**config_dict.get("retrieval", {})),
             node_merger=NodeMergerConfig(**config_dict.get("node_merger", {})),

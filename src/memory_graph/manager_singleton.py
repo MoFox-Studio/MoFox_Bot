@@ -19,12 +19,16 @@ _memory_manager: Optional[MemoryManager] = None
 _initialized: bool = False
 
 
-async def initialize_memory_manager(data_dir: Optional[Path | str] = None) -> MemoryManager:
+async def initialize_memory_manager(
+    data_dir: Optional[Path | str] = None,
+    config = None,
+) -> Optional[MemoryManager]:
     """
     初始化全局 MemoryManager
     
     Args:
         data_dir: 数据目录，默认使用 data/memory_graph
+        config: MemoryGraphConfig 或 bot_config 实例
         
     Returns:
         MemoryManager 实例
@@ -36,14 +40,40 @@ async def initialize_memory_manager(data_dir: Optional[Path | str] = None) -> Me
         return _memory_manager
     
     try:
+        from src.memory_graph.config import MemoryGraphConfig
+        
+        # 处理配置
+        if config is None:
+            # 尝试从全局配置加载
+            try:
+                from src.config.config import global_config
+                memory_config = MemoryGraphConfig.from_bot_config(global_config)
+                logger.info("从 bot_config 加载 memory_graph 配置")
+            except Exception as e:
+                logger.warning(f"无法从 bot_config 加载配置，使用默认配置: {e}")
+                memory_config = MemoryGraphConfig()
+        elif isinstance(config, MemoryGraphConfig):
+            memory_config = config
+        else:
+            # 假设是 bot_config
+            memory_config = MemoryGraphConfig.from_bot_config(config)
+        
+        # 检查是否启用
+        if not memory_config.enable:
+            logger.info("记忆图系统已在配置中禁用")
+            _initialized = False
+            _memory_manager = None
+            return None
+        
+        # 处理数据目录
         if data_dir is None:
-            data_dir = Path("data/memory_graph")
+            data_dir = memory_config.data_dir
         elif isinstance(data_dir, str):
             data_dir = Path(data_dir)
         
         logger.info(f"正在初始化全局 MemoryManager (data_dir={data_dir})...")
         
-        _memory_manager = MemoryManager(data_dir=data_dir)
+        _memory_manager = MemoryManager(config=memory_config, data_dir=data_dir)
         await _memory_manager.initialize()
         
         _initialized = True

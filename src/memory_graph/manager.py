@@ -68,10 +68,10 @@ class MemoryManager:
         self._initialized = False
         self._last_maintenance = datetime.now()
         self._maintenance_task: Optional[asyncio.Task] = None
-        self._maintenance_interval_hours = 1  # 默认每小时执行一次维护
+        self._maintenance_interval_hours = self.config.consolidation_interval_hours  # 从配置读取
         self._maintenance_schedule_id: Optional[str] = None  # 调度任务ID
         
-        logger.info(f"记忆管理器已创建 (data_dir={data_dir})")
+        logger.info(f"记忆管理器已创建 (data_dir={data_dir}, enable={self.config.enable})")
 
     async def initialize(self) -> None:
         """
@@ -556,7 +556,7 @@ class MemoryManager:
                 # 计算时间衰减
                 last_access_dt = datetime.fromisoformat(last_access)
                 hours_passed = (now - last_access_dt).total_seconds() / 3600
-                decay_factor = 0.9 ** (hours_passed / 24)  # 每天衰减 10%
+                decay_factor = self.config.activation_decay_rate ** (hours_passed / 24)
                 current_activation = activation_info.get("level", 0.0) * decay_factor
             else:
                 current_activation = 0.0
@@ -573,12 +573,15 @@ class MemoryManager:
             memory.metadata["activation"] = activation_info
             memory.last_accessed = now
             
-            # 激活传播：激活相关记忆（强度减半）
+            # 激活传播：激活相关记忆
             if strength > 0.1:  # 只有足够强的激活才传播
-                related_memories = self._get_related_memories(memory_id)
-                propagation_strength = strength * 0.5
+                related_memories = self._get_related_memories(
+                    memory_id,
+                    max_depth=self.config.activation_propagation_depth
+                )
+                propagation_strength = strength * self.config.activation_propagation_strength
                 
-                for related_id in related_memories[:5]:  # 最多传播到 5 个相关记忆
+                for related_id in related_memories[:self.config.max_related_memories]:
                     await self.activate_memory(related_id, propagation_strength)
             
             # 保存更新
@@ -677,7 +680,7 @@ class MemoryManager:
                     continue
                 
                 # 跳过高重要性记忆
-                if memory.importance >= 0.8:
+                if memory.importance >= self.config.forgetting_min_importance:
                     continue
                 
                 # 计算当前激活度
@@ -875,15 +878,19 @@ class MemoryManager:
             }
             
             # 1. 记忆整理（合并相似记忆）
-            consolidate_result = await self.consolidate_memories(
-                similarity_threshold=0.85,
-                time_window_hours=24
-            )
-            result["consolidated"] = consolidate_result.get("merged_count", 0)
+            if self.config.consolidation_enabled:
+                consolidate_result = await self.consolidate_memories(
+                    similarity_threshold=self.config.consolidation_similarity_threshold,
+                    time_window_hours=self.config.consolidation_time_window_hours
+                )
+                result["consolidated"] = consolidate_result.get("merged_count", 0)
             
             # 2. 自动遗忘
-            forgotten_count = await self.auto_forget_memories(threshold=0.1)
-            result["forgotten"] = forgotten_count
+            if self.config.forgetting_enabled:
+                forgotten_count = await self.auto_forget_memories(
+                    threshold=self.config.forgetting_activation_threshold
+                )
+                result["forgotten"] = forgotten_count
             
             # 3. 清理非常旧的已遗忘记忆（可选）
             # TODO: 实现清理逻辑

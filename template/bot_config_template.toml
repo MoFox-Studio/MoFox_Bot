@@ -235,95 +235,59 @@ enable_emotion_analysis = false # 是否启用表情包感情关键词二次识�
 emoji_selection_mode = "emotion"
 max_context_emojis = 30 # 每次随机传递给LLM的表情包详细描述的最大数量，0为全部
 
-[memory]
-enable_memory = true # 是否启用记忆系统
-memory_build_interval = 600 # 记忆构建间隔（秒）。间隔越低，学习越频繁，但可能产生更多冗余信息
+# ==================== 记忆图系统配置 (Memory Graph System) ====================
+# 新一代记忆系统：基于知识图谱 + 语义向量的混合记忆架构
+# 替代旧的 enhanced memory 系统
 
-# === 记忆采样系统配置 ===
-memory_sampling_mode = "immediate" # 记忆采样模式：'immediate'(即时采样), 'hippocampus'(海马体定时采样) or 'all'(双模式)
+[memory_graph]
+# === 基础配置 ===
+enable = true # 是否启用记忆图系统
+data_dir = "data/memory_graph" # 记忆数据存储目录
 
-# 海马体双峰采样配置
-enable_hippocampus_sampling = true # 启用海马体双峰采样策略
-hippocampus_sample_interval = 1800 # 海马体采样间隔（秒，默认30分钟）
-hippocampus_sample_size = 30 # 海马体采样样本数量
-hippocampus_batch_size = 10 # 海马体批量处理大小
-hippocampus_distribution_config = [12.0, 8.0, 0.7, 48.0, 24.0, 0.3] # 海马体双峰分布配置：[近期均值(h), 近期标准差(h), 近期权重, 远期均值(h), 远期标准差(h), 远期权重]
+# === 向量存储配置 ===
+vector_collection_name = "memory_nodes" # 向量集合名称
+vector_db_path = "data/memory_graph/chroma_db" # 向量数据库路径 (使用独立的chromadb实例)
 
-# 即时采样配置
-precision_memory_reply_threshold = 0.5 # 精准记忆回复阈值（0-1），高于此值的对话将立即构建记忆
+# === 记忆检索配置 ===
+search_top_k = 10 # 默认检索返回数量
+search_min_importance = 0.3 # 最小重要性阈值 (0.0-1.0)
+search_similarity_threshold = 0.5 # 向量相似度阈值
 
-min_memory_length = 10 # 最小记忆长度
-max_memory_length = 500 # 最大记忆长度
-memory_value_threshold = 0.5 # 记忆价值阈值，低于该值的记忆会被丢弃
-vector_similarity_threshold = 0.7 # 向量相似度阈值
-semantic_similarity_threshold = 0.6 # 语义重排阶段的最低匹配阈值
+# 智能查询优化
+enable_query_optimization = true # 启用查询优化（使用小模型优化搜索查询）
 
-metadata_filter_limit = 100 # 元数据过滤阶段返回数量上限
-vector_search_limit = 50 # 向量搜索阶段返回数量上限
-semantic_rerank_limit = 20 # 语义重排阶段返回数量上限
-final_result_limit = 10 # 综合筛选后的最终返回数量
+# === 记忆整合配置 ===
+consolidation_enabled = true # 是否启用记忆整合
+consolidation_interval_hours = 1.0 # 整合任务执行间隔（小时）
+consolidation_similarity_threshold = 0.85 # 相似记忆合并阈值
+consolidation_time_window_hours = 24 # 整合时间窗口（小时）
 
-vector_weight = 0.4 # 综合评分中向量相似度的权重
-semantic_weight = 0.3 # 综合评分中语义匹配的权重
-context_weight = 0.2 # 综合评分中上下文关联的权重
-recency_weight = 0.1 # 综合评分中时效性的权重
+# === 记忆遗忘配置 ===
+forgetting_enabled = true # 是否启用自动遗忘
+forgetting_activation_threshold = 0.1 # 激活度阈值（低于此值的记忆会被遗忘）
+forgetting_min_importance = 0.8 # 最小保护重要性（高于此值的记忆不会被遗忘）
 
-fusion_similarity_threshold = 0.85 # 记忆融合时的相似度阈值
-deduplication_window_hours = 24 # 记忆去重窗口（小时）
+# === 记忆激活配置 ===
+activation_decay_rate = 0.9 # 激活度衰减率（每天衰减10%）
+activation_propagation_strength = 0.5 # 激活传播强度（传播到相关记忆的激活度比例）
+activation_propagation_depth = 1 # 激活传播深度（最多传播几层）
 
-# 智能遗忘机制配置 (新增)
-enable_memory_forgetting = true # 是否启用智能遗忘机制
-forgetting_check_interval_hours = 24 # 遗忘检查间隔（小时）
+# === 性能配置 ===
+max_memory_nodes_per_memory = 10 # 每条记忆最多包含的节点数
+max_related_memories = 5 # 激活传播时最多影响的相关记忆数
 
-# 遗忘阈值配置
-base_forgetting_days = 30.0 # 基础遗忘天数
-min_forgetting_days = 7.0 # 最小遗忘天数（重要记忆也会被保留的最少天数）
-max_forgetting_days = 365.0 # 最大遗忘天数（普通记忆最长保留天数）
+# ==================== 旧记忆系统配置 (已弃用) ====================
+# 注意：以下配置仅用于向后兼容，新系统不使用这些配置
+# 旧的 enhanced memory 系统已被 memory_graph 系统取代
 
-# 重要程度权重 - 不同重要程度的额外保护天数
-critical_importance_bonus = 45.0 # 关键重要性额外天数
-high_importance_bonus = 30.0 # 高重要性额外天数
-normal_importance_bonus = 15.0 # 一般重要性额外天数
-low_importance_bonus = 0.0 # 低重要性额外天数
+[memory_legacy]
+# 旧系统已禁用，所有配置保留仅供参考
+enable_legacy_memory = false # 旧记忆系统已禁用
 
-# 置信度权重 - 不同置信度的额外保护天数
-verified_confidence_bonus = 30.0 # 已验证置信度额外天数
-high_confidence_bonus = 20.0 # 高置信度额外天数
-medium_confidence_bonus = 10.0 # 中等置信度额外天数
-low_confidence_bonus = 0.0 # 低置信度额外天数
-
-# 激活频率权重
-activation_frequency_weight = 0.5 # 每次激活增加的天数权重
-max_frequency_bonus = 10.0 # 最大激活频率奖励天数
-
-# 休眠机制
-dormant_threshold_days = 90 # 休眠状态判定天数（超过此天数未访问的记忆进入休眠状态）
-
-# Vector DB存储配置 (新增 - 替代JSON存储)
-enable_vector_memory_storage = true # 启用Vector DB存储
-enable_llm_instant_memory = true # 启用基于LLM的瞬时记忆
-enable_vector_instant_memory = true # 启用基于向量的瞬时记忆
-instant_memory_max_collections = 100 # 瞬时记忆最大集合数
-instant_memory_retention_hours = 0 # 瞬时记忆保留时间（小时），0表示不基于时间清理
-
-# Vector DB配置
-vector_db_similarity_threshold = 0.5 # Vector DB相似度阈值 (推荐范围: 0.5-0.6, 过高会导致检索不到结果)
-vector_db_search_limit = 20 # Vector DB单次搜索返回的最大结果数
-vector_db_batch_size = 100 # 批处理大小 (批量存储记忆时每批处理的记忆条数)
-vector_db_enable_caching = true # 启用内存缓存
-vector_db_cache_size_limit = 1000 # 缓存大小限制 (内存缓存最多保存的记忆条数)
-vector_db_auto_cleanup_interval = 3600 # 自动清理间隔（秒）
-vector_db_retention_hours = 720 # 记忆保留时间（小时，默认30天）
-
-# 多阶段召回配置（可选）
-# 取消注释以启用更严格的粗筛，适用于大规模记忆库（>10万条）
-# memory_importance_threshold = 0.3   # 重要性阈值（过滤低价值记忆，范围0.0-1.0）
-# memory_recency_days = 30            # 时间范围（只搜索最近N天的记忆，0表示不限制）
-
-# Vector DB配置 (ChromaDB)
+# Vector DB配置 (ChromaDB) - 保留用于其他系统
 [vector_db]
 type = "chromadb" # Vector DB类型
-path = "data/chroma_db" # Vector DB数据路径
+path = "data/chroma_db" # Vector DB数据路径（用于其他系统，非memory_graph）
 
 [vector_db.settings]
 anonymized_telemetry = false # 禁用匿名遥测
