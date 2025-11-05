@@ -78,12 +78,14 @@ class CreateMemoryTool(BaseTool):
                 logger.info(f"[CreateMemoryTool] 成功创建记忆: {memory.id}")
                 return {
                     "name": self.name,
-                    "content": f"成功创建记忆（ID: {memory.id}）"
+                    "content": f"成功创建记忆（ID: {memory.id}）",
+                    "memory_id": memory.id,  # 返回记忆ID供后续使用
                 }
             else:
                 return {
                     "name": self.name,
-                    "content": "创建记忆失败"
+                    "content": "创建记忆失败",
+                    "memory_id": None,
                 }
                 
         except Exception as e:

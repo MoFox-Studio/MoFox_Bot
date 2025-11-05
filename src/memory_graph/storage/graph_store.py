@@ -390,6 +390,44 @@ class GraphStore:
         logger.info(f"从字典加载图: {store.get_statistics()}")
         return store
 
+    def remove_memory(self, memory_id: str) -> bool:
+        """
+        从图中删除指定记忆
+        
+        Args:
+            memory_id: 要删除的记忆ID
+            
+        Returns:
+            是否删除成功
+        """
+        try:
+            # 1. 检查记忆是否存在
+            if memory_id not in self.memory_index:
+                logger.warning(f"记忆不存在，无法删除: {memory_id}")
+                return False
+            
+            memory = self.memory_index[memory_id]
+            
+            # 2. 从节点映射中移除此记忆
+            for node in memory.nodes:
+                if node.id in self.node_to_memories:
+                    self.node_to_memories[node.id].discard(memory_id)
+                    # 如果该节点不再属于任何记忆，从图中移除节点
+                    if not self.node_to_memories[node.id]:
+                        if self.graph.has_node(node.id):
+                            self.graph.remove_node(node.id)
+                        del self.node_to_memories[node.id]
+            
+            # 3. 从记忆索引中移除
+            del self.memory_index[memory_id]
+            
+            logger.info(f"成功删除记忆: {memory_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"删除记忆失败 {memory_id}: {e}", exc_info=True)
+            return False
+
     def clear(self) -> None:
         """清空图（危险操作，仅用于测试）"""
         self.graph.clear()

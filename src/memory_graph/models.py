@@ -164,6 +164,7 @@ class Memory:
     nodes: List[MemoryNode]  # 该记忆包含的所有节点
     edges: List[MemoryEdge]  # 该记忆包含的所有边
     importance: float = 0.5  # 整体重要性 [0-1]
+    activation: float = 0.0  # 激活度 [0-1]，用于记忆整合和遗忘
     status: MemoryStatus = MemoryStatus.STAGED  # 记忆状态
     created_at: datetime = field(default_factory=datetime.now)
     last_accessed: datetime = field(default_factory=datetime.now)  # 最后访问时间
@@ -175,8 +176,9 @@ class Memory:
         """后初始化处理"""
         if not self.id:
             self.id = str(uuid.uuid4())
-        # 确保重要性在有效范围内
+        # 确保重要性和激活度在有效范围内
         self.importance = max(0.0, min(1.0, self.importance))
+        self.activation = max(0.0, min(1.0, self.activation))
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典（用于序列化）"""
@@ -187,6 +189,7 @@ class Memory:
             "nodes": [node.to_dict() for node in self.nodes],
             "edges": [edge.to_dict() for edge in self.edges],
             "importance": self.importance,
+            "activation": self.activation,
             "status": self.status.value,
             "created_at": self.created_at.isoformat(),
             "last_accessed": self.last_accessed.isoformat(),
@@ -205,6 +208,7 @@ class Memory:
             nodes=[MemoryNode.from_dict(n) for n in data["nodes"]],
             edges=[MemoryEdge.from_dict(e) for e in data["edges"]],
             importance=data.get("importance", 0.5),
+            activation=data.get("activation", 0.0),
             status=MemoryStatus(data.get("status", "staged")),
             created_at=datetime.fromisoformat(data["created_at"]),
             last_accessed=datetime.fromisoformat(data.get("last_accessed", data["created_at"])),
