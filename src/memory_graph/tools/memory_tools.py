@@ -387,7 +387,16 @@ class MemoryTools:
             memory_ids = set()
             for node_id, similarity, metadata in similar_nodes:
                 if "memory_ids" in metadata:
-                    memory_ids.update(metadata["memory_ids"])
+                    ids = metadata["memory_ids"]
+                    # 确保是列表
+                    if isinstance(ids, str):
+                        import json
+                        try:
+                            ids = json.loads(ids)
+                        except:
+                            ids = [ids]
+                    if isinstance(ids, list):
+                        memory_ids.update(ids)
 
             # 4. 获取完整记忆
             memories = []
@@ -463,10 +472,25 @@ class MemoryTools:
 
         # 获取最相似节点关联的记忆
         node_id, similarity, metadata = similar_nodes[0]
-        if "memory_ids" in metadata and metadata["memory_ids"]:
-            memory_id = metadata["memory_ids"][0]
+        
+        if "memory_ids" not in metadata or not metadata["memory_ids"]:
+            return None
+        
+        ids = metadata["memory_ids"]
+        
+        # 确保是列表
+        if isinstance(ids, str):
+            import json
+            try:
+                ids = json.loads(ids)
+            except Exception as e:
+                logger.warning(f"JSON 解析失败: {e}")
+                ids = [ids]
+        
+        if isinstance(ids, list) and ids:
+            memory_id = ids[0]
             return self.graph_store.get_memory_by_id(memory_id)
-
+        
         return None
 
     def _summarize_memory(self, memory: Memory) -> str:

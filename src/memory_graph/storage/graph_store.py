@@ -96,6 +96,15 @@ class GraphStore:
         """
         return self.memory_index.get(memory_id)
 
+    def get_all_memories(self) -> List[Memory]:
+        """
+        获取所有记忆
+        
+        Returns:
+            所有记忆的列表
+        """
+        return list(self.memory_index.values())
+
     def get_memories_by_node(self, node_id: str) -> List[Memory]:
         """
         获取包含指定节点的所有记忆

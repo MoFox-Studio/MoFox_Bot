@@ -4,6 +4,7 @@
 基于知识图谱 + 语义向量的混合记忆架构
 """
 
+from src.memory_graph.manager import MemoryManager
 from src.memory_graph.models import (
     Memory,
     MemoryEdge,
@@ -15,6 +16,7 @@ from src.memory_graph.models import (
 )
 
 __all__ = [
+    "MemoryManager",
     "Memory",
     "MemoryNode",
     "MemoryEdge",
