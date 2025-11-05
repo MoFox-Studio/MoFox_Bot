@@ -711,17 +711,55 @@ class DefaultReplyer:
                 running_memories = []
                 instant_memory = ""
 
+        # 尝试从记忆图系统检索记忆
+        graph_memories = []
+        try:
+            from src.memory_graph.manager_singleton import get_memory_manager, is_initialized
+            
+            if is_initialized():
+                manager = get_memory_manager()
+                if manager:
+                    # 搜索相关记忆
+                    memories = await manager.search_memories(
+                        query=target,
+                        top_k=5,
+                        min_importance=0.5,
+                        include_forgotten=False
+                    )
+                    
+                    if memories:
+                        logger.info(f"[记忆图] 检索到 {len(memories)} 条相关记忆")
+                        for memory in memories:
+                            topic = memory.metadata.get("topic", "")
+                            mem_type = memory.metadata.get("memory_type", "未知")
+                            if topic:
+                                graph_memories.append({
+                                    "content": topic,
+                                    "memory_type": mem_type,
+                                    "importance": memory.importance,
+                                    "relevance": 0.7,  # 默认相关度
+                                    "source": "memory_graph",
+                                })
+                    else:
+                        logger.debug("[记忆图] 未找到相关记忆")
+        except Exception as e:
+            logger.debug(f"[记忆图] 检索失败: {e}")
+            graph_memories = []
+
+        # 合并记忆（增强记忆系统 + 记忆图系统）
+        all_memories = running_memories + graph_memories
+        
         # 构建记忆字符串，使用方括号格式
         memory_str = ""
         has_any_memory = False
 
-        # 添加长期记忆（来自增强记忆系统）
-        if running_memories:
+        # 添加长期记忆（来自增强记忆系统 + 记忆图系统）
+        if all_memories:
             # 使用方括号格式
             memory_parts = ["### 🧠 相关记忆 (Relevant Memories)", ""]
 
             # 按相关度排序，并记录相关度信息用于调试
-            sorted_memories = sorted(running_memories, key=lambda x: x.get("relevance", 0.0), reverse=True)
+            sorted_memories = sorted(all_memories, key=lambda x: x.get("relevance", 0.0), reverse=True)
 
             # 调试相关度信息
             relevance_info = [(m.get("memory_type", "unknown"), m.get("relevance", 0.0)) for m in sorted_memories]
@@ -755,7 +793,7 @@ class DefaultReplyer:
 
         # 添加瞬时记忆
         if instant_memory:
-            if not any(rm["content"] == instant_memory for rm in running_memories):
+            if not any(rm["content"] == instant_memory for rm in all_memories):
                 if not memory_str:
                     memory_str = "以下是当前在聊天中，你回忆起的记忆：\n"
                 memory_str += f"- 最相关记忆：{instant_memory}\n"
