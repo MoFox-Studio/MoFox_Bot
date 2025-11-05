@@ -362,7 +362,7 @@ class MemoryManager:
                     continue
                 
                 # 重要性过滤
-                if memory.importance < min_importance:
+                if min_importance is not None and memory.importance < min_importance:
                     continue
                 
                 # 遗忘状态过滤
