@@ -553,9 +553,7 @@ class DefaultReplyer:
         if not global_config.memory.enable_memory:
             return ""
 
-        instant_memory = None
-
-        # 使用新的记忆图系统检索记忆
+        # 使用新的记忆图系统检索记忆（带智能查询优化）
         all_memories = []
         try:
             from src.memory_graph.manager_singleton import get_memory_manager, is_initialized
@@ -563,12 +561,26 @@ class DefaultReplyer:
             if is_initialized():
                 manager = get_memory_manager()
                 if manager:
-                    # 搜索相关记忆
+                    # 构建查询上下文
+                    stream = self.chat_stream
+                    user_info_obj = getattr(stream, "user_info", None)
+                    sender_name = ""
+                    if user_info_obj:
+                        sender_name = getattr(user_info_obj, "user_nickname", "") or getattr(user_info_obj, "user_cardname", "")
+                    
+                    query_context = {
+                        "chat_history": chat_history if chat_history else "",
+                        "sender": sender_name,
+                    }
+                    
+                    # 使用记忆管理器的智能检索（自动优化查询）
                     memories = await manager.search_memories(
                         query=target,
-                        top_k=10,  # 增加检索数量
-                        min_importance=0.3,  # 降低最低重要性阈值，获取更多记忆
-                        include_forgotten=False
+                        top_k=10,
+                        min_importance=0.3,
+                        include_forgotten=False,
+                        optimize_query=True,
+                        context=query_context,
                     )
                     
                     if memories:
@@ -581,14 +593,9 @@ class DefaultReplyer:
                                     "content": topic,
                                     "memory_type": mem_type,
                                     "importance": memory.importance,
-                                    "relevance": 0.7,  # 默认相关度
+                                    "relevance": 0.7,
                                     "source": "memory_graph",
                                 })
-                        
-                        # 提取最重要的记忆作为瞬时记忆
-                        if all_memories:
-                            top_memory = max(all_memories, key=lambda m: m.get("importance", 0))
-                            instant_memory = top_memory.get("content", "")
                     else:
                         logger.debug("[记忆图] 未找到相关记忆")
         except Exception as e:
@@ -637,13 +644,7 @@ class DefaultReplyer:
             has_any_memory = True
             logger.debug(f"[记忆构建] 成功构建记忆字符串，包含 {len(memory_parts) - 2} 条记忆")
 
-        # 添加瞬时记忆
-        if instant_memory:
-            if not any(rm["content"] == instant_memory for rm in all_memories):
-                if not memory_str:
-                    memory_str = "以下是当前在聊天中，你回忆起的记忆：\n"
-                memory_str += f"- 最相关记忆：{instant_memory}\n"
-                has_any_memory = True
+        # 瞬时记忆由另一套系统处理，这里不再添加
 
         # 只有当完全没有任何记忆时才返回空字符串
         return memory_str if has_any_memory else ""
@@ -1028,29 +1029,6 @@ class DefaultReplyer:
             unread_history_prompt = "暂无未读历史消息"
 
         return read_history_prompt, unread_history_prompt
-
-    async def _get_interest_scores_for_messages(self, messages: list[dict]) -> dict[str, float]:
-        """为消息获取兴趣度评分（使用预计算的兴趣值）"""
-        interest_scores = {}
-
-        try:
-            # 直接使用消息中的预计算兴趣值
-            for msg_dict in messages:
-                message_id = msg_dict.get("message_id", "")
-                interest_value = msg_dict.get("interest_value")
-
-                if interest_value is not None:
-                    interest_scores[message_id] = float(interest_value)
-                    logger.debug(f"使用预计算兴趣度 - 消息 {message_id}: {interest_value:.3f}")
-                else:
-                    interest_scores[message_id] = 0.5  # 默认值
-                    logger.debug(f"消息 {message_id} 无预计算兴趣值，使用默认值 0.5")
-
-        except Exception as e:
-            logger.warning(f"处理预计算兴趣值失败: {e}")
-
-        return interest_scores
-
 
     async def build_prompt_reply_context(
         self,

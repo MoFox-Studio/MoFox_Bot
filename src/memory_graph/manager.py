@@ -306,6 +306,71 @@ class MemoryManager:
 
     # ==================== 记忆检索操作 ====================
 
+    async def optimize_search_query(
+        self,
+        query: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        使用小模型优化搜索查询
+        
+        Args:
+            query: 原始查询
+            context: 上下文信息（聊天历史、发言人等）
+            
+        Returns:
+            优化后的查询字符串
+        """
+        if not context:
+            return query
+        
+        try:
+            from src.llm_models.utils_model import LLMRequest
+            from src.config.config import model_config
+            
+            # 使用小模型优化查询
+            llm = LLMRequest(
+                model_set=model_config.model_task_config.utils_small,
+                request_type="memory.query_optimizer"
+            )
+            
+            # 构建优化提示
+            chat_history = context.get("chat_history", "")
+            sender = context.get("sender", "")
+            
+            prompt = f"""你是一个记忆检索查询优化助手。请将用户的查询转换为更适合语义搜索的表述。
+
+要求：
+1. 提取查询的核心意图和关键信息
+2. 使用更具体、描述性的语言
+3. 如果查询涉及人物，明确指出是谁
+4. 保持简洁，只输出优化后的查询文本
+
+当前查询: {query}
+
+{f"发言人: {sender}" if sender else ""}
+{f"最近对话: {chat_history[-200:]}" if chat_history else ""}
+
+优化后的查询:"""
+
+            optimized_query, _ = await llm.generate_response_async(
+                prompt,
+                temperature=0.3,
+                max_tokens=100
+            )
+            
+            # 清理输出
+            optimized_query = optimized_query.strip()
+            if optimized_query and len(optimized_query) > 5:
+                logger.debug(f"[查询优化] '{query}' -> '{optimized_query}'")
+                return optimized_query
+            
+            return query
+            
+        except Exception as e:
+            logger.warning(f"查询优化失败，使用原始查询: {e}")
+            return query
+
     async def search_memories(
         self,
         query: str,
@@ -314,6 +379,8 @@ class MemoryManager:
         time_range: Optional[Tuple[datetime, datetime]] = None,
         min_importance: float = 0.0,
         include_forgotten: bool = False,
+        optimize_query: bool = True,
+        context: Optional[Dict[str, Any]] = None,
     ) -> List[Memory]:
         """
         搜索记忆
@@ -325,6 +392,8 @@ class MemoryManager:
             time_range: 时间范围过滤 (start, end)
             min_importance: 最小重要性
             include_forgotten: 是否包含已遗忘的记忆
+            optimize_query: 是否使用小模型优化查询
+            context: 查询上下文（用于优化）
             
         Returns:
             记忆列表
@@ -333,8 +402,13 @@ class MemoryManager:
             await self.initialize()
 
         try:
+            # 查询优化
+            search_query = query
+            if optimize_query and context:
+                search_query = await self.optimize_search_query(query, context)
+            
             params = {
-                "query": query,
+                "query": search_query,
                 "top_k": top_k,
             }
             
