@@ -910,10 +910,12 @@ class MemoryTools:
                                 continue
                             
                             neighbor_vector_data = await self.vector_store.get_node_by_id(neighbor_id)
-                            if not neighbor_vector_data or neighbor_vector_data.get("embedding") is None:
+                            if neighbor_vector_data is None:
                                 continue
                             
-                            neighbor_embedding = neighbor_vector_data["embedding"]
+                            neighbor_embedding = neighbor_vector_data.get("embedding")
+                            if neighbor_embedding is None:
+                                continue
                             
                             # 计算语义相似度
                             semantic_sim = self._cosine_similarity(

@@ -210,15 +210,19 @@ class VectorStore:
             import orjson
             similar_nodes = []
             # 修复：检查 ids 列表长度而不是直接判断真值（避免 numpy 数组歧义）
-            if results.get("ids") is not None and len(results["ids"]) > 0 and len(results["ids"][0]) > 0:
-                for i, node_id in enumerate(results["ids"][0]):
+            ids = results.get("ids")
+            if ids is not None and len(ids) > 0 and len(ids[0]) > 0:
+                distances = results.get("distances")
+                metadatas = results.get("metadatas")
+                
+                for i, node_id in enumerate(ids[0]):
                     # ChromaDB 返回的是距离，需要转换为相似度
                     # 余弦距离: distance = 1 - similarity
-                    distance = results["distances"][0][i] if results["distances"] else 0.0  # type: ignore
+                    distance = distances[0][i] if distances is not None and len(distances) > 0 else 0.0  # type: ignore
                     similarity = 1.0 - distance
 
                     if similarity >= min_similarity:
-                        metadata = results["metadatas"][0][i] if results["metadatas"] else {}  # type: ignore
+                        metadata = metadatas[0][i] if metadatas is not None and len(metadatas) > 0 else {}  # type: ignore
                         
                         # 解析 JSON 字符串回列表/字典
                         for key, value in list(metadata.items()):
@@ -368,13 +372,18 @@ class VectorStore:
         try:
             result = self.collection.get(ids=[node_id], include=["metadatas", "embeddings"])
 
-            # 修复：检查 ids 列表长度而不是直接判断真值（避免 numpy 数组歧义）
-            if result and result.get("ids") is not None and len(result["ids"]) > 0:
-                return {
-                    "id": result["ids"][0],
-                    "metadata": result["metadatas"][0] if result["metadatas"] else {},
-                    "embedding": np.array(result["embeddings"][0]) if result["embeddings"] else None,
-                }
+            # 修复：直接检查 ids 列表是否非空（避免 numpy 数组的布尔值歧义）
+            if result is not None:
+                ids = result.get("ids")
+                if ids is not None and len(ids) > 0:
+                    metadatas = result.get("metadatas")
+                    embeddings = result.get("embeddings")
+                    
+                    return {
+                        "id": ids[0],
+                        "metadata": metadatas[0] if metadatas is not None and len(metadatas) > 0 else {},
+                        "embedding": np.array(embeddings[0]) if embeddings is not None and len(embeddings) > 0 and embeddings[0] is not None else None,
+                    }
 
             return None
 
