@@ -365,20 +365,26 @@ class MemoryManager:
             chat_history = context.get("chat_history", "")
             sender = context.get("sender", "")
             
-            prompt = f"""你是一个记忆检索查询优化助手。请将用户的查询转换为更适合语义搜索的表述。
+            prompt = f"""你是一个记忆检索查询优化助手。你的任务是分析对话历史，生成一个综合性的搜索查询。
 
-要求：
-1. 提取查询的核心意图和关键信息
-2. 使用更具体、描述性的语言
-3. 如果查询涉及人物，明确指出是谁
-4. 保持简洁，只输出优化后的查询文本
+**任务说明：**
+不要只优化单个消息，而是要综合分析整个对话上下文，提取出最核心的检索意图。
 
-当前查询: {query}
+**要求：**
+1. 仔细阅读对话历史，理解对话的主题和脉络
+2. 识别关键人物、事件、关系和话题
+3. 提取最值得检索的核心信息点
+4. 生成一个简洁但信息丰富的搜索查询（15-30字）
+5. 如果涉及特定人物，必须明确指出人名
+6. 只输出查询文本，不要解释
 
-{f"发言人: {sender}" if sender else ""}
-{f"最近对话: {chat_history[-200:]}" if chat_history else ""}
+**对话上下文：**
+{chat_history[-500:] if chat_history else "（无历史对话）"}
 
-优化后的查询:"""
+**当前消息：**
+{sender}: {query}
+
+**生成综合查询：**"""
 
             optimized_query, _ = await llm.generate_response_async(
                 prompt,

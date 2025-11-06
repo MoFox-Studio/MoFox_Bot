@@ -255,8 +255,6 @@ class DefaultReplyer:
         self._chat_info_initialized = False
 
         self.heart_fc_sender = HeartFCSender()
-        # 使用新的增强记忆系统
-        # from src.chat.memory_system.enhanced_memory_activator import EnhancedMemoryActivator
         self._chat_info_initialized = False
 
     async def _initialize_chat_info(self):
@@ -393,19 +391,9 @@ class DefaultReplyer:
                             f"插件{result.get_summary().get('stopped_handlers', '')}于请求后取消了内容生成"
                         )
 
-            # 回复生成成功后，异步存储聊天记忆（不阻塞返回）
-            try:
-                # 将记忆存储作为子任务创建，可以被取消
-                memory_task = asyncio.create_task(
-                    self._store_chat_memory_async(reply_to, reply_message),
-                    name=f"store_memory_{self.chat_stream.stream_id}"
-                )
-                # 不等待完成，让它在后台运行
-                # 如果父任务被取消，这个子任务也会被垃圾回收
-                logger.debug(f"创建记忆存储子任务: {memory_task.get_name()}")
-            except Exception as memory_e:
-                # 记忆存储失败不应该影响回复生成的成功返回
-                logger.warning(f"记忆存储失败，但不影响回复生成: {memory_e}")
+            # 旧的自动记忆存储已移除，现在使用记忆图系统通过工具创建记忆
+            # 记忆由LLM在对话过程中通过CreateMemoryTool主动创建，而非自动存储
+            pass
 
             return True, llm_response, prompt
 
@@ -550,9 +538,6 @@ class DefaultReplyer:
         Returns:
             str: 记忆信息字符串
         """
-        if not global_config.memory.enable_memory:
-            return ""
-
         # 使用新的记忆图系统检索记忆（带智能查询优化）
         all_memories = []
         try:
@@ -1855,14 +1840,22 @@ class DefaultReplyer:
 
             return f"你与{sender}是普通朋友关系。"
 
+    # 已废弃：旧的自动记忆存储逻辑
+    # 新的记忆图系统通过LLM工具(CreateMemoryTool)主动创建记忆，而非自动存储
     async def _store_chat_memory_async(self, reply_to: str, reply_message: DatabaseMessages | dict[str, Any] | None = None):
         """
-        异步存储聊天记忆（从build_memory_block迁移而来）
+        [已废弃] 异步存储聊天记忆（从build_memory_block迁移而来）
+        
+        此函数已被记忆图系统的工具调用方式替代。
+        记忆现在由LLM在对话过程中通过CreateMemoryTool主动创建。
 
         Args:
             reply_to: 回复对象
             reply_message: 回复的原始消息
         """
+        return  # 已禁用，保留函数签名以防其他地方有引用
+        
+        # 以下代码已废弃，不再执行
         try:
             if not global_config.memory.enable_memory:
                 return

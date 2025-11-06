@@ -163,6 +163,14 @@ class MemoryGraphConfig:
                     activation_propagation_depth=getattr(mg_config, 'activation_propagation_depth', 1),
                     max_memory_nodes_per_memory=getattr(mg_config, 'max_memory_nodes_per_memory', 10),
                     max_related_memories=getattr(mg_config, 'max_related_memories', 5),
+                    # 检索配置
+                    retrieval=RetrievalConfig(
+                        max_expand_depth=getattr(mg_config, 'search_max_expand_depth', 2),
+                        vector_weight=getattr(mg_config, 'search_vector_weight', 0.4),
+                        graph_distance_weight=getattr(mg_config, 'search_graph_distance_weight', 0.2),
+                        importance_weight=getattr(mg_config, 'search_importance_weight', 0.2),
+                        recency_weight=getattr(mg_config, 'search_recency_weight', 0.2),
+                    ),
                 )
                 
                 return config
@@ -206,7 +214,14 @@ class MemoryGraphConfig:
             max_related_memories=config_dict.get("max_related_memories", 5),
             # 旧配置字段（向后兼容）
             consolidation=ConsolidationConfig(**config_dict.get("consolidation", {})),
-            retrieval=RetrievalConfig(**config_dict.get("retrieval", {})),
+            retrieval=RetrievalConfig(
+                max_expand_depth=config_dict.get("search_max_expand_depth", 2),
+                vector_weight=config_dict.get("search_vector_weight", 0.4),
+                graph_distance_weight=config_dict.get("search_graph_distance_weight", 0.2),
+                importance_weight=config_dict.get("search_importance_weight", 0.2),
+                recency_weight=config_dict.get("search_recency_weight", 0.2),
+                **config_dict.get("retrieval", {})
+            ),
             node_merger=NodeMergerConfig(**config_dict.get("node_merger", {})),
             storage=StorageConfig(**config_dict.get("storage", {})),
             decay_rates=config_dict.get("decay_rates", cls().decay_rates),

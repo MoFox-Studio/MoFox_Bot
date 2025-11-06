@@ -1,5 +1,5 @@
 [inner]
-version = "7.6.0"
+version = "7.6.1"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -254,7 +254,7 @@ search_min_importance = 0.3 # 最小重要性阈值 (0.0-1.0)
 search_similarity_threshold = 0.5 # 向量相似度阈值
 
 # 智能查询优化
-enable_query_optimization = true # 启用查询优化（使用小模型优化搜索查询）
+enable_query_optimization = true # 启用查询优化（使用小模型分析对话历史，生成综合性搜索查询）
 
 # === 记忆整合配置 ===
 consolidation_enabled = true # 是否启用记忆整合
@@ -272,26 +272,16 @@ activation_decay_rate = 0.9 # 激活度衰减率（每天衰减10%）
 activation_propagation_strength = 0.5 # 激活传播强度（传播到相关记忆的激活度比例）
 activation_propagation_depth = 1 # 激活传播深度（最多传播几层）
 
+# === 记忆检索配置 ===
+search_max_expand_depth = 2 # 检索时图扩展深度（0=仅直接匹配，1=扩展1跳，2=扩展2跳，推荐1-2）
+search_vector_weight = 0.4 # 向量相似度权重
+search_graph_distance_weight = 0.2 # 图距离权重
+search_importance_weight = 0.2 # 重要性权重
+search_recency_weight = 0.2 # 时效性权重
+
 # === 性能配置 ===
 max_memory_nodes_per_memory = 10 # 每条记忆最多包含的节点数
 max_related_memories = 5 # 激活传播时最多影响的相关记忆数
-
-# ==================== 旧记忆系统配置 (已弃用) ====================
-# 注意：以下配置仅用于向后兼容，新系统不使用这些配置
-# 旧的 enhanced memory 系统已被 memory_graph 系统取代
-
-[memory_legacy]
-# 旧系统已禁用，所有配置保留仅供参考
-enable_legacy_memory = false # 旧记忆系统已禁用
-
-# Vector DB配置 (ChromaDB) - 保留用于其他系统
-[vector_db]
-type = "chromadb" # Vector DB类型
-path = "data/chroma_db" # Vector DB数据路径（用于其他系统，非memory_graph）
-
-[vector_db.settings]
-anonymized_telemetry = false # 禁用匿名遥测
-allow_reset = true # 允许重置
 
 [voice]
 enable_asr = true # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]
