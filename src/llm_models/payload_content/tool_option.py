@@ -9,7 +9,7 @@ class ToolParamType(Enum):
     STRING = "string"  # 字符串
     INTEGER = "integer"  # 整型
     FLOAT = "number"  # 浮点型
-    BOOLEAN = "bool"  # 布尔型
+    BOOLEAN = "boolean"  # 布尔型
 
 
 class ToolParam:
