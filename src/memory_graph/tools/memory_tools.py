@@ -35,24 +35,27 @@ class MemoryTools:
         persistence_manager: PersistenceManager,
         embedding_generator: Optional[EmbeddingGenerator] = None,
         max_expand_depth: int = 1,
+        expand_semantic_threshold: float = 0.3,
     ):
         """
         初始化工具集
-        
+
         Args:
             vector_store: 向量存储
             graph_store: 图存储
             persistence_manager: 持久化管理器
             embedding_generator: 嵌入生成器（可选）
             max_expand_depth: 图扩展深度的默认值（从配置读取）
+            expand_semantic_threshold: 图扩展时语义相似度阈值（从配置读取）
         """
         self.vector_store = vector_store
         self.graph_store = graph_store
         self.persistence_manager = persistence_manager
         self._initialized = False
         self.max_expand_depth = max_expand_depth  # 保存配置的默认值
-        
-        logger.info(f"MemoryTools 初始化: max_expand_depth={max_expand_depth}")
+        self.expand_semantic_threshold = expand_semantic_threshold  # 保存配置的语义阈值
+
+        logger.info(f"MemoryTools 初始化: max_expand_depth={max_expand_depth}, expand_semantic_threshold={expand_semantic_threshold}")
 
         # 初始化组件
         self.extractor = MemoryExtractor()
@@ -507,7 +510,7 @@ class MemoryTools:
                             initial_memory_ids=list(initial_memory_ids),
                             query_embedding=query_embedding,
                             max_depth=expand_depth,
-                            semantic_threshold=0.5,
+                            semantic_threshold=self.expand_semantic_threshold,  # 使用配置的阈值
                             max_expanded=top_k * 2
                         )
                         

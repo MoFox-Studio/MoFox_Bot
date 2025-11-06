@@ -1,5 +1,5 @@
 [inner]
-version = "7.6.2"
+version = "7.6.4"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -251,19 +251,32 @@ vector_db_path = "data/memory_graph/chroma_db" # 向量数据库路径 (使用�
 # === 记忆检索配置 ===
 search_top_k = 10 # 默认检索返回数量
 search_min_importance = 0.3 # 最小重要性阈值 (0.0-1.0)
-search_similarity_threshold = 0.5 # 向量相似度阈值
+search_similarity_threshold = 0.6 # 向量相似度阈值
+search_expand_semantic_threshold = 0.3 # 图扩展时语义相似度阈值（建议0.3-0.5，过低可能引入无关记忆，过高无法扩展）
 
 # 智能查询优化
 enable_query_optimization = true # 启用查询优化（使用小模型分析对话历史，生成综合性搜索查询）
 
 # === 记忆整合配置 ===
+# 记忆整合包含两个功能：1)去重（合并相似记忆）2)关联（建立记忆关系）
 # 注意：整合任务会遍历所有记忆进行相似度计算，可能占用较多资源
 # 建议：1) 降低执行频率；2) 提高相似度阈值减少误判；3) 限制批量大小
 consolidation_enabled = true # 是否启用记忆整合
 consolidation_interval_hours = 1.0 # 整合任务执行间隔
-consolidation_similarity_threshold = 0.92 # 相似记忆去重阈值（建议>=0.92减少误判，0.85太低）
-consolidation_time_window_hours = 6.0 # 整合时间窗口（小时）
-consolidation_max_batch_size = 50 # 单次最多处理的记忆数量（限制批量避免阻塞）
+consolidation_deduplication_threshold = 0.93 # 相似记忆去重阈值
+consolidation_time_window_hours = 2.0 # 整合时间窗口（小时）- 统一用于去重和关联
+consolidation_max_batch_size = 100 # 单次最多处理的记忆数量
+
+# 记忆关联配置（整合功能的子模块）
+consolidation_linking_enabled = true # 是否启用记忆关联建立
+consolidation_linking_max_candidates = 10 # 每个记忆最多关联的候选数
+consolidation_linking_max_memories = 20 # 单次最多处理的记忆总数
+consolidation_linking_min_importance = 0.5 # 最低重要性阈值（低于此值的记忆不参与关联）
+consolidation_linking_pre_filter_threshold = 0.7 # 向量相似度预筛选阈值
+consolidation_linking_max_pairs_for_llm = 5 # 最多发送给LLM分析的候选对数
+consolidation_linking_min_confidence = 0.7 # LLM分析最低置信度阈值
+consolidation_linking_llm_temperature = 0.2 # LLM分析温度参数
+consolidation_linking_llm_max_tokens = 1500 # LLM分析最大输出长度
 
 # === 记忆遗忘配置 ===
 forgetting_enabled = true # 是否启用自动遗忘
@@ -273,7 +286,7 @@ forgetting_min_importance = 0.8 # 最小保护重要性（高于此值的记忆�
 # === 记忆激活配置 ===
 activation_decay_rate = 0.9 # 激活度衰减率（每天衰减10%）
 activation_propagation_strength = 0.5 # 激活传播强度（传播到相关记忆的激活度比例）
-activation_propagation_depth = 2 # 激活传播深度（最多传播几层，建议1-2）
+activation_propagation_depth = 1 # 激活传播深度（最多传播几层，建议1-2）
 
 # === 记忆检索配置 ===
 search_max_expand_depth = 2 # 检索时图扩展深度（0=仅直接匹配，1=扩展1跳，2=扩展2跳，推荐1-2）

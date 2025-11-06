@@ -416,6 +416,7 @@ class MemoryConfig(ValidatedConfigBase):
     search_min_importance: float = Field(default=0.3, description="最小重要性阈值")
     search_similarity_threshold: float = Field(default=0.5, description="向量相似度阈值")
     search_max_expand_depth: int = Field(default=2, description="检索时图扩展深度（0-3）")
+    search_expand_semantic_threshold: float = Field(default=0.3, description="图扩展时语义相似度阈值（建议0.3-0.5，过低可能引入无关记忆，过高无法扩展）")
     enable_query_optimization: bool = Field(default=True, description="启用查询优化")
     
     # 检索权重配置 (记忆图系统)
@@ -426,15 +427,21 @@ class MemoryConfig(ValidatedConfigBase):
     
     # 记忆整合配置
     consolidation_enabled: bool = Field(default=False, description="是否启用记忆整合")
-    consolidation_interval_hours: float = Field(default=6.0, description="整合任务执行间隔（小时）")
-    consolidation_similarity_threshold: float = Field(default=0.92, description="相似记忆去重阈值")
-    consolidation_time_window_hours: float = Field(default=6.0, description="整合时间窗口（小时）")
-    consolidation_max_batch_size: int = Field(default=50, description="单次最多处理的记忆数量")
-    
-    # 自动关联配置
-    auto_link_enabled: bool = Field(default=True, description="是否启用自动关联")
-    auto_link_max_candidates: int = Field(default=5, description="每个记忆最多关联候选数")
-    auto_link_min_confidence: float = Field(default=0.7, description="最低置信度阈值")
+    consolidation_interval_hours: float = Field(default=2.0, description="整合任务执行间隔（小时）")
+    consolidation_deduplication_threshold: float = Field(default=0.93, description="相似记忆去重阈值")
+    consolidation_time_window_hours: float = Field(default=2.0, description="整合时间窗口（小时）- 统一用于去重和关联")
+    consolidation_max_batch_size: int = Field(default=30, description="单次最多处理的记忆数量")
+
+    # 记忆关联配置（整合功能的子模块）
+    consolidation_linking_enabled: bool = Field(default=True, description="是否启用记忆关联建立")
+    consolidation_linking_max_candidates: int = Field(default=10, description="每个记忆最多关联的候选数")
+    consolidation_linking_max_memories: int = Field(default=20, description="单次最多处理的记忆总数")
+    consolidation_linking_min_importance: float = Field(default=0.5, description="最低重要性阈值")
+    consolidation_linking_pre_filter_threshold: float = Field(default=0.7, description="向量相似度预筛选阈值")
+    consolidation_linking_max_pairs_for_llm: int = Field(default=5, description="最多发送给LLM分析的候选对数")
+    consolidation_linking_min_confidence: float = Field(default=0.7, description="LLM分析最低置信度阈值")
+    consolidation_linking_llm_temperature: float = Field(default=0.2, description="LLM分析温度参数")
+    consolidation_linking_llm_max_tokens: int = Field(default=1500, description="LLM分析最大输出长度")
     
     # 遗忘配置 (记忆图系统)
     forgetting_enabled: bool = Field(default=True, description="是否启用自动遗忘")
