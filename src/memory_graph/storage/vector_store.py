@@ -209,7 +209,8 @@ class VectorStore:
             # 解析结果
             import orjson
             similar_nodes = []
-            if results["ids"] and results["ids"][0]:
+            # 修复：检查 ids 列表长度而不是直接判断真值（避免 numpy 数组歧义）
+            if results.get("ids") is not None and len(results["ids"]) > 0 and len(results["ids"][0]) > 0:
                 for i, node_id in enumerate(results["ids"][0]):
                     # ChromaDB 返回的是距离，需要转换为相似度
                     # 余弦距离: distance = 1 - similarity
@@ -367,7 +368,8 @@ class VectorStore:
         try:
             result = self.collection.get(ids=[node_id], include=["metadatas", "embeddings"])
 
-            if result and result["ids"]:
+            # 修复：检查 ids 列表长度而不是直接判断真值（避免 numpy 数组歧义）
+            if result and result.get("ids") is not None and len(result["ids"]) > 0:
                 return {
                     "id": result["ids"][0],
                     "metadata": result["metadatas"][0] if result["metadatas"] else {},
