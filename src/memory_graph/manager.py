@@ -1249,7 +1249,6 @@ class MemoryManager:
                 query=topic_node.content,
                 top_k=max_results * 2,
                 include_forgotten=False,
-                optimize_query=False,
             )
             
             # 过滤：排除自己和已关联的
