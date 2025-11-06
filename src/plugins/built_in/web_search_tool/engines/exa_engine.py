@@ -39,7 +39,7 @@ class ExaSearchEngine(BaseSearchEngine):
         return self.api_manager.is_available()
 
     async def search(self, args: dict[str, Any]) -> list[dict[str, Any]]:
-        """执行Exa搜索"""
+        """执行优化的Exa搜索（使用answer模式）"""
         if not self.is_available():
             return []
 
@@ -47,7 +47,16 @@ class ExaSearchEngine(BaseSearchEngine):
         num_results = args.get("num_results", 3)
         time_range = args.get("time_range", "any")
 
-        exa_args = {"num_results": num_results, "text": True, "highlights": True}
+        # 优化的搜索参数 - 更注重答案质量
+        exa_args = {
+            "num_results": num_results,
+            "text": True,
+            "highlights": True,
+            "summary": True,  # 启用自动摘要
+            "include_text": True,  # 包含全文内容
+        }
+
+        # 时间范围过滤
         if time_range != "any":
             today = datetime.now()
             start_date = today - timedelta(days=7 if time_range == "week" else 30)
@@ -61,18 +70,89 @@ class ExaSearchEngine(BaseSearchEngine):
                 return []
 
             loop = asyncio.get_running_loop()
+            # 使用search_and_contents获取完整内容，优化为answer模式
             func = functools.partial(exa_client.search_and_contents, query, **exa_args)
             search_response = await loop.run_in_executor(None, func)
 
-            return [
-                {
+            # 优化结果处理 - 更注重答案质量
+            results = []
+            for res in search_response.results:
+                # 获取最佳内容片段
+                highlights = getattr(res, "highlights", [])
+                summary = getattr(res, "summary", "")
+                text = getattr(res, "text", "")
+
+                # 智能内容选择：摘要 > 高亮 > 文本开头
+                if summary and len(summary) > 50:
+                    snippet = summary.strip()
+                elif highlights:
+                    snippet = " ".join(highlights).strip()
+                elif text:
+                    snippet = text[:300] + "..." if len(text) > 300 else text
+                else:
+                    snippet = "内容获取失败"
+
+                # 只保留有意义的摘要
+                if len(snippet) < 30:
+                    snippet = text[:200] + "..." if text and len(text) > 200 else snippet
+
+                results.append({
                     "title": res.title,
                     "url": res.url,
-                    "snippet": " ".join(getattr(res, "highlights", [])) or (getattr(res, "text", "")[:250] + "..."),
+                    "snippet": snippet,
                     "provider": "Exa",
-                }
-                for res in search_response.results
-            ]
+                    "answer_focused": True,  # 标记为答案导向的搜索
+                })
+
+            return results
         except Exception as e:
-            logger.error(f"Exa 搜索失败: {e}")
+            logger.error(f"Exa answer模式搜索失败: {e}")
+            return []
+
+    async def answer_search(self, args: dict[str, Any]) -> list[dict[str, Any]]:
+        """执行Exa快速答案搜索 - 最精简的搜索模式"""
+        if not self.is_available():
+            return []
+
+        query = args["query"]
+        num_results = min(args.get("num_results", 2), 2)  # 限制结果数量，专注质量
+
+        # 精简的搜索参数 - 专注快速答案
+        exa_args = {
+            "num_results": num_results,
+            "text": False,  # 不需要全文
+            "highlights": True,  # 只要关键高亮
+            "summary": True,  # 优先摘要
+        }
+
+        try:
+            exa_client = self.api_manager.get_next_client()
+            if not exa_client:
+                return []
+
+            loop = asyncio.get_running_loop()
+            func = functools.partial(exa_client.search_and_contents, query, **exa_args)
+            search_response = await loop.run_in_executor(None, func)
+
+            # 极简结果处理 - 只保留最核心信息
+            results = []
+            for res in search_response.results:
+                summary = getattr(res, "summary", "")
+                highlights = getattr(res, "highlights", [])
+
+                # 优先使用摘要，否则使用高亮
+                answer_text = summary.strip() if summary and len(summary) > 30 else " ".join(highlights).strip()
+
+                if answer_text and len(answer_text) > 20:
+                    results.append({
+                        "title": res.title,
+                        "url": res.url,
+                        "snippet": answer_text[:400] + "..." if len(answer_text) > 400 else answer_text,
+                        "provider": "Exa-Answer",
+                        "answer_mode": True  # 标记为纯答案模式
+                    })
+
+            return results
+        except Exception as e:
+            logger.error(f"Exa快速答案搜索失败: {e}")
             return []
