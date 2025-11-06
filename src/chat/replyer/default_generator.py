@@ -553,18 +553,56 @@ class DefaultReplyer:
                     if user_info_obj:
                         sender_name = getattr(user_info_obj, "user_nickname", "") or getattr(user_info_obj, "user_cardname", "")
                     
+                    # 获取参与者信息
+                    participants = []
+                    try:
+                        # 尝试从聊天流中获取参与者信息
+                        if hasattr(stream, 'chat_history_manager'):
+                            history_manager = stream.chat_history_manager
+                            # 获取最近的参与者列表
+                            recent_records = history_manager.get_memory_chat_history(
+                                user_id=getattr(stream, "user_id", ""),
+                                count=10,
+                                memory_types=["chat_message", "system_message"]
+                            )
+                            # 提取唯一的参与者名称
+                            for record in recent_records[:5]:  # 最近5条记录
+                                content = record.get("content", {})
+                                participant = content.get("participant_name")
+                                if participant and participant not in participants:
+                                    participants.append(participant)
+
+                                # 如果消息包含发送者信息，也添加到参与者列表
+                                if content.get("sender_name") and content.get("sender_name") not in participants:
+                                    participants.append(content.get("sender_name"))
+                    except Exception as e:
+                        logger.debug(f"获取参与者信息失败: {e}")
+
+                    # 如果发送者不在参与者列表中，添加进去
+                    if sender_name and sender_name not in participants:
+                        participants.insert(0, sender_name)
+
+                    # 格式化聊天历史为更友好的格式
+                    formatted_history = ""
+                    if chat_history:
+                        # 移除过长的历史记录，只保留最近部分
+                        lines = chat_history.strip().split('\n')
+                        recent_lines = lines[-10:] if len(lines) > 10 else lines
+                        formatted_history = '\n'.join(recent_lines)
+
                     query_context = {
-                        "chat_history": chat_history if chat_history else "",
+                        "chat_history": formatted_history,
                         "sender": sender_name,
+                        "participants": participants,
                     }
                     
-                    # 使用记忆管理器的智能检索（自动优化查询）
+                    # 使用记忆管理器的智能检索（多查询策略）
                     memories = await manager.search_memories(
                         query=target,
                         top_k=10,
                         min_importance=0.3,
                         include_forgotten=False,
-                        optimize_query=True,
+                        use_multi_query=True,
                         context=query_context,
                     )
                     

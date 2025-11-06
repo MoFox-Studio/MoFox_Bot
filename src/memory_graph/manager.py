@@ -432,7 +432,6 @@ class MemoryManager:
         time_range: Optional[Tuple[datetime, datetime]] = None,
         min_importance: float = 0.0,
         include_forgotten: bool = False,
-        optimize_query: bool = True,
         use_multi_query: bool = True,
         expand_depth: int = 1,
         context: Optional[Dict[str, Any]] = None,
@@ -453,7 +452,6 @@ class MemoryManager:
             time_range: 时间范围过滤 (start, end)
             min_importance: 最小重要性
             include_forgotten: 是否包含已遗忘的记忆
-            optimize_query: 是否使用小模型优化查询（已弃用，被 use_multi_query 替代）
             use_multi_query: 是否使用多查询策略（推荐，默认True）
             expand_depth: 图扩展深度（0=禁用, 1=推荐, 2-3=深度探索）
             context: 查询上下文（用于优化）

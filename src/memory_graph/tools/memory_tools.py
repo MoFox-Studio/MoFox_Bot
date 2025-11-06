@@ -629,27 +629,55 @@ class MemoryTools:
         try:
             from src.llm_models.utils_model import LLMRequest
             from src.config.config import model_config
-            
+
             llm = LLMRequest(
                 model_set=model_config.model_task_config.utils_small,
                 request_type="memory.multi_query"
             )
-            
-            participants = context.get("participants", []) if context else []
-            prompt = f"""为查询生成3-5个不同角度的搜索语句（JSON格式）。
 
-**查询：** {query}
+            # 获取上下文信息
+            participants = context.get("participants", []) if context else []
+            chat_history = context.get("chat_history", "") if context else ""
+            sender = context.get("sender", "") if context else ""
+
+            # 处理聊天历史，提取最近5条左右的对话
+            recent_chat = ""
+            if chat_history:
+                lines = chat_history.strip().split('\n')
+                # 取最近5条消息
+                recent_lines = lines[-5:] if len(lines) > 5 else lines
+                recent_chat = '\n'.join(recent_lines)
+
+            prompt = f"""基于聊天上下文为查询生成3-5个不同角度的搜索语句（JSON格式）。
+
+**当前查询：** {query}
+**发送者：** {sender if sender else '未知'}
 **参与者：** {', '.join(participants) if participants else '无'}
 
-**原则：** 对复杂查询（如"杰瑞喵如何评价新的记忆系统"），应生成：
-1. 完整查询（权重1.0）
-2. 每个关键概念独立查询（权重0.8）- 重要！
-3. 主体+动作（权重0.6）
+**最近聊天记录（最近5条）：**
+{recent_chat if recent_chat else '无聊天历史'}
 
-**输出JSON：**
+**分析原则：**
+1. **上下文理解**：根据聊天历史理解查询的真实意图
+2. **指代消解**：识别并代换"他"、"她"、"它"、"那个"等指代词
+3. **话题关联**：结合最近讨论的话题生成更精准的查询
+4. **查询分解**：对复杂查询分解为多个子查询
+
+**生成策略：**
+1. **完整查询**（权重1.0）：结合上下文的完整查询，包含指代消解
+2. **关键概念查询**（权重0.8）：查询中的核心概念，特别是聊天中提到的实体
+3. **话题扩展查询**（权重0.7）：基于最近聊天话题的相关查询
+4. **动作/情感查询**（权重0.6）：如果涉及情感或动作，生成相关查询
+
+**输出JSON格式：**
 ```json
-{{"queries": [{{"text": "查询1", "weight": 1.0}}, {{"text": "查询2", "weight": 0.8}}]}}
-```"""
+{{"queries": [{{"text": "查询语句", "weight": 1.0}}, {{"text": "查询语句", "weight": 0.8}}]}}
+```
+
+**示例：**
+- 查询："他怎么样了？" + 聊天中提到"小明生病了" → "小明身体恢复情况"
+- 查询："那个项目" + 聊天中讨论"记忆系统开发" → "记忆系统项目进展"
+"""
 
             response, _ = await llm.generate_response_async(prompt, temperature=0.3, max_tokens=250)
             
