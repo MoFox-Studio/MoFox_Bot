@@ -367,7 +367,7 @@ class VectorStore:
         try:
             result = self.collection.get(ids=[node_id], include=["metadatas", "embeddings"])
 
-            if result["ids"]:
+            if result and result["ids"]:
                 return {
                     "id": result["ids"][0],
                     "metadata": result["metadatas"][0] if result["metadatas"] else {},
