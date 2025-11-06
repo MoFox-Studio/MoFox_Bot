@@ -787,7 +787,7 @@ class MessageHandler:
 
         try:
             # 尝试将json_data解析为Python对象
-            nested_data = json.loads(json_data)
+            nested_data = orjson.loads(json_data)
 
             # 检查是否是机器人自己上传文件的回声
             if self._is_file_upload_echo(nested_data):
@@ -912,7 +912,7 @@ class MessageHandler:
             # 如果没有提取到关键信息，返回None
             return None
 
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             # 如果解析失败，我们假设它不是我们关心的任何一种结构化JSON，
             # 而是普通的文本或者无法解析的格式。
             logger.debug(f"无法将data字段解析为JSON: {json_data}")
