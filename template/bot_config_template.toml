@@ -1,5 +1,5 @@
 [inner]
-version = "7.6.1"
+version = "7.6.2"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -257,10 +257,13 @@ search_similarity_threshold = 0.5 # 向量相似度阈值
 enable_query_optimization = true # 启用查询优化（使用小模型分析对话历史，生成综合性搜索查询）
 
 # === 记忆整合配置 ===
+# 注意：整合任务会遍历所有记忆进行相似度计算，可能占用较多资源
+# 建议：1) 降低执行频率；2) 提高相似度阈值减少误判；3) 限制批量大小
 consolidation_enabled = true # 是否启用记忆整合
-consolidation_interval_hours = 1.0 # 整合任务执行间隔（小时）
-consolidation_similarity_threshold = 0.85 # 相似记忆合并阈值
-consolidation_time_window_hours = 24 # 整合时间窗口（小时）
+consolidation_interval_hours = 1.0 # 整合任务执行间隔
+consolidation_similarity_threshold = 0.92 # 相似记忆去重阈值（建议>=0.92减少误判，0.85太低）
+consolidation_time_window_hours = 6.0 # 整合时间窗口（小时）
+consolidation_max_batch_size = 50 # 单次最多处理的记忆数量（限制批量避免阻塞）
 
 # === 记忆遗忘配置 ===
 forgetting_enabled = true # 是否启用自动遗忘
@@ -270,7 +273,7 @@ forgetting_min_importance = 0.8 # 最小保护重要性（高于此值的记忆�
 # === 记忆激活配置 ===
 activation_decay_rate = 0.9 # 激活度衰减率（每天衰减10%）
 activation_propagation_strength = 0.5 # 激活传播强度（传播到相关记忆的激活度比例）
-activation_propagation_depth = 1 # 激活传播深度（最多传播几层）
+activation_propagation_depth = 2 # 激活传播深度（最多传播几层，建议1-2）
 
 # === 记忆检索配置 ===
 search_max_expand_depth = 2 # 检索时图扩展深度（0=仅直接匹配，1=扩展1跳，2=扩展2跳，推荐1-2）
