@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import numpy as np
 
 from src.common.logger import get_logger
-from src.memory_graph.config import NodeMergerConfig
+from src.config.official_configs import MemoryConfig
 from src.memory_graph.models import MemoryNode, NodeType
 from src.memory_graph.storage.graph_store import GraphStore
 from src.memory_graph.storage.vector_store import VectorStore
@@ -31,7 +32,7 @@ class NodeMerger:
         self,
         vector_store: VectorStore,
         graph_store: GraphStore,
-        config: Optional[NodeMergerConfig] = None,
+        config: MemoryConfig,
     ):
         """
         初始化节点合并器
@@ -39,15 +40,15 @@ class NodeMerger:
         Args:
             vector_store: 向量存储
             graph_store: 图存储
-            config: 配置对象
+            config: 记忆配置对象
         """
         self.vector_store = vector_store
         self.graph_store = graph_store
-        self.config = config or NodeMergerConfig()
+        self.config = config
 
         logger.info(
-            f"初始化节点合并器: threshold={self.config.similarity_threshold}, "
-            f"context_match={self.config.context_match_required}"
+            f"初始化节点合并器: threshold={self.config.node_merger_similarity_threshold}, "
+            f"context_match={self.config.node_merger_context_match_required}"
         )
 
     async def find_similar_nodes(
@@ -71,7 +72,7 @@ class NodeMerger:
             logger.warning(f"节点 {node.id} 没有 embedding，无法查找相似节点")
             return []
 
-        threshold = threshold or self.config.similarity_threshold
+        threshold = threshold or self.config.node_merger_similarity_threshold
 
         try:
             # 在向量存储中搜索相似节点
@@ -121,7 +122,7 @@ class NodeMerger:
             是否应该合并
         """
         # 1. 检查相似度阈值
-        if similarity < self.config.similarity_threshold:
+        if similarity < self.config.node_merger_similarity_threshold:
             return False
 
         # 2. 非常高的相似度（>0.95）直接合并
@@ -130,7 +131,7 @@ class NodeMerger:
             return True
 
         # 3. 如果不要求上下文匹配，则通过相似度判断
-        if not self.config.context_match_required:
+        if not self.config.node_merger_context_match_required:
             return True
 
         # 4. 检查上下文匹配

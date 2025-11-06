@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.config.config import global_config
+from src.config.official_configs import MemoryConfig
 from src.memory_graph.core.builder import MemoryBuilder
 from src.memory_graph.core.extractor import MemoryExtractor
 from src.memory_graph.models import Memory, MemoryEdge, MemoryNode, MemoryType, NodeType, EdgeType
@@ -53,7 +54,7 @@ class MemoryManager:
         if not global_config.memory or not getattr(global_config.memory, 'enable', False):
             raise ValueError("记忆系统未启用，请在配置文件中启用 [memory] enable = true")
         
-        self.config = global_config.memory
+        self.config: MemoryConfig = global_config.memory
         self.data_dir = data_dir or Path(getattr(self.config, 'data_dir', 'data/memory_graph'))
         
         # 存储组件
@@ -132,12 +133,16 @@ class MemoryManager:
                 embedding_generator=self.embedding_generator,
             )
             
+            # 检查配置值
+            expand_depth = self.config.search_max_expand_depth
+            logger.info(f"📊 配置检查: search_max_expand_depth={expand_depth}")
+            
             self.tools = MemoryTools(
                 vector_store=self.vector_store,
                 graph_store=self.graph_store,
                 persistence_manager=self.persistence,
                 embedding_generator=self.embedding_generator,
-                max_expand_depth=getattr(self.config, 'search_max_expand_depth', 1),  # 从配置读取默认深度
+                max_expand_depth=expand_depth,  # 从配置读取图扩展深度
             )
             
             self._initialized = True
@@ -433,7 +438,7 @@ class MemoryManager:
         min_importance: float = 0.0,
         include_forgotten: bool = False,
         use_multi_query: bool = True,
-        expand_depth: int = 1,
+        expand_depth: int | None = None,
         context: Optional[Dict[str, Any]] = None,
     ) -> List[Memory]:
         """
@@ -468,7 +473,7 @@ class MemoryManager:
                 "query": query,
                 "top_k": top_k,
                 "use_multi_query": use_multi_query,
-                "expand_depth": expand_depth,  # 传递图扩展深度
+                "expand_depth": expand_depth or global_config.memory.search_max_expand_depth,  # 传递图扩展深度
                 "context": context,
             }
             

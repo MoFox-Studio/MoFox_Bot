@@ -51,6 +51,8 @@ class MemoryTools:
         self.persistence_manager = persistence_manager
         self._initialized = False
         self.max_expand_depth = max_expand_depth  # 保存配置的默认值
+        
+        logger.info(f"MemoryTools 初始化: max_expand_depth={max_expand_depth}")
 
         # 初始化组件
         self.extractor = MemoryExtractor()
