@@ -667,32 +667,46 @@ class DefaultReplyer:
             return ""
 
         try:
-            # 使用工具执行器获取信息
+            # 首先获取当前的历史记录（在执行新工具调用之前）
+            tool_history_str = self.tool_executor.history_manager.format_for_prompt(max_records=3, include_results=True)
+
+            # 然后执行工具调用
             tool_results, _, _ = await self.tool_executor.execute_from_chat_message(
                 sender=sender, target_message=target, chat_history=chat_history, return_details=False
             )
 
+            info_parts = []
+
+            # 显示之前的工具调用历史（不包括当前这次调用）
+            if tool_history_str:
+                info_parts.append(tool_history_str)
+
+            # 显示当前工具调用的结果（简要信息）
             if tool_results:
-                tool_info_str = "以下是你通过工具获取到的实时信息：\n"
+                current_results_parts = ["## 🔧 刚获取的工具信息"]
                 for tool_result in tool_results:
                     tool_name = tool_result.get("tool_name", "unknown")
                     content = tool_result.get("content", "")
                     result_type = tool_result.get("type", "tool_result")
 
-                    tool_info_str += f"- 【{tool_name}】{result_type}: {content}\n"
+                    # 不进行截断，让工具自己处理结果长度
+                    current_results_parts.append(f"- **{tool_name}**: {content}")
 
-                tool_info_str += "以上是你获取到的实时信息，请在回复时参考这些信息。"
+                info_parts.append("\n".join(current_results_parts))
                 logger.info(f"获取到 {len(tool_results)} 个工具结果")
 
-                return tool_info_str
-            else:
-                logger.debug("未获取到任何工具结果")
+            # 如果没有任何信息，返回空字符串
+            if not info_parts:
+                logger.debug("未获取到任何工具结果或历史记录")
                 return ""
+
+            return "\n\n".join(info_parts)
 
         except Exception as e:
             logger.error(f"工具信息获取失败: {e}")
             return ""
 
+    
     def _parse_reply_target(self, target_message: str) -> tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
         from src.chat.utils.prompt import Prompt

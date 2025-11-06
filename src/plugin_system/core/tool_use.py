@@ -3,7 +3,6 @@ import time
 from typing import Any
 
 from src.chat.utils.prompt import Prompt, global_prompt_manager
-from src.common.cache_manager import tool_cache
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.payload_content import ToolCall
@@ -11,6 +10,8 @@ from src.llm_models.utils_model import LLMRequest
 from src.plugin_system.apis.tool_api import get_llm_available_tool_definitions, get_tool_instance
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
+from src.plugin_system.core.stream_tool_history import get_stream_tool_history_manager, ToolCallRecord
+from dataclasses import asdict
 
 logger = get_logger("tool_use")
 
@@ -36,14 +37,28 @@ def init_tool_executor_prompt():
 
 {tool_history}
 
-## 🔧 工具使用
+## 🔧 工具决策指南
 
-根据上下文判断是否需要使用工具。每个工具都有详细的description说明其用途和参数，请根据工具定义决定是否调用。
+**核心原则：**
+- 根据上下文智能判断是否需要使用工具
+- 每个工具都有详细的description说明其用途和参数
+- 避免重复调用历史记录中已执行的工具（除非参数不同）
+- 优先考虑使用已有的缓存结果，避免重复调用
+
+**历史记录说明：**
+- 上方显示的是**之前**的工具调用记录
+- 请参考历史记录避免重复调用相同参数的工具
+- 如果历史记录中已有相关结果，可以考虑直接回答而不调用工具
 
 **⚠️ 记忆创建特别提醒：**
 创建记忆时，subject（主体）必须使用对话历史中显示的**真实发送人名字**！
 - ✅ 正确：从"Prou(12345678): ..."中提取"Prou"作为subject
 - ❌ 错误：使用"用户"、"对方"等泛指词
+
+**工具调用策略：**
+1. **避免重复调用**：查看历史记录，如果最近已调用过相同工具且参数一致，无需重复调用
+2. **智能选择工具**：根据消息内容选择最合适的工具，避免过度使用
+3. **参数优化**：确保工具参数简洁有效，避免冗余信息
 
 **执行指令：**
 - 需要使用工具 → 直接调用相应的工具函数
@@ -81,9 +96,8 @@ class ToolExecutor:
         """待处理的第二步工具调用，格式为 {tool_name: step_two_definition}"""
         self._log_prefix_initialized = False
 
-        # 工具调用历史
-        self.tool_call_history: list[dict[str, Any]] = []
-        """工具调用历史，包含工具名称、参数和结果"""
+        # 流式工具历史记录管理器
+        self.history_manager = get_stream_tool_history_manager(chat_id)
 
         # logger.info(f"{self.log_prefix}工具执行器初始化完成")  # 移到异步初始化中
 
@@ -125,7 +139,7 @@ class ToolExecutor:
         bot_name = global_config.bot.nickname
 
         # 构建工具调用历史文本
-        tool_history = self._format_tool_history()
+        tool_history = self.history_manager.format_for_prompt(max_records=5, include_results=True)
         
         # 获取人设信息
         personality_core = global_config.personality.personality_core
@@ -183,83 +197,7 @@ class ToolExecutor:
 
         return tool_definitions
 
-    def _format_tool_history(self, max_history: int = 5) -> str:
-        """格式化工具调用历史为文本
-
-        Args:
-            max_history: 最多显示的历史记录数量
-
-        Returns:
-            格式化的工具历史文本
-        """
-        if not self.tool_call_history:
-            return ""
-
-        # 只取最近的几条历史
-        recent_history = self.tool_call_history[-max_history:]
-
-        history_lines = ["历史工具调用记录："]
-        for i, record in enumerate(recent_history, 1):
-            tool_name = record.get("tool_name", "unknown")
-            args = record.get("args", {})
-            result_preview = record.get("result_preview", "")
-            status = record.get("status", "success")
-
-            # 格式化参数
-            args_str = ", ".join([f"{k}={v}" for k, v in args.items()])
-
-            # 格式化记录
-            status_emoji = "✓" if status == "success" else "✗"
-            history_lines.append(f"{i}. {status_emoji} {tool_name}({args_str})")
-
-            if result_preview:
-                # 限制结果预览长度
-                if len(result_preview) > 200:
-                    result_preview = result_preview[:200] + "..."
-                history_lines.append(f"   结果: {result_preview}")
-
-        return "\n".join(history_lines)
-
-    def _add_tool_to_history(self, tool_name: str, args: dict, result: dict | None, status: str = "success"):
-        """添加工具调用到历史记录
-
-        Args:
-            tool_name: 工具名称
-            args: 工具参数
-            result: 工具结果
-            status: 执行状态 (success/error)
-        """
-        # 生成结果预览
-        result_preview = ""
-        if result:
-            content = result.get("content", "")
-            if isinstance(content, str):
-                result_preview = content
-            elif isinstance(content, list | dict):
-                import orjson
-
-                try:
-                    result_preview = orjson.dumps(content, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
-                except Exception:
-                    result_preview = str(content)
-            else:
-                result_preview = str(content)
-
-        record = {
-            "tool_name": tool_name,
-            "args": args,
-            "result_preview": result_preview,
-            "status": status,
-            "timestamp": time.time(),
-        }
-
-        self.tool_call_history.append(record)
-
-        # 限制历史记录数量，避免内存溢出
-        max_history_size = 5
-        if len(self.tool_call_history) > max_history_size:
-            self.tool_call_history = self.tool_call_history[-max_history_size:]
-
+  
     async def execute_tool_calls(self, tool_calls: list[ToolCall] | None) -> tuple[list[dict[str, Any]], list[str]]:
         """执行工具调用
 
@@ -320,10 +258,20 @@ class ToolExecutor:
                     logger.debug(f"{self.log_prefix}工具{tool_name}结果内容: {preview}...")
 
                     # 记录到历史
-                    self._add_tool_to_history(tool_name, tool_args, result, status="success")
+                    await self.history_manager.add_tool_call(ToolCallRecord(
+                        tool_name=tool_name,
+                        args=tool_args,
+                        result=result,
+                        status="success"
+                    ))
                 else:
                     # 工具返回空结果也记录到历史
-                    self._add_tool_to_history(tool_name, tool_args, None, status="success")
+                    await self.history_manager.add_tool_call(ToolCallRecord(
+                        tool_name=tool_name,
+                        args=tool_args,
+                        result=None,
+                        status="success"
+                    ))
 
             except Exception as e:
                 logger.error(f"{self.log_prefix}工具{tool_name}执行失败: {e}")
@@ -338,62 +286,72 @@ class ToolExecutor:
                 tool_results.append(error_info)
 
                 # 记录失败到历史
-                self._add_tool_to_history(tool_name, tool_args, None, status="error")
+                await self.history_manager.add_tool_call(ToolCallRecord(
+                    tool_name=tool_name,
+                    args=tool_args,
+                    result=None,
+                    status="error",
+                    error_message=str(e)
+                ))
 
         return tool_results, used_tools
 
     async def execute_tool_call(
         self, tool_call: ToolCall, tool_instance: BaseTool | None = None
     ) -> dict[str, Any] | None:
-        """执行单个工具调用，并处理缓存"""
+        """执行单个工具调用，集成流式历史记录管理器"""
 
+        start_time = time.time()
         function_args = tool_call.args or {}
         tool_instance = tool_instance or get_tool_instance(tool_call.func_name, self.chat_stream)
 
-        # 如果工具不存在或未启用缓存，则直接执行
-        if not tool_instance or not tool_instance.enable_cache:
-            return await self._original_execute_tool_call(tool_call, tool_instance)
+        # 尝试从历史记录管理器获取缓存结果
+        if tool_instance and tool_instance.enable_cache:
+            try:
+                cached_result = await self.history_manager.get_cached_result(
+                    tool_name=tool_call.func_name,
+                    args=function_args
+                )
+                if cached_result:
+                    execution_time = time.time() - start_time
+                    logger.info(f"{self.log_prefix}使用缓存结果，跳过工具 {tool_call.func_name} 执行")
 
-        # --- 缓存逻辑开始 ---
-        try:
-            tool_file_path = inspect.getfile(tool_instance.__class__)
-            semantic_query = None
-            if tool_instance.semantic_cache_query_key:
-                semantic_query = function_args.get(tool_instance.semantic_cache_query_key)
+                    # 记录缓存命中到历史
+                    await self.history_manager.add_tool_call(ToolCallRecord(
+                        tool_name=tool_call.func_name,
+                        args=function_args,
+                        result=cached_result,
+                        status="success",
+                        execution_time=execution_time,
+                        cache_hit=True
+                    ))
 
-            cached_result = await tool_cache.get(
-                tool_name=tool_call.func_name,
-                function_args=function_args,
-                tool_file_path=tool_file_path,
-                semantic_query=semantic_query,
-            )
-            if cached_result:
-                logger.info(f"{self.log_prefix}使用缓存结果，跳过工具 {tool_call.func_name} 执行")
-                return cached_result
-        except Exception as e:
-            logger.error(f"{self.log_prefix}检查工具缓存时出错: {e}")
+                    return cached_result
+            except Exception as e:
+                logger.error(f"{self.log_prefix}检查历史缓存时出错: {e}")
 
-        # 缓存未命中，执行原始工具调用
+        # 缓存未命中，执行工具调用
         result = await self._original_execute_tool_call(tool_call, tool_instance)
 
-        # 将结果存入缓存
-        try:
-            tool_file_path = inspect.getfile(tool_instance.__class__)
-            semantic_query = None
-            if tool_instance.semantic_cache_query_key:
-                semantic_query = function_args.get(tool_instance.semantic_cache_query_key)
+        # 记录执行结果到历史管理器
+        execution_time = time.time() - start_time
+        if tool_instance and result and tool_instance.enable_cache:
+            try:
+                tool_file_path = inspect.getfile(tool_instance.__class__)
+                semantic_query = None
+                if tool_instance.semantic_cache_query_key:
+                    semantic_query = function_args.get(tool_instance.semantic_cache_query_key)
 
-            await tool_cache.set(
-                tool_name=tool_call.func_name,
-                function_args=function_args,
-                tool_file_path=tool_file_path,
-                data=result,
-                ttl=tool_instance.cache_ttl,
-                semantic_query=semantic_query,
-            )
-        except Exception as e:
-            logger.error(f"{self.log_prefix}设置工具缓存时出错: {e}")
-        # --- 缓存逻辑结束 ---
+                await self.history_manager.cache_result(
+                    tool_name=tool_call.func_name,
+                    args=function_args,
+                    result=result,
+                    execution_time=execution_time,
+                    tool_file_path=tool_file_path,
+                    ttl=tool_instance.cache_ttl
+                )
+            except Exception as e:
+                logger.error(f"{self.log_prefix}缓存结果到历史管理器时出错: {e}")
 
         return result
 
@@ -528,21 +486,31 @@ class ToolExecutor:
                 logger.info(f"{self.log_prefix}直接工具执行成功: {tool_name}")
 
                 # 记录到历史
-                self._add_tool_to_history(tool_name, tool_args, result, status="success")
+                await self.history_manager.add_tool_call(ToolCallRecord(
+                    tool_name=tool_name,
+                    args=tool_args,
+                    result=result,
+                    status="success"
+                ))
 
                 return tool_info
 
         except Exception as e:
             logger.error(f"{self.log_prefix}直接工具执行失败 {tool_name}: {e}")
             # 记录失败到历史
-            self._add_tool_to_history(tool_name, tool_args, None, status="error")
+            await self.history_manager.add_tool_call(ToolCallRecord(
+                tool_name=tool_name,
+                args=tool_args,
+                result=None,
+                status="error",
+                error_message=str(e)
+            ))
 
         return None
 
     def clear_tool_history(self):
         """清除工具调用历史"""
-        self.tool_call_history.clear()
-        logger.debug(f"{self.log_prefix}已清除工具调用历史")
+        self.history_manager.clear_history()
 
     def get_tool_history(self) -> list[dict[str, Any]]:
         """获取工具调用历史
@@ -550,7 +518,17 @@ class ToolExecutor:
         Returns:
             工具调用历史列表
         """
-        return self.tool_call_history.copy()
+        # 返回最近的历史记录
+        records = self.history_manager.get_recent_history(count=10)
+        return [asdict(record) for record in records]
+
+    def get_tool_stats(self) -> dict[str, Any]:
+        """获取工具统计信息
+
+        Returns:
+            工具统计信息字典
+        """
+        return self.history_manager.get_stats()
 
 
 """

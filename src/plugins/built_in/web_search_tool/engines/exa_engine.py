@@ -44,7 +44,7 @@ class ExaSearchEngine(BaseSearchEngine):
             return []
 
         query = args["query"]
-        num_results = args.get("num_results", 3)
+        num_results = min(args.get("num_results", 5), 5)  # 默认5个结果，但限制最多5个
         time_range = args.get("time_range", "any")
 
         # 优化的搜索参数 - 更注重答案质量
@@ -53,7 +53,6 @@ class ExaSearchEngine(BaseSearchEngine):
             "text": True,
             "highlights": True,
             "summary": True,  # 启用自动摘要
-            "include_text": True,  # 包含全文内容
         }
 
         # 时间范围过滤
@@ -115,7 +114,7 @@ class ExaSearchEngine(BaseSearchEngine):
             return []
 
         query = args["query"]
-        num_results = min(args.get("num_results", 2), 2)  # 限制结果数量，专注质量
+        num_results = min(args.get("num_results", 3), 3)  # answer模式默认3个结果，专注质量
 
         # 精简的搜索参数 - 专注快速答案
         exa_args = {
