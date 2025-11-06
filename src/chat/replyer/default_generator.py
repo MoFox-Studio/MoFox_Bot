@@ -553,18 +553,56 @@ class DefaultReplyer:
                     if user_info_obj:
                         sender_name = getattr(user_info_obj, "user_nickname", "") or getattr(user_info_obj, "user_cardname", "")
                     
+                    # 获取参与者信息
+                    participants = []
+                    try:
+                        # 尝试从聊天流中获取参与者信息
+                        if hasattr(stream, 'chat_history_manager'):
+                            history_manager = stream.chat_history_manager
+                            # 获取最近的参与者列表
+                            recent_records = history_manager.get_memory_chat_history(
+                                user_id=getattr(stream, "user_id", ""),
+                                count=10,
+                                memory_types=["chat_message", "system_message"]
+                            )
+                            # 提取唯一的参与者名称
+                            for record in recent_records[:5]:  # 最近5条记录
+                                content = record.get("content", {})
+                                participant = content.get("participant_name")
+                                if participant and participant not in participants:
+                                    participants.append(participant)
+
+                                # 如果消息包含发送者信息，也添加到参与者列表
+                                if content.get("sender_name") and content.get("sender_name") not in participants:
+                                    participants.append(content.get("sender_name"))
+                    except Exception as e:
+                        logger.debug(f"获取参与者信息失败: {e}")
+
+                    # 如果发送者不在参与者列表中，添加进去
+                    if sender_name and sender_name not in participants:
+                        participants.insert(0, sender_name)
+
+                    # 格式化聊天历史为更友好的格式
+                    formatted_history = ""
+                    if chat_history:
+                        # 移除过长的历史记录，只保留最近部分
+                        lines = chat_history.strip().split('\n')
+                        recent_lines = lines[-10:] if len(lines) > 10 else lines
+                        formatted_history = '\n'.join(recent_lines)
+
                     query_context = {
-                        "chat_history": chat_history if chat_history else "",
+                        "chat_history": formatted_history,
                         "sender": sender_name,
+                        "participants": participants,
                     }
                     
-                    # 使用记忆管理器的智能检索（自动优化查询）
+                    # 使用记忆管理器的智能检索（多查询策略）
                     memories = await manager.search_memories(
                         query=target,
                         top_k=10,
                         min_importance=0.3,
                         include_forgotten=False,
-                        optimize_query=True,
+                        use_multi_query=True,
                         context=query_context,
                     )
                     
@@ -667,32 +705,46 @@ class DefaultReplyer:
             return ""
 
         try:
-            # 使用工具执行器获取信息
+            # 首先获取当前的历史记录（在执行新工具调用之前）
+            tool_history_str = self.tool_executor.history_manager.format_for_prompt(max_records=3, include_results=True)
+
+            # 然后执行工具调用
             tool_results, _, _ = await self.tool_executor.execute_from_chat_message(
                 sender=sender, target_message=target, chat_history=chat_history, return_details=False
             )
 
+            info_parts = []
+
+            # 显示之前的工具调用历史（不包括当前这次调用）
+            if tool_history_str:
+                info_parts.append(tool_history_str)
+
+            # 显示当前工具调用的结果（简要信息）
             if tool_results:
-                tool_info_str = "以下是你通过工具获取到的实时信息：\n"
+                current_results_parts = ["## 🔧 刚获取的工具信息"]
                 for tool_result in tool_results:
                     tool_name = tool_result.get("tool_name", "unknown")
                     content = tool_result.get("content", "")
                     result_type = tool_result.get("type", "tool_result")
 
-                    tool_info_str += f"- 【{tool_name}】{result_type}: {content}\n"
+                    # 不进行截断，让工具自己处理结果长度
+                    current_results_parts.append(f"- **{tool_name}**: {content}")
 
-                tool_info_str += "以上是你获取到的实时信息，请在回复时参考这些信息。"
+                info_parts.append("\n".join(current_results_parts))
                 logger.info(f"获取到 {len(tool_results)} 个工具结果")
 
-                return tool_info_str
-            else:
-                logger.debug("未获取到任何工具结果")
+            # 如果没有任何信息，返回空字符串
+            if not info_parts:
+                logger.debug("未获取到任何工具结果或历史记录")
                 return ""
+
+            return "\n\n".join(info_parts)
 
         except Exception as e:
             logger.error(f"工具信息获取失败: {e}")
             return ""
 
+    
     def _parse_reply_target(self, target_message: str) -> tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
         from src.chat.utils.prompt import Prompt

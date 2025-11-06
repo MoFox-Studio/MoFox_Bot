@@ -5,7 +5,7 @@ MCP Client Manager
 """
 
 import asyncio
-import json
+import orjson
 import shutil
 from pathlib import Path
 from typing import Any
@@ -89,7 +89,7 @@ class MCPClientManager:
 
         try:
             with open(self.config_path, encoding="utf-8") as f:
-                config_data = json.load(f)
+                config_data = orjson.loads(f.read())
 
             servers = {}
             mcp_servers = config_data.get("mcpServers", {})
@@ -106,7 +106,7 @@ class MCPClientManager:
             logger.info(f"成功加载 {len(servers)} 个 MCP 服务器配置")
             return servers
 
-        except json.JSONDecodeError as e:
+        except orjson.JSONDecodeError as e:
             logger.error(f"解析 MCP 配置文件失败: {e}")
             return {}
         except Exception as e:

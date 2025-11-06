@@ -34,6 +34,7 @@ class MemoryTools:
         graph_store: GraphStore,
         persistence_manager: PersistenceManager,
         embedding_generator: Optional[EmbeddingGenerator] = None,
+        max_expand_depth: int = 1,
     ):
         """
         初始化工具集
@@ -43,11 +44,13 @@ class MemoryTools:
             graph_store: 图存储
             persistence_manager: 持久化管理器
             embedding_generator: 嵌入生成器（可选）
+            max_expand_depth: 图扩展深度的默认值（从配置读取）
         """
         self.vector_store = vector_store
         self.graph_store = graph_store
         self.persistence_manager = persistence_manager
         self._initialized = False
+        self.max_expand_depth = max_expand_depth  # 保存配置的默认值
 
         # 初始化组件
         self.extractor = MemoryExtractor()
@@ -448,11 +451,12 @@ class MemoryTools:
         try:
             query = params.get("query", "")
             top_k = params.get("top_k", 10)
-            expand_depth = params.get("expand_depth", 1)
+            # 使用配置中的默认值而不是硬编码的 1
+            expand_depth = params.get("expand_depth", self.max_expand_depth)
             use_multi_query = params.get("use_multi_query", True)
             context = params.get("context", None)
 
-            logger.info(f"搜索记忆: {query} (top_k={top_k}, multi_query={use_multi_query})")
+            logger.info(f"搜索记忆: {query} (top_k={top_k}, expand_depth={expand_depth}, multi_query={use_multi_query})")
 
             # 0. 确保初始化
             await self._ensure_initialized()
@@ -474,9 +478,9 @@ class MemoryTools:
                     ids = metadata["memory_ids"]
                     # 确保是列表
                     if isinstance(ids, str):
-                        import json
+                        import orjson
                         try:
-                            ids = json.loads(ids)
+                            ids = orjson.loads(ids)
                         except:
                             ids = [ids]
                     if isinstance(ids, list):
@@ -625,35 +629,63 @@ class MemoryTools:
         try:
             from src.llm_models.utils_model import LLMRequest
             from src.config.config import model_config
-            
+
             llm = LLMRequest(
                 model_set=model_config.model_task_config.utils_small,
                 request_type="memory.multi_query"
             )
-            
-            participants = context.get("participants", []) if context else []
-            prompt = f"""为查询生成3-5个不同角度的搜索语句（JSON格式）。
 
-**查询：** {query}
+            # 获取上下文信息
+            participants = context.get("participants", []) if context else []
+            chat_history = context.get("chat_history", "") if context else ""
+            sender = context.get("sender", "") if context else ""
+
+            # 处理聊天历史，提取最近5条左右的对话
+            recent_chat = ""
+            if chat_history:
+                lines = chat_history.strip().split('\n')
+                # 取最近5条消息
+                recent_lines = lines[-5:] if len(lines) > 5 else lines
+                recent_chat = '\n'.join(recent_lines)
+
+            prompt = f"""基于聊天上下文为查询生成3-5个不同角度的搜索语句（JSON格式）。
+
+**当前查询：** {query}
+**发送者：** {sender if sender else '未知'}
 **参与者：** {', '.join(participants) if participants else '无'}
 
-**原则：** 对复杂查询（如"杰瑞喵如何评价新的记忆系统"），应生成：
-1. 完整查询（权重1.0）
-2. 每个关键概念独立查询（权重0.8）- 重要！
-3. 主体+动作（权重0.6）
+**最近聊天记录（最近5条）：**
+{recent_chat if recent_chat else '无聊天历史'}
 
-**输出JSON：**
+**分析原则：**
+1. **上下文理解**：根据聊天历史理解查询的真实意图
+2. **指代消解**：识别并代换"他"、"她"、"它"、"那个"等指代词
+3. **话题关联**：结合最近讨论的话题生成更精准的查询
+4. **查询分解**：对复杂查询分解为多个子查询
+
+**生成策略：**
+1. **完整查询**（权重1.0）：结合上下文的完整查询，包含指代消解
+2. **关键概念查询**（权重0.8）：查询中的核心概念，特别是聊天中提到的实体
+3. **话题扩展查询**（权重0.7）：基于最近聊天话题的相关查询
+4. **动作/情感查询**（权重0.6）：如果涉及情感或动作，生成相关查询
+
+**输出JSON格式：**
 ```json
-{{"queries": [{{"text": "查询1", "weight": 1.0}}, {{"text": "查询2", "weight": 0.8}}]}}
-```"""
+{{"queries": [{{"text": "查询语句", "weight": 1.0}}, {{"text": "查询语句", "weight": 0.8}}]}}
+```
+
+**示例：**
+- 查询："他怎么样了？" + 聊天中提到"小明生病了" → "小明身体恢复情况"
+- 查询："那个项目" + 聊天中讨论"记忆系统开发" → "记忆系统项目进展"
+"""
 
             response, _ = await llm.generate_response_async(prompt, temperature=0.3, max_tokens=250)
             
-            import json, re
+            import orjson, re
             response = re.sub(r'```json\s*', '', response)
             response = re.sub(r'```\s*$', '', response).strip()
             
-            data = json.loads(response)
+            data = orjson.loads(response)
             queries = data.get("queries", [])
             
             result = [(item.get("text", "").strip(), float(item.get("weight", 0.5))) 
@@ -799,9 +831,9 @@ class MemoryTools:
         
         # 确保是列表
         if isinstance(ids, str):
-            import json
+            import orjson
             try:
-                ids = json.loads(ids)
+                ids = orjson.loads(ids)
             except Exception as e:
                 logger.warning(f"JSON 解析失败: {e}")
                 ids = [ids]
@@ -910,9 +942,9 @@ class MemoryTools:
                             # 提取记忆ID
                             neighbor_memory_ids = neighbor_node_data.get("memory_ids", [])
                             if isinstance(neighbor_memory_ids, str):
-                                import json
+                                import orjson
                                 try:
-                                    neighbor_memory_ids = json.loads(neighbor_memory_ids)
+                                    neighbor_memory_ids = orjson.loads(neighbor_memory_ids)
                                 except:
                                     neighbor_memory_ids = [neighbor_memory_ids]
                             

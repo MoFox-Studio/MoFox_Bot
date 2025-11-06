@@ -41,6 +41,13 @@ class WebSurfingTool(BaseTool):
             False,
             ["any", "week", "month"],
         ),
+        (
+            "answer_mode",
+            ToolParamType.BOOLEAN,
+            "是否启用答案模式（仅适用于Exa搜索引擎）。启用后将返回更精简、直接的答案，减少冗余信息。默认为False。",
+            False,
+            None,
+        ),
     ]  # type: ignore
 
     def __init__(self, plugin_config=None, chat_stream=None):
@@ -97,13 +104,19 @@ class WebSurfingTool(BaseTool):
     ) -> dict[str, Any]:
         """并行搜索策略：同时使用所有启用的搜索引擎"""
         search_tasks = []
+        answer_mode = function_args.get("answer_mode", False)
 
         for engine_name in enabled_engines:
             engine = self.engines.get(engine_name)
             if engine and engine.is_available():
                 custom_args = function_args.copy()
                 custom_args["num_results"] = custom_args.get("num_results", 5)
-                search_tasks.append(engine.search(custom_args))
+
+                # 如果启用了answer模式且是Exa引擎，使用answer_search方法
+                if answer_mode and engine_name == "exa" and hasattr(engine, 'answer_search'):
+                    search_tasks.append(engine.answer_search(custom_args))
+                else:
+                    search_tasks.append(engine.search(custom_args))
 
         if not search_tasks:
 
@@ -137,17 +150,23 @@ class WebSurfingTool(BaseTool):
         self, function_args: dict[str, Any], enabled_engines: list[str]
     ) -> dict[str, Any]:
         """回退搜索策略：按顺序尝试搜索引擎，失败则尝试下一个"""
+        answer_mode = function_args.get("answer_mode", False)
+
         for engine_name in enabled_engines:
             engine = self.engines.get(engine_name)
             if not engine or not engine.is_available():
-
                 continue
 
             try:
                 custom_args = function_args.copy()
                 custom_args["num_results"] = custom_args.get("num_results", 5)
 
-                results = await engine.search(custom_args)
+                # 如果启用了answer模式且是Exa引擎，使用answer_search方法
+                if answer_mode and engine_name == "exa" and hasattr(engine, 'answer_search'):
+                    logger.info("使用Exa答案模式进行搜索（fallback策略）")
+                    results = await engine.answer_search(custom_args)
+                else:
+                    results = await engine.search(custom_args)
 
                 if results:  # 如果有结果，直接返回
                     formatted_content = format_search_results(results)
@@ -164,22 +183,30 @@ class WebSurfingTool(BaseTool):
 
     async def _execute_single_search(self, function_args: dict[str, Any], enabled_engines: list[str]) -> dict[str, Any]:
         """单一搜索策略：只使用第一个可用的搜索引擎"""
+        answer_mode = function_args.get("answer_mode", False)
+
         for engine_name in enabled_engines:
             engine = self.engines.get(engine_name)
             if not engine or not engine.is_available():
-
                 continue
 
             try:
                 custom_args = function_args.copy()
                 custom_args["num_results"] = custom_args.get("num_results", 5)
 
-                results = await engine.search(custom_args)
-                formatted_content = format_search_results(results)
-                return {
-                    "type": "web_search_result",
-                    "content": formatted_content,
-                }
+                # 如果启用了answer模式且是Exa引擎，使用answer_search方法
+                if answer_mode and engine_name == "exa" and hasattr(engine, 'answer_search'):
+                    logger.info("使用Exa答案模式进行搜索")
+                    results = await engine.answer_search(custom_args)
+                else:
+                    results = await engine.search(custom_args)
+
+                if results:
+                    formatted_content = format_search_results(results)
+                    return {
+                        "type": "web_search_result",
+                        "content": formatted_content,
+                    }
 
             except Exception as e:
                 logger.error(f"{engine_name} 搜索失败: {e}")

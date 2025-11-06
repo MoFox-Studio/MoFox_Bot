@@ -5,7 +5,7 @@
 """
 
 import asyncio
-import json
+import orjson
 import logging
 from datetime import datetime
 from pathlib import Path

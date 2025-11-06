@@ -4,7 +4,7 @@
 直接从存储的数据文件生成可视化,无需启动完整的记忆管理器
 """
 
-import json
+import orjson
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -122,7 +122,7 @@ def load_graph_data(file_path: Optional[Path] = None) -> Dict[str, Any]:
         
         print(f"📂 加载图数据: {graph_file}")
         with open(graph_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+            data = orjson.loads(f.read())
         
         # 解析数据
         nodes_dict = {}
