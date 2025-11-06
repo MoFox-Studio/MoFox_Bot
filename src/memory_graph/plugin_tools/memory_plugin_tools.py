@@ -58,7 +58,7 @@ class CreateMemoryTool(BaseTool):
         ("memory_type", ToolParamType.STRING, "记忆类型。【事件】=有明确时间点的动作（昨天吃饭、明天开会）【事实】=稳定状态（职业是程序员、住在北京）【观点】=主观看法（喜欢/讨厌/认为）【关系】=人际关系（朋友、同事）", True, ["事件", "事实", "关系", "观点"]),
         ("topic", ToolParamType.STRING, "记忆的核心内容（做什么/是什么状态/什么关系）。必须明确、具体，包含关键动词或状态词", True, None),
         ("object", ToolParamType.STRING, "记忆涉及的对象或目标。如果topic已经很完整可以不填，如果有明确对象建议填写", False, None),
-        ("attributes", ToolParamType.STRING, "详细属性，JSON格式字符串。强烈建议包含：时间（具体到日期）、地点、状态、原因等上下文信息。例：{\"时间\":\"2025-11-06\",\"地点\":\"公司\",\"状态\":\"进行中\",\"原因\":\"项目需要\"}", False, None),
+        ("attributes", ToolParamType.STRING, "详细属性，JSON格式字符串。强烈建议包含：时间（具体到日期和小时分钟）、地点、状态、原因等上下文信息。例：{\"时间\":\"2025-11-06 12:00\",\"地点\":\"公司\",\"状态\":\"进行中\",\"原因\":\"项目需要\"}", False, None),
         ("importance", ToolParamType.FLOAT, "重要性评分 0.0-1.0。参考：日常琐事0.3-0.4，一般对话0.5-0.6，重要信息0.7-0.8，核心记忆0.9-1.0。不确定时用0.5", False, None),
     ]
     
