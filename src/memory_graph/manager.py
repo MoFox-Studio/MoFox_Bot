@@ -363,17 +363,14 @@ class MemoryManager:
             
             # 构建上下文信息
             chat_history = context.get("chat_history", "") if context else ""
-            sender = context.get("sender", "") if context else ""
-            participants = context.get("participants", []) if context else []
-            participants_str = "、".join(participants) if participants else "无"
-            
+    
             prompt = f"""你是记忆检索助手。为提高检索准确率，请为查询生成3-5个不同角度的搜索语句。
 
 **核心原则（重要！）：**
-对于包含多个概念的复杂查询（如"杰瑞喵如何评价新的记忆系统"），应该生成：
+对于包含多个概念的复杂查询（如"小明如何评价新的记忆系统"），应该生成：
 1. 完整查询（包含所有要素）- 权重1.0
 2. 每个关键概念的独立查询（如"新的记忆系统"）- 权重0.8，避免被主体淹没！
-3. 主体+动作组合（如"杰瑞喵 评价"）- 权重0.6
+3. 主体+动作组合（如"小明 评价"）- 权重0.6
 4. 泛化查询（如"记忆系统"）- 权重0.7
 
 **要求：**
@@ -382,9 +379,7 @@ class MemoryManager:
 - 查询简洁（5-20字）
 - 直接输出JSON，不要添加说明
 
-**已知参与者：** {participants_str}
 **对话上下文：** {chat_history[-300:] if chat_history else "无"}
-**当前查询：** {sender}: {query}
 
 **输出JSON格式：**
 ```json
