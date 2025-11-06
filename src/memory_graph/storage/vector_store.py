@@ -236,6 +236,121 @@ class VectorStore:
             logger.error(f"相似节点搜索失败: {e}", exc_info=True)
             raise
 
+    async def search_with_multiple_queries(
+        self,
+        query_embeddings: List[np.ndarray],
+        query_weights: Optional[List[float]] = None,
+        limit: int = 10,
+        node_types: Optional[List[NodeType]] = None,
+        min_similarity: float = 0.0,
+        fusion_strategy: str = "weighted_max",
+    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+        """
+        多查询融合搜索
+        
+        使用多个查询向量进行搜索，然后融合结果。
+        这能解决单一查询向量无法同时关注多个关键概念的问题。
+        
+        Args:
+            query_embeddings: 查询向量列表
+            query_weights: 每个查询的权重（可选，默认均等）
+            limit: 最终返回结果数量
+            node_types: 限制节点类型（可选）
+            min_similarity: 最小相似度阈值
+            fusion_strategy: 融合策略
+                - "weighted_max": 加权最大值（推荐）
+                - "weighted_sum": 加权求和
+                - "rrf": Reciprocal Rank Fusion
+            
+        Returns:
+            融合后的节点列表 [(node_id, fused_score, metadata), ...]
+        """
+        if not self.collection:
+            raise RuntimeError("向量存储未初始化")
+
+        if not query_embeddings:
+            return []
+
+        # 默认权重均等
+        if query_weights is None:
+            query_weights = [1.0 / len(query_embeddings)] * len(query_embeddings)
+        
+        # 归一化权重
+        total_weight = sum(query_weights)
+        if total_weight > 0:
+            query_weights = [w / total_weight for w in query_weights]
+
+        try:
+            # 1. 对每个查询执行搜索
+            all_results: Dict[str, Dict[str, Any]] = {}  # node_id -> {scores, metadata}
+
+            for i, (query_emb, weight) in enumerate(zip(query_embeddings, query_weights)):
+                # 搜索更多结果以提高融合质量
+                search_limit = limit * 3
+                results = await self.search_similar_nodes(
+                    query_embedding=query_emb,
+                    limit=search_limit,
+                    node_types=node_types,
+                    min_similarity=min_similarity,
+                )
+
+                # 记录每个结果
+                for rank, (node_id, similarity, metadata) in enumerate(results):
+                    if node_id not in all_results:
+                        all_results[node_id] = {
+                            "scores": [],
+                            "ranks": [],
+                            "metadata": metadata,
+                        }
+                    
+                    all_results[node_id]["scores"].append((similarity, weight))
+                    all_results[node_id]["ranks"].append((rank, weight))
+
+            # 2. 融合分数
+            fused_results = []
+            
+            for node_id, data in all_results.items():
+                scores = data["scores"]
+                ranks = data["ranks"]
+                metadata = data["metadata"]
+
+                if fusion_strategy == "weighted_max":
+                    # 加权最大值 + 出现次数奖励
+                    max_weighted_score = max(score * weight for score, weight in scores)
+                    appearance_bonus = len(scores) * 0.05  # 出现多次有奖励
+                    fused_score = max_weighted_score + appearance_bonus
+
+                elif fusion_strategy == "weighted_sum":
+                    # 加权求和（可能导致出现多次的结果分数过高）
+                    fused_score = sum(score * weight for score, weight in scores)
+
+                elif fusion_strategy == "rrf":
+                    # Reciprocal Rank Fusion
+                    # RRF score = sum(weight / (rank + k))
+                    k = 60  # RRF 常数
+                    fused_score = sum(weight / (rank + k) for rank, weight in ranks)
+
+                else:
+                    # 默认使用加权平均
+                    fused_score = sum(score * weight for score, weight in scores) / len(scores)
+
+                fused_results.append((node_id, fused_score, metadata))
+
+            # 3. 排序并返回 Top-K
+            fused_results.sort(key=lambda x: x[1], reverse=True)
+            final_results = fused_results[:limit]
+
+            logger.info(
+                f"多查询融合搜索完成: {len(query_embeddings)} 个查询, "
+                f"融合后 {len(fused_results)} 个结果, 返回 {len(final_results)} 个"
+            )
+
+            return final_results
+
+        except Exception as e:
+            logger.error(f"多查询融合搜索失败: {e}", exc_info=True)
+            raise
+
     async def get_node_by_id(self, node_id: str) -> Optional[Dict[str, Any]]:
         """
         根据ID获取节点元数据

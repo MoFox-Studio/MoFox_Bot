@@ -4,7 +4,7 @@ LLM 工具接口：定义记忆系统的工具 schema 和执行逻辑
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.common.logger import get_logger
 from src.memory_graph.core.builder import MemoryBuilder
@@ -429,8 +429,18 @@ class MemoryTools:
         """
         执行 search_memories 工具
         
+        使用多策略检索优化：
+        1. 查询分解（识别主要实体和概念）
+        2. 多查询并行检索
+        3. 结果融合和重排
+        
         Args:
             **params: 工具参数
+                - query: 查询字符串
+                - top_k: 返回结果数（默认10）
+                - expand_depth: 扩展深度（暂未使用）
+                - use_multi_query: 是否使用多查询策略（默认True）
+                - context: 查询上下文（可选）
             
         Returns:
             搜索结果
@@ -439,33 +449,23 @@ class MemoryTools:
             query = params.get("query", "")
             top_k = params.get("top_k", 10)
             expand_depth = params.get("expand_depth", 1)
+            use_multi_query = params.get("use_multi_query", True)
+            context = params.get("context", None)
 
-            logger.info(f"搜索记忆: {query} (top_k={top_k}, expand_depth={expand_depth})")
+            logger.info(f"搜索记忆: {query} (top_k={top_k}, multi_query={use_multi_query})")
 
             # 0. 确保初始化
             await self._ensure_initialized()
 
-            # 1. 生成查询嵌入
-            if self.builder.embedding_generator:
-                query_embedding = await self.builder.embedding_generator.generate(query)
+            # 1. 根据策略选择检索方式
+            if use_multi_query:
+                # 多查询策略
+                similar_nodes = await self._multi_query_search(query, top_k, context)
             else:
-                logger.warning("未配置嵌入生成器，使用随机向量")
-                import numpy as np
-                query_embedding = np.random.rand(384).astype(np.float32)
+                # 传统单查询策略
+                similar_nodes = await self._single_query_search(query, top_k)
 
-            # 2. 向量搜索
-            node_types_filter = None
-            if "memory_types" in params:
-                # 添加类型过滤
-                pass
-
-            similar_nodes = await self.vector_store.search_similar_nodes(
-                query_embedding=query_embedding,
-                limit=top_k * 2,  # 多取一些，后续过滤
-                node_types=node_types_filter,
-            )
-
-            # 3. 提取记忆ID
+            # 2. 提取记忆ID
             memory_ids = set()
             for node_id, similarity, metadata in similar_nodes:
                 if "memory_ids" in metadata:
@@ -480,14 +480,14 @@ class MemoryTools:
                     if isinstance(ids, list):
                         memory_ids.update(ids)
 
-            # 4. 获取完整记忆
+            # 3. 获取完整记忆
             memories = []
             for memory_id in list(memory_ids)[:top_k]:
                 memory = self.graph_store.get_memory_by_id(memory_id)
                 if memory:
                     memories.append(memory)
 
-            # 5. 格式化结果
+            # 4. 格式化结果
             results = []
             for memory in memories:
                 result = {
@@ -505,6 +505,7 @@ class MemoryTools:
                 "results": results,
                 "total": len(results),
                 "query": query,
+                "strategy": "multi_query" if use_multi_query else "single_query",
             }
 
         except Exception as e:
@@ -515,6 +516,145 @@ class MemoryTools:
                 "message": "记忆搜索失败",
                 "results": [],
             }
+
+    async def _generate_multi_queries_simple(
+        self, query: str, context: Optional[Dict[str, Any]] = None
+    ) -> List[Tuple[str, float]]:
+        """
+        简化版多查询生成（直接在 Tools 层实现，避免循环依赖）
+        
+        让小模型直接生成3-5个不同角度的查询语句。
+        """
+        try:
+            from src.llm_models.utils_model import LLMRequest
+            from src.config.config import model_config
+            
+            llm = LLMRequest(
+                model_set=model_config.model_task_config.utils_small,
+                request_type="memory.multi_query"
+            )
+            
+            participants = context.get("participants", []) if context else []
+            prompt = f"""为查询生成3-5个不同角度的搜索语句（JSON格式）。
+
+**查询：** {query}
+**参与者：** {', '.join(participants) if participants else '无'}
+
+**原则：** 对复杂查询（如"杰瑞喵如何评价新的记忆系统"），应生成：
+1. 完整查询（权重1.0）
+2. 每个关键概念独立查询（权重0.8）- 重要！
+3. 主体+动作（权重0.6）
+
+**输出JSON：**
+```json
+{{"queries": [{{"text": "查询1", "weight": 1.0}}, {{"text": "查询2", "weight": 0.8}}]}}
+```"""
+
+            response, _ = await llm.generate_response_async(prompt, temperature=0.3, max_tokens=250)
+            
+            import json, re
+            response = re.sub(r'```json\s*', '', response)
+            response = re.sub(r'```\s*$', '', response).strip()
+            
+            data = json.loads(response)
+            queries = data.get("queries", [])
+            
+            result = [(item.get("text", "").strip(), float(item.get("weight", 0.5))) 
+                     for item in queries if item.get("text", "").strip()]
+            
+            if result:
+                logger.info(f"生成查询: {[q for q, _ in result]}")
+                return result
+                
+        except Exception as e:
+            logger.warning(f"多查询生成失败: {e}")
+        
+        return [(query, 1.0)]
+
+    async def _single_query_search(
+        self, query: str, top_k: int
+    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+        """
+        传统的单查询搜索
+        
+        Args:
+            query: 查询字符串
+            top_k: 返回结果数
+            
+        Returns:
+            相似节点列表 [(node_id, similarity, metadata), ...]
+        """
+        # 生成查询嵌入
+        if self.builder.embedding_generator:
+            query_embedding = await self.builder.embedding_generator.generate(query)
+        else:
+            logger.warning("未配置嵌入生成器，使用随机向量")
+            import numpy as np
+            query_embedding = np.random.rand(384).astype(np.float32)
+
+        # 向量搜索
+        similar_nodes = await self.vector_store.search_similar_nodes(
+            query_embedding=query_embedding,
+            limit=top_k * 2,  # 多取一些，后续过滤
+        )
+
+        return similar_nodes
+
+    async def _multi_query_search(
+        self, query: str, top_k: int, context: Optional[Dict[str, Any]] = None
+    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+        """
+        多查询策略搜索（简化版）
+        
+        直接使用小模型生成多个查询，无需复杂的分解和组合。
+        
+        步骤：
+        1. 让小模型生成3-5个不同角度的查询
+        2. 为每个查询生成嵌入
+        3. 并行搜索并融合结果
+        
+        Args:
+            query: 查询字符串
+            top_k: 返回结果数
+            context: 查询上下文
+            
+        Returns:
+            融合后的相似节点列表
+        """
+        try:
+            # 1. 使用小模型生成多个查询
+            multi_queries = await self._generate_multi_queries_simple(query, context)
+            
+            logger.debug(f"生成 {len(multi_queries)} 个查询: {multi_queries}")
+
+            # 2. 生成所有查询的嵌入
+            if not self.builder.embedding_generator:
+                logger.warning("未配置嵌入生成器，回退到单查询模式")
+                return await self._single_query_search(query, top_k)
+
+            query_embeddings = []
+            query_weights = []
+
+            for sub_query, weight in multi_queries:
+                embedding = await self.builder.embedding_generator.generate(sub_query)
+                query_embeddings.append(embedding)
+                query_weights.append(weight)
+
+            # 3. 多查询融合搜索
+            similar_nodes = await self.vector_store.search_with_multiple_queries(
+                query_embeddings=query_embeddings,
+                query_weights=query_weights,
+                limit=top_k * 2,  # 多取一些，后续过滤
+                fusion_strategy="weighted_max",
+            )
+
+            logger.info(f"多查询检索完成: {len(similar_nodes)} 个节点")
+
+            return similar_nodes
+
+        except Exception as e:
+            logger.warning(f"多查询搜索失败，回退到单查询模式: {e}", exc_info=True)
+            return await self._single_query_search(query, top_k)
 
     async def _add_memory_to_stores(self, memory: Memory):
         """将记忆添加到存储"""

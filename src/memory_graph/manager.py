@@ -333,76 +333,100 @@ class MemoryManager:
 
     # ==================== 记忆检索操作 ====================
 
-    async def optimize_search_query(
+    async def generate_multi_queries(
         self,
         query: str,
         context: Optional[Dict[str, Any]] = None,
-    ) -> str:
+    ) -> List[Tuple[str, float]]:
         """
-        使用小模型优化搜索查询
+        使用小模型生成多个查询语句（用于多路召回）
+        
+        简化版多查询策略：直接让小模型生成3-5个不同角度的查询，
+        避免复杂的查询分解和组合逻辑。
         
         Args:
             query: 原始查询
-            context: 上下文信息（聊天历史、发言人等）
+            context: 上下文信息（聊天历史、发言人、参与者等）
             
         Returns:
-            优化后的查询字符串
+            List of (query_string, weight) - 查询语句和权重
         """
-        if not context:
-            return query
-        
         try:
             from src.llm_models.utils_model import LLMRequest
             from src.config.config import model_config
             
-            # 使用小模型优化查询
             llm = LLMRequest(
                 model_set=model_config.model_task_config.utils_small,
-                request_type="memory.query_optimizer"
+                request_type="memory.multi_query_generator"
             )
             
-            # 构建优化提示
-            chat_history = context.get("chat_history", "")
-            sender = context.get("sender", "")
+            # 构建上下文信息
+            chat_history = context.get("chat_history", "") if context else ""
+            sender = context.get("sender", "") if context else ""
+            participants = context.get("participants", []) if context else []
+            participants_str = "、".join(participants) if participants else "无"
             
-            prompt = f"""你是一个记忆检索查询优化助手。你的任务是分析对话历史，生成一个综合性的搜索查询。
+            prompt = f"""你是记忆检索助手。为提高检索准确率，请为查询生成3-5个不同角度的搜索语句。
 
-**任务说明：**
-不要只优化单个消息，而是要综合分析整个对话上下文，提取出最核心的检索意图。
+**核心原则（重要！）：**
+对于包含多个概念的复杂查询（如"杰瑞喵如何评价新的记忆系统"），应该生成：
+1. 完整查询（包含所有要素）- 权重1.0
+2. 每个关键概念的独立查询（如"新的记忆系统"）- 权重0.8，避免被主体淹没！
+3. 主体+动作组合（如"杰瑞喵 评价"）- 权重0.6
+4. 泛化查询（如"记忆系统"）- 权重0.7
 
 **要求：**
-1. 仔细阅读对话历史，理解对话的主题和脉络
-2. 识别关键人物、事件、关系和话题
-3. 提取最值得检索的核心信息点
-4. 生成一个简洁但信息丰富的搜索查询（15-30字）
-5. 如果涉及特定人物，必须明确指出人名
-6. 只输出查询文本，不要解释
+- 第一个必须是原始查询或同义改写
+- 识别查询中的所有重要概念，为每个概念生成独立查询
+- 查询简洁（5-20字）
+- 直接输出JSON，不要添加说明
 
-**对话上下文：**
-{chat_history[-500:] if chat_history else "（无历史对话）"}
+**已知参与者：** {participants_str}
+**对话上下文：** {chat_history[-300:] if chat_history else "无"}
+**当前查询：** {sender}: {query}
 
-**当前消息：**
-{sender}: {query}
+**输出JSON格式：**
+```json
+{{
+    "queries": [
+        {{"text": "完整查询", "weight": 1.0}},
+        {{"text": "关键概念1", "weight": 0.8}},
+        {{"text": "关键概念2", "weight": 0.8}},
+        {{"text": "组合查询", "weight": 0.6}}
+    ]
+}}
+```"""
 
-**生成综合查询：**"""
-
-            optimized_query, _ = await llm.generate_response_async(
-                prompt,
-                temperature=0.3,
-                max_tokens=100
-            )
+            response, _ = await llm.generate_response_async(prompt, temperature=0.3, max_tokens=300)
             
-            # 清理输出
-            optimized_query = optimized_query.strip()
-            if optimized_query and len(optimized_query) > 5:
-                logger.debug(f"[查询优化] '{query}' -> '{optimized_query}'")
-                return optimized_query
+            # 解析JSON
+            import json, re
+            response = re.sub(r'```json\s*', '', response)
+            response = re.sub(r'```\s*$', '', response).strip()
             
-            return query
+            try:
+                data = json.loads(response)
+                queries = data.get("queries", [])
+                
+                result = []
+                for item in queries:
+                    text = item.get("text", "").strip()
+                    weight = float(item.get("weight", 0.5))
+                    if text:
+                        result.append((text, weight))
+                
+                if result:
+                    logger.info(f"生成 {len(result)} 个查询: {[q for q, _ in result]}")
+                    return result
+                    
+            except json.JSONDecodeError as e:
+                logger.warning(f"解析失败: {e}, response={response[:100]}")
             
         except Exception as e:
-            logger.warning(f"查询优化失败，使用原始查询: {e}")
-            return query
+            logger.warning(f"多查询生成失败: {e}")
+        
+        # 回退到原始查询
+        return [(query, 1.0)]
 
     async def search_memories(
         self,
@@ -413,10 +437,15 @@ class MemoryManager:
         min_importance: float = 0.0,
         include_forgotten: bool = False,
         optimize_query: bool = True,
+        use_multi_query: bool = True,
         context: Optional[Dict[str, Any]] = None,
     ) -> List[Memory]:
         """
         搜索记忆
+        
+        使用多策略检索优化，解决复杂查询问题。
+        例如："杰瑞喵如何评价新的记忆系统" 会被分解为多个子查询，
+        确保同时匹配"杰瑞喵"和"新的记忆系统"两个关键概念。
         
         Args:
             query: 搜索查询
@@ -425,7 +454,8 @@ class MemoryManager:
             time_range: 时间范围过滤 (start, end)
             min_importance: 最小重要性
             include_forgotten: 是否包含已遗忘的记忆
-            optimize_query: 是否使用小模型优化查询
+            optimize_query: 是否使用小模型优化查询（已弃用，被 use_multi_query 替代）
+            use_multi_query: 是否使用多查询策略（推荐，默认True）
             context: 查询上下文（用于优化）
             
         Returns:
@@ -435,19 +465,18 @@ class MemoryManager:
             await self.initialize()
 
         try:
-            # 查询优化
-            search_query = query
-            if optimize_query and context:
-                search_query = await self.optimize_search_query(query, context)
-            
+            # 准备搜索参数
             params = {
-                "query": search_query,
+                "query": query,
                 "top_k": top_k,
+                "use_multi_query": use_multi_query,
+                "context": context,
             }
             
             if memory_types:
                 params["memory_types"] = memory_types
             
+            # 执行搜索
             result = await self.tools.search_memories(**params)
             
             if not result["success"]:
@@ -484,7 +513,10 @@ class MemoryManager:
                 
                 filtered_memories.append(memory)
             
-            logger.info(f"搜索完成: 找到 {len(filtered_memories)} 条记忆")
+            strategy = result.get("strategy", "unknown")
+            logger.info(
+                f"搜索完成: 找到 {len(filtered_memories)} 条记忆 (策略={strategy})"
+            )
             return filtered_memories[:top_k]
             
         except Exception as e:
