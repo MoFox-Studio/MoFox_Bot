@@ -236,10 +236,10 @@ class ToolExecutor:
             if isinstance(content, str):
                 result_preview = content
             elif isinstance(content, list | dict):
-                import json
+                import orjson
 
                 try:
-                    result_preview = json.dumps(content, ensure_ascii=False)
+                    result_preview = orjson.dumps(content, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
                 except Exception:
                     result_preview = str(content)
             else:

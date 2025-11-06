@@ -1,7 +1,7 @@
 """
 Metaso Search Engine (Chat Completions Mode)
 """
-import json
+import orjson
 from typing import Any
 
 import httpx
@@ -43,12 +43,12 @@ class MetasoClient:
                             if data_str == "[DONE]":
                                 break
                             try:
-                                data = json.loads(data_str)
+                                data = orjson.loads(data_str)
                                 delta = data.get("choices", [{}])[0].get("delta", {})
                                 content_chunk = delta.get("content")
                                 if content_chunk:
                                     full_response_content += content_chunk
-                            except json.JSONDecodeError:
+                            except orjson.JSONDecodeError:
                                 logger.warning(f"Metaso stream: could not decode JSON line: {data_str}")
                                 continue
 

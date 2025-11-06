@@ -137,6 +137,7 @@ class MemoryManager:
                 graph_store=self.graph_store,
                 persistence_manager=self.persistence,
                 embedding_generator=self.embedding_generator,
+                max_expand_depth=getattr(self.config, 'max_expand_depth', 1),  # 从配置读取默认深度
             )
             
             self._initialized = True

@@ -323,8 +323,8 @@ class GlobalNoticeManager:
                     return message.additional_config.get("is_notice", False)
                 elif isinstance(message.additional_config, str):
                     # 兼容JSON字符串格式
-                    import json
-                    config = json.loads(message.additional_config)
+                    import orjson
+                    config = orjson.loads(message.additional_config)
                     return config.get("is_notice", False)
 
             # 检查消息类型或其他标识
@@ -349,8 +349,8 @@ class GlobalNoticeManager:
                 if isinstance(message.additional_config, dict):
                     return message.additional_config.get("notice_type")
                 elif isinstance(message.additional_config, str):
-                    import json
-                    config = json.loads(message.additional_config)
+                    import orjson
+                    config = orjson.loads(message.additional_config)
                     return config.get("notice_type")
             return None
         except Exception:

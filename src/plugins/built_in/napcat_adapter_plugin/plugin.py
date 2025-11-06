@@ -1,6 +1,6 @@
 import asyncio
 import inspect
-import json
+import orjson
 from typing import ClassVar, List
 
 import websockets as Server
@@ -44,10 +44,10 @@ async def message_recv(server_connection: Server.ServerConnection):
         # 只在debug模式下记录原始消息
         if logger.level <= 10:  # DEBUG level
             logger.debug(f"{raw_message[:1500]}..." if (len(raw_message) > 1500) else raw_message)
-        decoded_raw_message: dict = json.loads(raw_message)
+        decoded_raw_message: dict = orjson.loads(raw_message)
         try:
             # 首先尝试解析原始消息
-            decoded_raw_message: dict = json.loads(raw_message)
+            decoded_raw_message: dict = orjson.loads(raw_message)
 
             # 检查是否是切片消息 (来自 MMC)
             if chunker.is_chunk_message(decoded_raw_message):
@@ -71,7 +71,7 @@ async def message_recv(server_connection: Server.ServerConnection):
             elif post_type is None:
                 await put_response(decoded_raw_message)
 
-        except json.JSONDecodeError as e:
+        except orjson.JSONDecodeError as e:
             logger.error(f"消息解析失败: {e}")
             logger.debug(f"原始消息: {raw_message[:500]}...")
         except Exception as e:

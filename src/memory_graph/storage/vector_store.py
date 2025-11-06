@@ -102,8 +102,8 @@ class VectorStore:
             # 处理额外的元数据，将 list 转换为 JSON 字符串
             for key, value in node.metadata.items():
                 if isinstance(value, (list, dict)):
-                    import json
-                    metadata[key] = json.dumps(value, ensure_ascii=False)
+                    import orjson
+                    metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
                 elif isinstance(value, (str, int, float, bool)) or value is None:
                     metadata[key] = value
                 else:
@@ -141,7 +141,7 @@ class VectorStore:
 
         try:
             # 准备元数据
-            import json
+            import orjson
             metadatas = []
             for n in valid_nodes:
                 metadata = {
@@ -151,7 +151,7 @@ class VectorStore:
                 }
                 for key, value in n.metadata.items():
                     if isinstance(value, (list, dict)):
-                        metadata[key] = json.dumps(value, ensure_ascii=False)
+                        metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
                     elif isinstance(value, (str, int, float, bool)) or value is None:
                         metadata[key] = value  # type: ignore
                     else:
@@ -207,7 +207,7 @@ class VectorStore:
             )
 
             # 解析结果
-            import json
+            import orjson
             similar_nodes = []
             if results["ids"] and results["ids"][0]:
                 for i, node_id in enumerate(results["ids"][0]):
@@ -223,7 +223,7 @@ class VectorStore:
                         for key, value in list(metadata.items()):
                             if isinstance(value, str) and (value.startswith('[') or value.startswith('{')):
                                 try:
-                                    metadata[key] = json.loads(value)
+                                    metadata[key] = orjson.loads(value)
                                 except:
                                     pass  # 保持原值
                         
