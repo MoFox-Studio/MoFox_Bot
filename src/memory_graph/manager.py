@@ -438,6 +438,7 @@ class MemoryManager:
         include_forgotten: bool = False,
         optimize_query: bool = True,
         use_multi_query: bool = True,
+        expand_depth: int = 1,
         context: Optional[Dict[str, Any]] = None,
     ) -> List[Memory]:
         """
@@ -446,6 +447,8 @@ class MemoryManager:
         使用多策略检索优化，解决复杂查询问题。
         例如："杰瑞喵如何评价新的记忆系统" 会被分解为多个子查询，
         确保同时匹配"杰瑞喵"和"新的记忆系统"两个关键概念。
+        
+        同时支持图扩展：从初始检索结果出发，沿图结构查找语义相关的邻居记忆。
         
         Args:
             query: 搜索查询
@@ -456,6 +459,7 @@ class MemoryManager:
             include_forgotten: 是否包含已遗忘的记忆
             optimize_query: 是否使用小模型优化查询（已弃用，被 use_multi_query 替代）
             use_multi_query: 是否使用多查询策略（推荐，默认True）
+            expand_depth: 图扩展深度（0=禁用, 1=推荐, 2-3=深度探索）
             context: 查询上下文（用于优化）
             
         Returns:
@@ -470,6 +474,7 @@ class MemoryManager:
                 "query": query,
                 "top_k": top_k,
                 "use_multi_query": use_multi_query,
+                "expand_depth": expand_depth,  # 传递图扩展深度
                 "context": context,
             }
             
@@ -644,7 +649,7 @@ class MemoryManager:
 
     def _get_related_memories(self, memory_id: str, max_depth: int = 1) -> List[str]:
         """
-        获取相关记忆 ID 列表
+        获取相关记忆 ID 列表（旧版本，保留用于激活传播）
         
         Args:
             memory_id: 记忆 ID
@@ -674,6 +679,176 @@ class MemoryManager:
                             related_ids.add(mem_id)
         
         return list(related_ids)
+
+    async def expand_memories_with_semantic_filter(
+        self,
+        initial_memory_ids: List[str],
+        query_embedding: "np.ndarray",
+        max_depth: int = 2,
+        semantic_threshold: float = 0.5,
+        max_expanded: int = 20
+    ) -> List[Tuple[str, float]]:
+        """
+        从初始记忆集合出发，沿图结构扩展，并用语义相似度过滤
+        
+        这个方法解决了纯向量搜索可能遗漏的"语义相关且图结构相关"的记忆。
+        
+        Args:
+            initial_memory_ids: 初始记忆ID集合（由向量搜索得到）
+            query_embedding: 查询向量
+            max_depth: 最大扩展深度（1-3推荐）
+            semantic_threshold: 语义相似度阈值（0.5推荐）
+            max_expanded: 最多扩展多少个记忆
+            
+        Returns:
+            List[(memory_id, relevance_score)] 按相关度排序
+        """
+        if not initial_memory_ids or query_embedding is None:
+            return []
+        
+        try:
+            import numpy as np
+            
+            # 记录已访问的记忆，避免重复
+            visited_memories = set(initial_memory_ids)
+            # 记录扩展的记忆及其分数
+            expanded_memories: Dict[str, float] = {}
+            
+            # BFS扩展
+            current_level = initial_memory_ids
+            
+            for depth in range(max_depth):
+                next_level = []
+                
+                for memory_id in current_level:
+                    memory = self.graph_store.get_memory_by_id(memory_id)
+                    if not memory:
+                        continue
+                    
+                    # 遍历该记忆的所有节点
+                    for node in memory.nodes:
+                        if not node.has_embedding():
+                            continue
+                        
+                        # 获取邻居节点
+                        try:
+                            neighbors = list(self.graph_store.graph.neighbors(node.id))
+                        except:
+                            continue
+                        
+                        for neighbor_id in neighbors:
+                            # 获取邻居节点信息
+                            neighbor_node_data = self.graph_store.graph.nodes.get(neighbor_id)
+                            if not neighbor_node_data:
+                                continue
+                            
+                            # 获取邻居节点的向量（从向量存储）
+                            neighbor_vector_data = await self.vector_store.get_node_by_id(neighbor_id)
+                            if not neighbor_vector_data or neighbor_vector_data.get("embedding") is None:
+                                continue
+                            
+                            neighbor_embedding = neighbor_vector_data["embedding"]
+                            
+                            # 计算与查询的语义相似度
+                            semantic_sim = self._cosine_similarity(
+                                query_embedding,
+                                neighbor_embedding
+                            )
+                            
+                            # 获取边的权重
+                            try:
+                                edge_data = self.graph_store.graph.get_edge_data(node.id, neighbor_id)
+                                edge_importance = edge_data.get("importance", 0.5) if edge_data else 0.5
+                            except:
+                                edge_importance = 0.5
+                            
+                            # 综合评分：语义相似度(70%) + 图结构权重(20%) + 深度衰减(10%)
+                            depth_decay = 1.0 / (depth + 1)  # 深度越深，权重越低
+                            relevance_score = (
+                                semantic_sim * 0.7 + 
+                                edge_importance * 0.2 + 
+                                depth_decay * 0.1
+                            )
+                            
+                            # 只保留超过阈值的节点
+                            if relevance_score < semantic_threshold:
+                                continue
+                            
+                            # 提取邻居节点所属的记忆
+                            neighbor_memory_ids = neighbor_node_data.get("memory_ids", [])
+                            if isinstance(neighbor_memory_ids, str):
+                                import json
+                                try:
+                                    neighbor_memory_ids = json.loads(neighbor_memory_ids)
+                                except:
+                                    neighbor_memory_ids = [neighbor_memory_ids]
+                            
+                            for neighbor_mem_id in neighbor_memory_ids:
+                                if neighbor_mem_id in visited_memories:
+                                    continue
+                                
+                                # 记录这个扩展记忆
+                                if neighbor_mem_id not in expanded_memories:
+                                    expanded_memories[neighbor_mem_id] = relevance_score
+                                    visited_memories.add(neighbor_mem_id)
+                                    next_level.append(neighbor_mem_id)
+                                else:
+                                    # 如果已存在，取最高分
+                                    expanded_memories[neighbor_mem_id] = max(
+                                        expanded_memories[neighbor_mem_id],
+                                        relevance_score
+                                    )
+                
+                # 如果没有新节点或已达到数量限制，提前终止
+                if not next_level or len(expanded_memories) >= max_expanded:
+                    break
+                
+                current_level = next_level[:max_expanded]  # 限制每层的扩展数量
+            
+            # 排序并返回
+            sorted_results = sorted(
+                expanded_memories.items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:max_expanded]
+            
+            logger.info(
+                f"图扩展完成: 初始{len(initial_memory_ids)}个 → "
+                f"扩展{len(sorted_results)}个新记忆 "
+                f"(深度={max_depth}, 阈值={semantic_threshold:.2f})"
+            )
+            
+            return sorted_results
+            
+        except Exception as e:
+            logger.error(f"语义图扩展失败: {e}", exc_info=True)
+            return []
+    
+    def _cosine_similarity(self, vec1: "np.ndarray", vec2: "np.ndarray") -> float:
+        """计算余弦相似度"""
+        try:
+            import numpy as np
+            
+            # 确保是numpy数组
+            if not isinstance(vec1, np.ndarray):
+                vec1 = np.array(vec1)
+            if not isinstance(vec2, np.ndarray):
+                vec2 = np.array(vec2)
+            
+            # 归一化
+            vec1_norm = np.linalg.norm(vec1)
+            vec2_norm = np.linalg.norm(vec2)
+            
+            if vec1_norm == 0 or vec2_norm == 0:
+                return 0.0
+            
+            # 余弦相似度
+            similarity = np.dot(vec1, vec2) / (vec1_norm * vec2_norm)
+            return float(similarity)
+            
+        except Exception as e:
+            logger.warning(f"计算余弦相似度失败: {e}")
+            return 0.0
 
     async def forget_memory(self, memory_id: str) -> bool:
         """
