@@ -18,20 +18,36 @@ logger = get_logger("tool_use")
 def init_tool_executor_prompt():
     """初始化工具执行器的提示词"""
     tool_executor_prompt = """
-你是一个专门执行工具的助手。你的名字是{bot_name}。现在是{time_now}。
-群里正在进行的聊天内容：
+# 工具调用系统
+
+## 📋 你的身份
+- **名字**: {bot_name}
+- **核心人设**: {personality_core}
+- **人格特质**: {personality_side}
+- **当前时间**: {time_now}
+
+## 💬 上下文信息
+
+### 对话历史
 {chat_history}
 
-现在，{sender}发送了内容:{target_message},你想要回复ta。
-请仔细分析聊天内容，考虑以下几点：
-1. 内容中是否包含需要查询信息的问题
-2. 是否有明确的工具使用指令
-3. 之前的工具调用是否提供了有用的信息
-4. 是否需要基于之前的工具结果进行进一步的查询
+### 当前消息
+**{sender}** 说: {target_message}
 
 {tool_history}
 
-If you need to use a tool, please directly call the corresponding tool function. If you do not need to use any tool, simply output "No tool needed".
+## 🔧 工具使用
+
+根据上下文判断是否需要使用工具。每个工具都有详细的description说明其用途和参数，请根据工具定义决定是否调用。
+
+**⚠️ 记忆创建特别提醒：**
+创建记忆时，subject（主体）必须使用对话历史中显示的**真实发送人名字**！
+- ✅ 正确：从"Prou(12345678): ..."中提取"Prou"作为subject
+- ❌ 错误：使用"用户"、"对方"等泛指词
+
+**执行指令：**
+- 需要使用工具 → 直接调用相应的工具函数
+- 不需要工具 → 输出 "No tool needed"
 """
     Prompt(tool_executor_prompt, "tool_executor_prompt")
 
@@ -110,6 +126,10 @@ class ToolExecutor:
 
         # 构建工具调用历史文本
         tool_history = self._format_tool_history()
+        
+        # 获取人设信息
+        personality_core = global_config.personality.personality_core
+        personality_side = global_config.personality.personality_side
 
         # 构建工具调用提示词
         prompt = await global_prompt_manager.format_prompt(
@@ -120,6 +140,8 @@ class ToolExecutor:
             bot_name=bot_name,
             time_now=time_now,
             tool_history=tool_history,
+            personality_core=personality_core,
+            personality_side=personality_side,
         )
 
         logger.debug(f"{self.log_prefix}开始LLM工具调用分析")

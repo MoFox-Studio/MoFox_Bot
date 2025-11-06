@@ -21,17 +21,17 @@ _initialized: bool = False
 
 async def initialize_memory_manager(
     data_dir: Optional[Path | str] = None,
-    config = None,
 ) -> Optional[MemoryManager]:
     """
     初始化全局 MemoryManager
     
+    直接从 global_config.memory 读取配置
+    
     Args:
-        data_dir: 数据目录，默认使用 data/memory_graph
-        config: MemoryGraphConfig 或 bot_config 实例
+        data_dir: 数据目录（可选，默认从配置读取）
         
     Returns:
-        MemoryManager 实例
+        MemoryManager 实例，如果禁用则返回 None
     """
     global _memory_manager, _initialized
     
@@ -40,26 +40,10 @@ async def initialize_memory_manager(
         return _memory_manager
     
     try:
-        from src.memory_graph.config import MemoryGraphConfig
-        
-        # 处理配置
-        if config is None:
-            # 尝试从全局配置加载
-            try:
-                from src.config.config import global_config
-                memory_config = MemoryGraphConfig.from_bot_config(global_config)
-                logger.info("从 bot_config 加载 memory_graph 配置")
-            except Exception as e:
-                logger.warning(f"无法从 bot_config 加载配置，使用默认配置: {e}")
-                memory_config = MemoryGraphConfig()
-        elif isinstance(config, MemoryGraphConfig):
-            memory_config = config
-        else:
-            # 假设是 bot_config
-            memory_config = MemoryGraphConfig.from_bot_config(config)
+        from src.config.config import global_config
         
         # 检查是否启用
-        if not memory_config.enable:
+        if not global_config.memory or not getattr(global_config.memory, 'enable', False):
             logger.info("记忆图系统已在配置中禁用")
             _initialized = False
             _memory_manager = None
@@ -67,13 +51,13 @@ async def initialize_memory_manager(
         
         # 处理数据目录
         if data_dir is None:
-            data_dir = memory_config.data_dir
-        elif isinstance(data_dir, str):
+            data_dir = getattr(global_config.memory, 'data_dir', 'data/memory_graph')
+        if isinstance(data_dir, str):
             data_dir = Path(data_dir)
         
         logger.info(f"正在初始化全局 MemoryManager (data_dir={data_dir})...")
         
-        _memory_manager = MemoryManager(config=memory_config, data_dir=data_dir)
+        _memory_manager = MemoryManager(data_dir=data_dir)
         await _memory_manager.initialize()
         
         _initialized = True

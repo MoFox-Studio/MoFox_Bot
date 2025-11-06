@@ -251,7 +251,7 @@ class MainSystem:
 
         # 停止增强记忆系统
         try:
-            if global_config.memory.enable_memory:
+            if global_config.memory and getattr(global_config.memory, 'enable', False):
                 cleanup_tasks.append(("增强记忆系统", self.memory_manager.shutdown()))
         except Exception as e:
             logger.error(f"准备停止增强记忆系统时出错: {e}")
@@ -469,7 +469,7 @@ MoFox_Bot(第三方修改版)
         task.add_done_callback(_background_tasks.discard)
 
         # 初始化增强记忆系统
-        if global_config.memory.enable_memory:
+        if global_config.memory and getattr(global_config.memory, 'enable', False):
             from src.chat.memory_system.memory_system import initialize_memory_system
             await self._safe_init("增强记忆系统", initialize_memory_system)()
             await self._safe_init("记忆管理器", self.memory_manager.initialize)()

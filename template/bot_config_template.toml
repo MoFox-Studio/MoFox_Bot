@@ -239,9 +239,9 @@ max_context_emojis = 30 # 每次随机传递给LLM的表情包详细描述的最
 # 新一代记忆系统：基于知识图谱 + 语义向量的混合记忆架构
 # 替代旧的 enhanced memory 系统
 
-[memory_graph]
+[memory]
 # === 基础配置 ===
-enable = true # 是否启用记忆图系统
+enable = true # 是否启用记忆系统
 data_dir = "data/memory_graph" # 记忆数据存储目录
 
 # === 向量存储配置 ===

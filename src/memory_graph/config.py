@@ -133,8 +133,10 @@ class MemoryGraphConfig:
     def from_bot_config(cls, bot_config) -> MemoryGraphConfig:
         """从bot_config加载配置"""
         try:
-            # 尝试获取新配置
-            if hasattr(bot_config, 'memory_graph'):
+            # 尝试获取配置（优先使用memory，兼容memory_graph）
+            if hasattr(bot_config, 'memory') and bot_config.memory is not None:
+                mg_config = bot_config.memory
+            elif hasattr(bot_config, 'memory_graph'):
                 mg_config = bot_config.memory_graph
                 
                 config = cls(

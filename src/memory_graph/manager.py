@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from src.memory_graph.config import MemoryGraphConfig
+from src.config.config import global_config
 from src.memory_graph.core.builder import MemoryBuilder
 from src.memory_graph.core.extractor import MemoryExtractor
 from src.memory_graph.models import Memory, MemoryEdge, MemoryNode, MemoryType, NodeType, EdgeType
@@ -41,18 +41,20 @@ class MemoryManager:
 
     def __init__(
         self,
-        config: Optional[MemoryGraphConfig] = None,
         data_dir: Optional[Path] = None,
     ):
         """
         初始化记忆管理器
         
         Args:
-            config: 记忆图配置
-            data_dir: 数据目录
+            data_dir: 数据目录（可选，默认从global_config读取）
         """
-        self.config = config or MemoryGraphConfig()
-        self.data_dir = data_dir or Path("data/memory_graph")
+        # 直接使用 global_config.memory
+        if not global_config.memory or not getattr(global_config.memory, 'enable', False):
+            raise ValueError("记忆系统未启用，请在配置文件中启用 [memory] enable = true")
+        
+        self.config = global_config.memory
+        self.data_dir = data_dir or Path(getattr(self.config, 'data_dir', 'data/memory_graph'))
         
         # 存储组件
         self.vector_store: Optional[VectorStore] = None
@@ -69,10 +71,10 @@ class MemoryManager:
         self._initialized = False
         self._last_maintenance = datetime.now()
         self._maintenance_task: Optional[asyncio.Task] = None
-        self._maintenance_interval_hours = self.config.consolidation_interval_hours  # 从配置读取
+        self._maintenance_interval_hours = getattr(self.config, 'consolidation_interval_hours', 1.0)
         self._maintenance_schedule_id: Optional[str] = None  # 调度任务ID
         
-        logger.info(f"记忆管理器已创建 (data_dir={data_dir}, enable={self.config.enable})")
+        logger.info(f"记忆管理器已创建 (data_dir={self.data_dir}, enable={getattr(self.config, 'enable', False)})")
 
     async def initialize(self) -> None:
         """
@@ -93,8 +95,12 @@ class MemoryManager:
             # 1. 初始化存储层
             self.data_dir.mkdir(parents=True, exist_ok=True)
             
+            # 获取存储配置
+            storage_config = getattr(self.config, 'storage', None)
+            vector_collection_name = getattr(storage_config, 'vector_collection_name', 'memory_graph') if storage_config else 'memory_graph'
+            
             self.vector_store = VectorStore(
-                collection_name=self.config.storage.vector_collection_name,
+                collection_name=vector_collection_name,
                 data_dir=self.data_dir,
             )
             await self.vector_store.initialize()
@@ -557,7 +563,8 @@ class MemoryManager:
                 # 计算时间衰减
                 last_access_dt = datetime.fromisoformat(last_access)
                 hours_passed = (now - last_access_dt).total_seconds() / 3600
-                decay_factor = self.config.activation_decay_rate ** (hours_passed / 24)
+                decay_rate = getattr(self.config, 'activation_decay_rate', 0.95)
+                decay_factor = decay_rate ** (hours_passed / 24)
                 current_activation = activation_info.get("level", 0.0) * decay_factor
             else:
                 current_activation = 0.0
@@ -576,13 +583,16 @@ class MemoryManager:
             
             # 激活传播：激活相关记忆
             if strength > 0.1:  # 只有足够强的激活才传播
+                propagation_depth = getattr(self.config, 'activation_propagation_depth', 2)
                 related_memories = self._get_related_memories(
                     memory_id,
-                    max_depth=self.config.activation_propagation_depth
+                    max_depth=propagation_depth
                 )
-                propagation_strength = strength * self.config.activation_propagation_strength
+                propagation_strength_factor = getattr(self.config, 'activation_propagation_strength', 0.5)
+                propagation_strength = strength * propagation_strength_factor
                 
-                for related_id in related_memories[:self.config.max_related_memories]:
+                max_related = getattr(self.config, 'max_related_memories', 5)
+                for related_id in related_memories[:max_related]:
                     await self.activate_memory(related_id, propagation_strength)
             
             # 保存更新
@@ -681,7 +691,8 @@ class MemoryManager:
                     continue
                 
                 # 跳过高重要性记忆
-                if memory.importance >= self.config.forgetting_min_importance:
+                min_importance = getattr(self.config, 'forgetting_min_importance', 7.0)
+                if memory.importance >= min_importance:
                     continue
                 
                 # 计算当前激活度
@@ -876,8 +887,8 @@ class MemoryManager:
 
         # 使用配置值或参数覆盖
         time_window_hours = time_window_hours if time_window_hours is not None else 24
-        max_candidates = max_candidates if max_candidates is not None else self.config.auto_link_max_candidates
-        min_confidence = min_confidence if min_confidence is not None else self.config.auto_link_min_confidence
+        max_candidates = max_candidates if max_candidates is not None else getattr(self.config, 'auto_link_max_candidates', 10)
+        min_confidence = min_confidence if min_confidence is not None else getattr(self.config, 'auto_link_min_confidence', 0.7)
 
         try:
             logger.info(f"开始自动关联记忆 (时间窗口={time_window_hours}h)...")
@@ -1249,22 +1260,22 @@ class MemoryManager:
             }
             
             # 1. 记忆整理（合并相似记忆）
-            if self.config.consolidation_enabled:
+            if getattr(self.config, 'consolidation_enabled', False):
                 consolidate_result = await self.consolidate_memories(
-                    similarity_threshold=self.config.consolidation_similarity_threshold,
-                    time_window_hours=self.config.consolidation_time_window_hours
+                    similarity_threshold=getattr(self.config, 'consolidation_similarity_threshold', 0.9),
+                    time_window_hours=getattr(self.config, 'consolidation_time_window_hours', 24.0)
                 )
                 result["consolidated"] = consolidate_result.get("merged_count", 0)
             
             # 2. 自动关联记忆（发现和建立关系）
-            if self.config.auto_link_enabled:
+            if getattr(self.config, 'auto_link_enabled', True):
                 link_result = await self.auto_link_memories()
                 result["linked"] = link_result.get("linked_count", 0)
             
             # 3. 自动遗忘
-            if self.config.forgetting_enabled:
+            if getattr(self.config, 'forgetting_enabled', True):
                 forgotten_count = await self.auto_forget_memories(
-                    threshold=self.config.forgetting_activation_threshold
+                    threshold=getattr(self.config, 'forgetting_activation_threshold', 0.1)
                 )
                 result["forgotten"] = forgotten_count
             

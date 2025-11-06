@@ -585,17 +585,29 @@ class DefaultReplyer:
                     
                     if memories:
                         logger.info(f"[记忆图] 检索到 {len(memories)} 条相关记忆")
+                        
+                        # 使用新的格式化工具构建完整的记忆描述
+                        from src.memory_graph.utils.memory_formatter import (
+                            format_memory_for_prompt,
+                            get_memory_type_label,
+                        )
+                        
                         for memory in memories:
-                            topic = memory.metadata.get("topic", "")
-                            mem_type = memory.metadata.get("memory_type", "未知")
-                            if topic:
+                            # 使用格式化工具生成完整的主谓宾描述
+                            content = format_memory_for_prompt(memory, include_metadata=False)
+                            
+                            # 获取记忆类型
+                            mem_type = memory.memory_type.value if memory.memory_type else "未知"
+                            
+                            if content:
                                 all_memories.append({
-                                    "content": topic,
+                                    "content": content,
                                     "memory_type": mem_type,
                                     "importance": memory.importance,
                                     "relevance": 0.7,
                                     "source": "memory_graph",
                                 })
+                                logger.debug(f"[记忆构建] 格式化记忆: [{mem_type}] {content[:50]}...")
                     else:
                         logger.debug("[记忆图] 未找到相关记忆")
         except Exception as e:
@@ -629,8 +641,13 @@ class DefaultReplyer:
                     logger.debug(f"[记忆构建] 空记忆详情: {running_memory}")
                     continue
 
-                # 使用全局记忆类型映射表
-                chinese_type = get_memory_type_chinese_label(memory_type)
+                # 使用记忆图的类型映射（优先）或全局映射
+                try:
+                    from src.memory_graph.utils.memory_formatter import get_memory_type_label
+                    chinese_type = get_memory_type_label(memory_type)
+                except ImportError:
+                    # 回退到全局映射
+                    chinese_type = get_memory_type_chinese_label(memory_type)
 
                 # 提取纯净内容（如果包含旧格式的元数据）
                 clean_content = content
