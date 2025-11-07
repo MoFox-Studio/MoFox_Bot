@@ -109,18 +109,14 @@ class SchedulerDispatcher:
                 return
             
             # 2. 检查是否有活跃的 schedule
-            async with self._get_schedule_lock(stream_id):
-                has_active_schedule = stream_id in self.stream_schedules
-                
-                if has_active_schedule:
-                    # 释放锁后再做打断检查（避免长时间持有锁）
-                    pass
-                else:
-                    # 4. 创建新的 schedule（在锁内，避免重复创建）
-                    await self._create_schedule(stream_id, context)
-                    return
+            has_active_schedule = stream_id in self.stream_schedules
             
-            # 3. 检查打断判定（锁外执行，避免阻塞）
+            if not has_active_schedule:
+                # 4. 创建新的 schedule（在锁内，避免重复创建）
+                await self._create_schedule(stream_id, context)
+                return
+            
+            # 3. 检查打断判定
             if has_active_schedule:
                 should_interrupt = await self._check_interruption(stream_id, context)
                 
@@ -232,17 +228,15 @@ class SchedulerDispatcher:
             stream_id: 流ID
             context: 流上下文
         """
-        # 使用锁保护，避免与 _on_schedule_triggered 冲突
-        async with self._get_schedule_lock(stream_id):
-            # 移除旧的 schedule
-            old_schedule_id = self.stream_schedules.get(stream_id)
+        # 移除旧的 schedule
+        old_schedule_id = self.stream_schedules.get(stream_id)
         if old_schedule_id:
             success = await unified_scheduler.remove_schedule(old_schedule_id)
             if success:
                 logger.info(f"🔄 已移除旧 schedule 并准备重建: 流={stream_id[:8]}..., ID={old_schedule_id[:8]}...")
                 self.stats["total_schedules_cancelled"] += 1
                 # 只有成功移除后才从追踪中删除
-                del self.stream_schedules[stream_id]
+                self.stream_schedules.pop(stream_id)
             else:
                 logger.error(
                     f"❌ 打断失败：无法移除旧 schedule: 流={stream_id[:8]}..., "
@@ -303,18 +297,10 @@ class SchedulerDispatcher:
             
             mode_indicator = "⚡打断" if immediate_mode else "📅常规"
             
-            # 获取调用栈信息，帮助追踪重复创建的问题
-            import traceback
-            caller_info = ""
-            stack = traceback.extract_stack()
-            if len(stack) >= 2:
-                caller_frame = stack[-2]
-                caller_info = f", 调用自={caller_frame.name}"
-            
             logger.info(
                 f"{mode_indicator} 创建 schedule: 流={stream_id[:8]}..., "
                 f"延迟={delay:.3f}s, 未读={unread_count}, "
-                f"ID={schedule_id[:8]}...{caller_info}"
+                f"ID={schedule_id[:8]}..."
             )
         
         except Exception as e:
@@ -431,10 +417,8 @@ class SchedulerDispatcher:
             stream_id: 流ID
         """
         try:
-            # 使用锁保护，避免与打断逻辑冲突
-            async with self._get_schedule_lock(stream_id):
-                # 从追踪中移除（因为是一次性任务）
-                old_schedule_id = self.stream_schedules.pop(stream_id, None)
+            # 从追踪中移除（因为是一次性任务）
+            old_schedule_id = self.stream_schedules.pop(stream_id, None)
             
             logger.info(
                 f"⏰ Schedule 触发: 流={stream_id[:8]}..., "
@@ -462,33 +446,31 @@ class SchedulerDispatcher:
                 self.stats["total_failures"] += 1
             
             # 处理完成后，检查是否需要创建新的 schedule
-            async with self._get_schedule_lock(stream_id):
-                # 检查是否已有 schedule（可能在处理期间被打断创建了新的）
-                if stream_id in self.stream_schedules:
-                    logger.info(
-                        f"⚠️ 处理完成时发现已有新 schedule: 流={stream_id[:8]}..., "
-                        f"可能是打断创建的，跳过创建新 schedule"
-                    )
-                    return
+            if stream_id in self.stream_schedules:
+                logger.info(
+                    f"⚠️ 处理完成时发现已有新 schedule: 流={stream_id[:8]}..., "
+                    f"可能是打断创建的，跳过创建新 schedule"
+                )
+                return
                 
-                # 检查缓存中是否有待处理的消息
-                from src.chat.message_manager.message_manager import message_manager
-                
-                has_cached = message_manager.has_cached_messages(stream_id)
-                
-                if has_cached:
-                    # 有缓存消息，立即创建新 schedule 继续处理
-                    logger.info(
-                        f"🔁 处理完成但有缓存消息: 流={stream_id[:8]}..., "
-                        f"立即创建新 schedule 继续处理"
-                    )
-                    await self._create_schedule(stream_id, context)
-                else:
-                    # 没有缓存消息，不创建 schedule，等待新消息到达
-                    logger.debug(
-                        f"✅ 处理完成且无缓存消息: 流={stream_id[:8]}..., "
-                        f"等待新消息到达"
-                    )
+            # 检查缓存中是否有待处理的消息
+            from src.chat.message_manager.message_manager import message_manager
+            
+            has_cached = message_manager.has_cached_messages(stream_id)
+            
+            if has_cached:
+                # 有缓存消息，立即创建新 schedule 继续处理
+                logger.info(
+                    f"🔁 处理完成但有缓存消息: 流={stream_id[:8]}..., "
+                    f"立即创建新 schedule 继续处理"
+                )
+                await self._create_schedule(stream_id, context)
+            else:
+                # 没有缓存消息，不创建 schedule，等待新消息到达
+                logger.debug(
+                    f"✅ 处理完成且无缓存消息: 流={stream_id[:8]}..., "
+                    f"等待新消息到达"
+                )
         
         except Exception as e:
             logger.error(f"Schedule 回调执行失败 {stream_id}: {e}", exc_info=True)
