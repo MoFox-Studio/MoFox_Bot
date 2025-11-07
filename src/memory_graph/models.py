@@ -71,11 +71,11 @@ class MemoryNode:
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典（用于序列化）"""
+        # 不序列化 embedding 数据，向量数据由专门的向量数据库管理
         return {
             "id": self.id,
             "content": self.content,
             "node_type": self.node_type.value,
-            "embedding": self.embedding.tolist() if self.embedding is not None else None,
             "metadata": self.metadata,
             "created_at": self.created_at.isoformat(),
         }
@@ -83,15 +83,12 @@ class MemoryNode:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MemoryNode:
         """从字典创建节点"""
-        embedding = None
-        if data.get("embedding") is not None:
-            embedding = np.array(data["embedding"])
-
+        # 不从 JSON 中读取 embedding 数据，向量数据由专门的向量数据库管理
         return cls(
             id=data["id"],
             content=data["content"],
             node_type=NodeType(data["node_type"]),
-            embedding=embedding,
+            embedding=None,  # 向量数据需要从向量数据库中单独加载
             metadata=data.get("metadata", {}),
             created_at=datetime.fromisoformat(data["created_at"]),
         )
