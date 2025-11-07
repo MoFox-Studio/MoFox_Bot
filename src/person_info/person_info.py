@@ -126,12 +126,10 @@ class PersonInfoManager:
 
     async def get_person_id_by_person_name(self, person_name: str) -> str:
         """
-        根据用户名获取用户ID（同步）
+        根据用户名获取用户ID（异步）
 
-        说明: 为了避免在多个调用点将 coroutine 误传递到数据库查询中，
-        此处提供一个同步实现。优先在内存缓存 `self.person_name_list` 中查找，
-        若未命中则返回空字符串。若后续需要更强的一致性，可在异步上下文
-        额外实现带 await 的查询方法。
+        说明: 优先在内存缓存 `self.person_name_list` 中查找，
+        若未命中则查询数据库并更新缓存。
         """
         try:
             # 优先使用内存缓存加速查找：self.person_name_list maps person_id -> person_name
@@ -139,7 +137,20 @@ class PersonInfoManager:
                 if pname == person_name:
                     return pid
 
-            # 未找到缓存命中，避免在同步路径中进行阻塞的数据库查询，直接返回空字符串
+            # 缓存未命中，查询数据库
+            async with get_db_session() as session:
+                result = await session.execute(
+                    select(PersonInfo).where(PersonInfo.person_name == person_name)
+                )
+                record = result.scalar()
+
+                if record:
+                    # 找到了，更新缓存
+                    self.person_name_list[record.person_id] = person_name
+                    logger.debug(f"从数据库查到用户 '{person_name}'，已更新缓存")
+                    return record.person_id
+
+            # 数据库也没有，返回空字符串
             return ""
         except Exception as e:
             logger.error(f"根据用户名 {person_name} 获取用户ID时出错: {e}")
@@ -180,11 +191,15 @@ class PersonInfoManager:
         final_data = {"person_id": person_id}
 
         # Start with defaults for all model fields
-        final_data.update({key: default_value for key, default_value in _person_info_default.items() if key in model_fields})
+        for key, default_value in _person_info_default.items():
+            if key in model_fields:
+                final_data[key] = default_value
 
         # Override with provided data
         if data:
-            final_data.update({key: value for key, value in data.items() if key in model_fields})
+            for key, value in data.items():
+                if key in model_fields:
+                    final_data[key] = value
 
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id
@@ -237,11 +252,15 @@ class PersonInfoManager:
         final_data = {"person_id": person_id}
 
         # Start with defaults for all model fields
-        final_data.update({key: default_value for key, default_value in _person_info_default.items() if key in model_fields})
+        for key, default_value in _person_info_default.items():
+            if key in model_fields:
+                final_data[key] = default_value
 
         # Override with provided data
         if data:
-            final_data.update({key: value for key, value in data.items() if key in model_fields})
+            for key, value in data.items():
+                if key in model_fields:
+                    final_data[key] = value
 
         # Ensure person_id is correctly set from the argument
         final_data["person_id"] = person_id
