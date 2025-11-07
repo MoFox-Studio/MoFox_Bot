@@ -100,10 +100,10 @@ class VectorStore:
 
             # 处理额外的元数据，将 list 转换为 JSON 字符串
             for key, value in node.metadata.items():
-                if isinstance(value, (list, dict)):
+                if isinstance(value, list | dict):
                     import orjson
                     metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode("utf-8")
-                elif isinstance(value, (str, int, float, bool)) or value is None:
+                elif isinstance(value, str | int | float | bool) or value is None:
                     metadata[key] = value
                 else:
                     metadata[key] = str(value)
@@ -149,9 +149,9 @@ class VectorStore:
                     "created_at": n.created_at.isoformat(),
                 }
                 for key, value in n.metadata.items():
-                    if isinstance(value, (list, dict)):
+                    if isinstance(value, list | dict):
                         metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode("utf-8")
-                    elif isinstance(value, (str, int, float, bool)) or value is None:
+                    elif isinstance(value, str | int | float | bool) or value is None:
                         metadata[key] = value  # type: ignore
                     else:
                         metadata[key] = str(value)

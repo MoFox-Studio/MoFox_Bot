@@ -266,13 +266,13 @@ class UnifiedScheduler:
                 name=f"execute_{task.task_name}"
             )
             execution_tasks.append(execution_task)
-            
+
             # 追踪正在执行的任务，以便在 remove_schedule 时可以取消
             self._executing_tasks[task.schedule_id] = execution_task
 
         # 等待所有任务完成（使用 return_exceptions=True 避免单个任务失败影响其他任务）
         results = await asyncio.gather(*execution_tasks, return_exceptions=True)
-        
+
         # 清理执行追踪
         for task in tasks_to_trigger:
             self._executing_tasks.pop(task.schedule_id, None)
@@ -515,7 +515,7 @@ class UnifiedScheduler:
 
     async def remove_schedule(self, schedule_id: str) -> bool:
         """移除调度任务
-        
+
         如果任务正在执行，会取消执行中的任务
         """
         async with self._lock:
@@ -524,7 +524,7 @@ class UnifiedScheduler:
                 return False
 
             task = self._tasks[schedule_id]
-            
+
             # 检查是否有正在执行的任务
             executing_task = self._executing_tasks.get(schedule_id)
             if executing_task and not executing_task.done():

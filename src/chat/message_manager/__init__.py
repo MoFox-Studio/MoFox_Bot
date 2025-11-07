@@ -9,8 +9,8 @@ from .scheduler_dispatcher import SchedulerDispatcher, scheduler_dispatcher
 
 __all__ = [
     "MessageManager",
-    "SingleStreamContextManager",
     "SchedulerDispatcher",
+    "SingleStreamContextManager",
     "message_manager",
     "scheduler_dispatcher",
 ]

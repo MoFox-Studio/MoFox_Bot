@@ -5,7 +5,7 @@ Web Search Tool Plugin
 """
 
 from src.common.logger import get_logger
-from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, PythonDependency, register_plugin
+from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, register_plugin
 from src.plugin_system.apis import config_api
 
 from .tools.url_parser import URLParserTool

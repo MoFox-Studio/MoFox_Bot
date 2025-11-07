@@ -9,9 +9,9 @@ from .proactive_thinking_executor import execute_proactive_thinking
 from .proactive_thinking_scheduler import ProactiveThinkingScheduler, proactive_thinking_scheduler
 
 __all__ = [
-    "ProactiveThinkingReplyHandler",
     "ProactiveThinkingMessageHandler",
-    "execute_proactive_thinking",
+    "ProactiveThinkingReplyHandler",
     "ProactiveThinkingScheduler",
+    "execute_proactive_thinking",
     "proactive_thinking_scheduler",
 ]

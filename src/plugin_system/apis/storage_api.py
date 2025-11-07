@@ -7,10 +7,11 @@
 """
 
 import atexit
-import orjson
 import os
 import threading
 from typing import Any, ClassVar
+
+import orjson
 
 from src.common.logger import get_logger
 
@@ -125,7 +126,7 @@ class PluginStorage:
 
             try:
                 with open(self.file_path, "w", encoding="utf-8") as f:
-                    f.write(orjson.dumps(self._data, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS).decode('utf-8'))
+                    f.write(orjson.dumps(self._data, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS).decode("utf-8"))
                 self._dirty = False  # 保存后重置标志
                 logger.debug(f"插件 '{self.name}' 的数据已成功保存到磁盘。")
             except Exception as e:

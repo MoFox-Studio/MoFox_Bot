@@ -14,7 +14,6 @@ from maim_message import UserInfo
 
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.common.logger import get_logger
-from src.config.api_ada_configs import TaskConfig
 from src.llm_models.utils_model import LLMRequest
 from src.plugin_system.apis import config_api, generator_api, llm_api
 
@@ -320,7 +319,7 @@ class ContentService:
             - 禁止在说说中直接、完整地提及当前的年月日，除非日期有特殊含义，但也尽量用节日名/节气名字代替。
 
             2. **严禁重复**：下方会提供你最近发过的说说历史，你必须创作一条全新的、与历史记录内容和主题都不同的说说。
-            
+
             **其他的禁止的内容以及说明**：
             - 绝对禁止提及当下具体几点几分的时间戳。
             - 绝对禁止攻击性内容和过度的负面情绪。

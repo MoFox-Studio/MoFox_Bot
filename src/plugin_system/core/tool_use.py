@@ -1,5 +1,6 @@
 import inspect
 import time
+from dataclasses import asdict
 from typing import Any
 
 from src.chat.utils.prompt import Prompt, global_prompt_manager
@@ -10,8 +11,7 @@ from src.llm_models.utils_model import LLMRequest
 from src.plugin_system.apis.tool_api import get_llm_available_tool_definitions, get_tool_instance
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
-from src.plugin_system.core.stream_tool_history import get_stream_tool_history_manager, ToolCallRecord
-from dataclasses import asdict
+from src.plugin_system.core.stream_tool_history import ToolCallRecord, get_stream_tool_history_manager
 
 logger = get_logger("tool_use")
 
@@ -140,7 +140,7 @@ class ToolExecutor:
 
         # 构建工具调用历史文本
         tool_history = self.history_manager.format_for_prompt(max_records=5, include_results=True)
-        
+
         # 获取人设信息
         personality_core = global_config.personality.personality_core
         personality_side = global_config.personality.personality_side
@@ -197,7 +197,7 @@ class ToolExecutor:
 
         return tool_definitions
 
-  
+
     async def execute_tool_calls(self, tool_calls: list[ToolCall] | None) -> tuple[list[dict[str, Any]], list[str]]:
         """执行工具调用
 
@@ -338,9 +338,8 @@ class ToolExecutor:
         if tool_instance and result and tool_instance.enable_cache:
             try:
                 tool_file_path = inspect.getfile(tool_instance.__class__)
-                semantic_query = None
                 if tool_instance.semantic_cache_query_key:
-                    semantic_query = function_args.get(tool_instance.semantic_cache_query_key)
+                    function_args.get(tool_instance.semantic_cache_query_key)
 
                 await self.history_manager.cache_result(
                     tool_name=tool_call.func_name,

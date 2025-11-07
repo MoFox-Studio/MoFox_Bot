@@ -367,7 +367,7 @@ class ChatBot:
             message_segment = message_data.get("message_segment")
             if message_segment and isinstance(message_segment, dict):
                 if message_segment.get("type") == "adapter_response":
-                    logger.info(f"[DEBUG bot.py message_process] 检测到adapter_response，立即处理")
+                    logger.info("[DEBUG bot.py message_process] 检测到adapter_response，立即处理")
                     await self._handle_adapter_response_from_dict(message_segment.get("data"))
                     return
 

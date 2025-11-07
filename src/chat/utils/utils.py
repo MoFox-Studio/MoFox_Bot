@@ -87,20 +87,18 @@ def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
             )
 
     processed_text = message.processed_plain_text or ""
-    
+
     # 1. 判断是否为私聊（强提及）
     group_info = getattr(message, "group_info", None)
     if not group_info or not getattr(group_info, "group_id", None):
-        is_private = True
         mention_type = 2
         logger.debug("检测到私聊消息 - 强提及")
-    
+
     # 2. 判断是否被@（强提及）
     if re.search(rf"@<(.+?):{global_config.bot.qq_account}>", processed_text):
-        is_at = True
         mention_type = 2
         logger.debug("检测到@提及 - 强提及")
-    
+
     # 3. 判断是否被回复（强提及）
     if re.match(
         rf"\[回复 (.+?)\({global_config.bot.qq_account!s}\)：(.+?)\]，说：", processed_text
@@ -108,10 +106,9 @@ def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
         rf"\[回复<(.+?)(?=:{global_config.bot.qq_account!s}>)\:{global_config.bot.qq_account!s}>：(.+?)\]，说：",
         processed_text,
     ):
-        is_replied = True
         mention_type = 2
         logger.debug("检测到回复消息 - 强提及")
-    
+
     # 4. 判断文本中是否提及bot名字或别名（弱提及）
     if mention_type == 0:  # 只有在没有强提及时才检查弱提及
         # 移除@和回复标记后再检查
@@ -119,21 +116,19 @@ def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
         message_content = re.sub(r"@<(.+?)(?=:(\d+))\:(\d+)>", "", message_content)
         message_content = re.sub(r"\[回复 (.+?)\(((\d+)|未知id)\)：(.+?)\]，说：", "", message_content)
         message_content = re.sub(r"\[回复<(.+?)(?=:(\d+))\:(\d+)>：(.+?)\]，说：", "", message_content)
-        
+
         # 检查bot主名字
         if global_config.bot.nickname in message_content:
-            is_text_mentioned = True
             mention_type = 1
             logger.debug(f"检测到文本提及bot主名字 '{global_config.bot.nickname}' - 弱提及")
         # 如果主名字没匹配，再检查别名
         elif nicknames:
             for alias_name in nicknames:
                 if alias_name in message_content:
-                    is_text_mentioned = True
                     mention_type = 1
                     logger.debug(f"检测到文本提及bot别名 '{alias_name}' - 弱提及")
                     break
-    
+
     # 返回结果
     is_mentioned = mention_type > 0
     return is_mentioned, float(mention_type)

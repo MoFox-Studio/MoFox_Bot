@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from src.common.data_models.message_manager_data_model import StreamContext
 
 # 导入提示词模块以确保其被初始化
-from src.plugins.built_in.affinity_flow_chatter.planner import planner_prompts
 
 logger = get_logger("planner")
 
@@ -159,10 +158,10 @@ class ChatterActionPlanner:
                     action_data={},
                     action_message=None,
                 )
-                
+
                 # 更新连续不回复计数
                 await self._update_interest_calculator_state(replied=False)
-                
+
                 initial_plan = await self.generator.generate(chat_mode)
                 filtered_plan = initial_plan
                 filtered_plan.decided_actions = [no_action]
@@ -270,7 +269,7 @@ class ChatterActionPlanner:
         try:
             # Normal模式开始时，刷新缓存消息到未读列表
             await self._flush_cached_messages_to_unread(context)
-            
+
             unread_messages = context.get_unread_messages() if context else []
 
             if not unread_messages:
@@ -347,7 +346,7 @@ class ChatterActionPlanner:
                 self._update_stats_from_execution_result(execution_result)
 
                 logger.info("Normal模式: 执行reply动作完成")
-                
+
                 # 更新兴趣计算器状态（回复成功，重置不回复计数）
                 await self._update_interest_calculator_state(replied=True)
 
@@ -465,7 +464,7 @@ class ChatterActionPlanner:
 
     async def _update_interest_calculator_state(self, replied: bool) -> None:
         """更新兴趣计算器状态（连续不回复计数和回复后降低机制）
-        
+
         Args:
             replied: 是否回复了消息
         """
@@ -504,36 +503,36 @@ class ChatterActionPlanner:
 
     async def _flush_cached_messages_to_unread(self, context: "StreamContext | None") -> list:
         """在planner开始时将缓存消息刷新到未读消息列表
-        
+
         此方法在动作修改器执行后、生成初始计划前调用，确保计划阶段能看到所有积累的消息。
-        
+
         Args:
             context: 流上下文
-            
+
         Returns:
             list: 刷新的消息列表
         """
         if not context:
             return []
-            
+
         try:
             from src.chat.message_manager.message_manager import message_manager
-            
+
             stream_id = context.stream_id
-            
+
             if message_manager.is_running and message_manager.has_cached_messages(stream_id):
                 # 获取缓存消息
                 cached_messages = message_manager.flush_cached_messages(stream_id)
-                
+
                 if cached_messages:
                     # 直接添加到上下文的未读消息列表
                     for message in cached_messages:
                         context.unread_messages.append(message)
                     logger.info(f"Planner开始前刷新缓存消息到未读列表: stream={stream_id}, 数量={len(cached_messages)}")
                     return cached_messages
-                    
+
             return []
-            
+
         except ImportError:
             logger.debug("MessageManager不可用，跳过缓存刷新")
             return []

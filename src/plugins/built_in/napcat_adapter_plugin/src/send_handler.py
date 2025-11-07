@@ -1,7 +1,6 @@
 import orjson
 import random
 import time
-import random
 import websockets as Server
 import uuid
 from maim_message import (
@@ -205,7 +204,7 @@ class SendHandler:
             # 发送响应回MoFox-Bot
             logger.debug(f"[DEBUG handle_adapter_command] 即将调用send_adapter_command_response, request_id={request_id}")
             await self.send_adapter_command_response(raw_message_base, response, request_id)
-            logger.debug(f"[DEBUG handle_adapter_command] send_adapter_command_response调用完成")
+            logger.debug("[DEBUG handle_adapter_command] send_adapter_command_response调用完成")
 
             if response.get("status") == "ok":
                 logger.info(f"适配器命令 {action} 执行成功")

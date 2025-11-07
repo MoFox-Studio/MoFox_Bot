@@ -4,13 +4,11 @@
 """
 
 import asyncio
-import random
 import time
 from collections import defaultdict, deque
 from typing import TYPE_CHECKING, Any
 
 from src.chat.chatter_manager import ChatterManager
-from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.planner_actions.action_manager import ChatterActionManager
 from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.data_models.message_manager_data_model import MessageManagerStats, StreamStats
@@ -77,7 +75,7 @@ class MessageManager:
         # 启动基于 scheduler 的消息分发器
         await scheduler_dispatcher.start()
         scheduler_dispatcher.set_chatter_manager(self.chatter_manager)
-        
+
         # 保留旧的流循环管理器（暂时）以便平滑过渡
         # TODO: 在确认新机制稳定后移除
         # await stream_loop_manager.start()
@@ -108,7 +106,7 @@ class MessageManager:
 
         # 停止基于 scheduler 的消息分发器
         await scheduler_dispatcher.stop()
-        
+
         # 停止旧的流循环管理器（如果启用）
         # await stream_loop_manager.stop()
 
@@ -116,7 +114,7 @@ class MessageManager:
 
     async def add_message(self, stream_id: str, message: DatabaseMessages):
         """添加消息到指定聊天流
-        
+
         新的流程：
         1. 检查 notice 消息
         2. 将消息添加到上下文（缓存）
@@ -149,10 +147,10 @@ class MessageManager:
             if not chat_stream:
                 logger.warning(f"MessageManager.add_message: 聊天流 {stream_id} 不存在")
                 return
-            
+
             # 将消息添加到上下文
             await chat_stream.context_manager.add_message(message)
-            
+
             # 通知 scheduler_dispatcher 处理消息接收事件
             # dispatcher 会检查是否需要打断、创建或更新 schedule
             await scheduler_dispatcher.on_message_received(stream_id)
