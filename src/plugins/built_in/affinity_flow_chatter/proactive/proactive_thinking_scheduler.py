@@ -92,12 +92,6 @@ class ProactiveThinkingScheduler:
 
         is_private = parts[2] == "private"
 
-        # 检查基础开关
-        if is_private and not self.config.enable_in_private:
-            return False
-        if not is_private and not self.config.enable_in_group:
-            return False
-
         # 黑名单检查（优先级高）
         if self.config.blacklist_mode:
             blacklist = self.config.blacklist_private if is_private else self.config.blacklist_group
