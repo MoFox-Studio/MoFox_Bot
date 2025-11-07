@@ -61,15 +61,27 @@ def find_available_data_files() -> List[Path]:
     return sorted(files, key=lambda f: f.stat().st_mtime, reverse=True)
 
 
-def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any]:
-    """从磁盘加载图数据"""
+def load_graph_data_from_file(
+    file_path: Optional[Path] = None,
+    nodes_page: Optional[int] = None,
+    nodes_per_page: Optional[int] = None,
+    edges_page: Optional[int] = None,
+    edges_per_page: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    从磁盘加载图数据, 支持分页。
+    如果不提供分页参数, 则加载并缓存所有数据。
+    """
     global graph_data_cache, current_data_file
+
+    # 如果是请求分页数据, 则不使用缓存的全量数据
+    is_paged_request = nodes_page is not None or edges_page is not None
 
     if file_path and file_path != current_data_file:
         graph_data_cache = None
         current_data_file = file_path
 
-    if graph_data_cache:
+    if graph_data_cache and not is_paged_request:
         return graph_data_cache
 
     try:
@@ -84,53 +96,78 @@ def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any
         if not graph_file.exists():
             return {"error": f"文件不存在: {graph_file}", "nodes": [], "edges": [], "stats": {}}
 
-        with open(graph_file, "r", encoding="utf-8") as f:
-            data = orjson.loads(f.read())
+        # 只有在没有缓存时才从磁盘读取和处理文件
+        if not graph_data_cache:
+            with open(graph_file, "r", encoding="utf-8") as f:
+                data = orjson.loads(f.read())
 
-        nodes = data.get("nodes", [])
-        edges = data.get("edges", [])
-        metadata = data.get("metadata", {})
+            nodes = data.get("nodes", [])
+            edges = data.get("edges", [])
+            metadata = data.get("metadata", {})
 
-        nodes_dict = {
-            node["id"]: {
-                **node,
-                "label": node.get("content", ""),
-                "group": node.get("node_type", ""),
-                "title": f"{node.get('node_type', '')}: {node.get('content', '')}",
+            nodes_dict = {
+                node["id"]: {
+                    **node,
+                    "label": node.get("content", ""),
+                    "group": node.get("node_type", ""),
+                    "title": f"{node.get('node_type', '')}: {node.get('content', '')}",
+                }
+                for node in nodes
+                if node.get("id")
             }
-            for node in nodes
-            if node.get("id")
-        }
 
-        edges_list = [
-            {
-                **edge,
-                "from": edge.get("source", edge.get("source_id")),
-                "to": edge.get("target", edge.get("target_id")),
-                "label": edge.get("relation", ""),
-                "arrows": "to",
+            edges_list = []
+            seen_edge_ids = set()
+            for edge in edges:
+                edge_id = edge.get("id")
+                if edge_id and edge_id not in seen_edge_ids:
+                    edges_list.append(
+                        {
+                            **edge,
+                            "from": edge.get("source", edge.get("source_id")),
+                            "to": edge.get("target", edge.get("target_id")),
+                            "label": edge.get("relation", ""),
+                            "arrows": "to",
+                        }
+                    )
+                    seen_edge_ids.add(edge_id)
+
+            stats = metadata.get("statistics", {})
+            total_memories = stats.get("total_memories", 0)
+
+            graph_data_cache = {
+                "nodes": list(nodes_dict.values()),
+                "edges": edges_list,
+                "memories": [], # TODO: 未来也可以考虑分页加载记忆
+                "stats": {
+                    "total_nodes": len(nodes_dict),
+                    "total_edges": len(edges_list),
+                    "total_memories": total_memories,
+                },
+                "current_file": str(graph_file),
+                "file_size": graph_file.stat().st_size,
+                "file_modified": datetime.fromtimestamp(graph_file.stat().st_mtime).isoformat(),
             }
-            for edge in edges
-        ]
 
-        stats = metadata.get("statistics", {})
-        total_memories = stats.get("total_memories", 0)
+        # 如果是分页请求, 则从缓存中切片数据
+        if is_paged_request:
+            paged_data = graph_data_cache.copy() # 浅拷贝一份, 避免修改缓存
+            
+            # 分页节点
+            if nodes_page is not None and nodes_per_page is not None:
+                node_start = (nodes_page - 1) * nodes_per_page
+                node_end = node_start + nodes_per_page
+                paged_data["nodes"] = graph_data_cache["nodes"][node_start:node_end]
+            
+            # 分页边
+            if edges_page is not None and edges_per_page is not None:
+                edge_start = (edges_page - 1) * edges_per_page
+                edge_end = edge_start + edges_per_page
+                paged_data["edges"] = graph_data_cache["edges"][edge_start:edge_end]
+                
+            return paged_data
 
-        graph_data_cache = {
-            "nodes": list(nodes_dict.values()),
-            "edges": edges_list,
-            "memories": [],
-            "stats": {
-                "total_nodes": len(nodes_dict),
-                "total_edges": len(edges_list),
-                "total_memories": total_memories,
-            },
-            "current_file": str(graph_file),
-            "file_size": graph_file.stat().st_size,
-            "file_modified": datetime.fromtimestamp(graph_file.stat().st_mtime).isoformat(),
-        }
         return graph_data_cache
-
     except Exception as e:
         import traceback
 
@@ -151,7 +188,7 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
 
     all_memories = memory_manager.graph_store.get_all_memories()
     nodes_dict = {}
-    edges_list = []
+    edges_dict = {}
     memory_info = []
 
     for memory in all_memories:
@@ -173,8 +210,8 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
                     "title": f"{node.node_type.value}: {node.content}",
                 }
         for edge in memory.edges:
-            edges_list.append(  # noqa: PERF401
-                {
+            if edge.id not in edges_dict:
+                edges_dict[edge.id] = {
                     "id": edge.id,
                     "from": edge.source_id,
                     "to": edge.target_id,
@@ -182,7 +219,8 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
                     "arrows": "to",
                     "memory_id": memory.id,
                 }
-            )
+    
+    edges_list = list(edges_dict.values())
 
     stats = memory_manager.get_statistics()
     return {
@@ -197,28 +235,67 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
         "current_file": "memory_manager (实时数据)",
     }
 
+@router.get("/api/graph/paged")
+async def get_paged_graph(
+    nodes_page: int = 1, nodes_per_page: int = 100, edges_page: int = 1, edges_per_page: int = 200
+):
+    """获取分页的记忆图数据"""
+    try:
+        # 确保全量数据已加载到缓存
+        full_data = load_graph_data_from_file()
+        if "error" in full_data:
+             raise HTTPException(status_code=404, detail=full_data["error"])
+
+        # 从缓存中获取全量数据
+        all_nodes = full_data.get("nodes", [])
+        all_edges = full_data.get("edges", [])
+        total_nodes = len(all_nodes)
+        total_edges = len(all_edges)
+        
+        # 计算节点分页
+        node_start = (nodes_page - 1) * nodes_per_page
+        node_end = node_start + nodes_per_page
+        paginated_nodes = all_nodes[node_start:node_end]
+
+        # 计算边分页
+        edge_start = (edges_page - 1) * edges_per_page
+        edge_end = edge_start + edges_per_page
+        paginated_edges = all_edges[edge_start:edge_end]
+
+        return JSONResponse(
+            content={
+                "success": True,
+                "data": {
+                    "nodes": paginated_nodes,
+                    "edges": paginated_edges,
+                    "pagination": {
+                        "nodes": {
+                            "page": nodes_page,
+                            "per_page": nodes_per_page,
+                            "total": total_nodes,
+                            "total_pages": (total_nodes + nodes_per_page - 1) // nodes_per_page,
+                        },
+                        "edges": {
+                            "page": edges_page,
+                            "per_page": edges_per_page,
+                            "total": total_edges,
+                            "total_pages": (total_edges + edges_per_page - 1) // edges_per_page,
+                        },
+                    },
+                },
+            }
+        )
+    except Exception as e:
+        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+
 
 @router.get("/api/graph/full")
-async def get_full_graph():
-    """获取完整记忆图数据"""
-    try:
-        from src.memory_graph.manager_singleton import get_memory_manager
-
-        memory_manager = get_memory_manager()
-
-        data = {}
-        if memory_manager and memory_manager._initialized:
-            data = _format_graph_data_from_manager(memory_manager)
-        else:
-            # 如果内存管理器不可用，则从文件加载
-            data = load_graph_data_from_file()
-
-        return JSONResponse(content={"success": True, "data": data})
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+async def get_full_graph_deprecated():
+    """
+    (已废弃) 获取完整记忆图数据。
+    此接口现在只返回第一页的数据, 请使用 /api/graph/paged 进行分页获取。
+    """
+    return await get_paged_graph(nodes_page=1, nodes_per_page=100, edges_page=1, edges_per_page=200)
 
 
 @router.get("/api/files")

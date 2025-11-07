@@ -533,11 +533,18 @@
         let network = null;
         let availableFiles = [];
         let graphData = {
-            nodes: [],
-            edges: [],
-            memories: []
+            nodes: new vis.DataSet([])
+,
+            edges: new vis.DataSet([])
         };
-        let originalData = null;
+        let originalData = null; // 用于过滤器
+
+        // 分页状态
+        let pagination = {
+            nodes: { page: 1, per_page: 200, total_pages: 1, total: 0 },
+            edges: { page: 1, per_page: 500, total_pages: 1, total: 0 }
+        };
+        let isLoading = false;
 
         // 节点颜色配置
         const nodeColors = {
@@ -653,35 +660,93 @@
             });
         }
 
-        // 加载图形数据
+        // 重置并加载第一页数据
         async function loadGraph() {
+            if (isLoading) return;
+            console.log('开始加载初始图数据...');
+            
+            // 重置状态
+            graphData.nodes.clear();
+            graphData.edges.clear();
+            pagination.nodes.page = 1;
+            pagination.edges.page = 1;
+            
             try {
-                document.getElementById('loading').style.display = 'block';
-                
-                const response = await fetch('/visualizer/api/graph/full');
-                const result = await response.json();
-
-                if (result.success) {
-                    originalData = result.data;
-                    updateGraph(result.data);
-                    updateStats(result.data.stats);
+                // 先获取一次完整的统计信息
+                const statsResponse = await fetch('/visualizer/api/stats');
+                const statsResult = await statsResponse.json();
+                if(statsResult.success) {
+                    updateStats(statsResult.data);
+                    pagination.nodes.total = statsResult.data.total_nodes;
+                    pagination.edges.total = statsResult.data.total_edges;
+                    pagination.nodes.total_pages = Math.ceil(statsResult.data.total_nodes / pagination.nodes.per_page);
+                    pagination.edges.total_pages = Math.ceil(statsResult.data.total_edges / pagination.edges.per_page);
                 } else {
-                    alert('加载失败: ' + result.error);
+                     throw new Error('获取统计信息失败: ' + statsResult.error);
                 }
+
+                // 加载第一页
+                await loadMoreData();
+
             } catch (error) {
-                console.error('加载图形失败:', error);
-                alert('加载失败: ' + error.message);
-            } finally {
-                document.getElementById('loading').style.display = 'none';
+                console.error('初始加载失败:', error);
+                alert('初始加载失败: ' + error.message);
             }
         }
 
-        // 更新图形显示
+        // 加载更多数据（分页核心）
+        async function loadMoreData() {
+            if (isLoading) return;
+            
+            const canLoadNodes = pagination.nodes.page <= pagination.nodes.total_pages;
+            const canLoadEdges = pagination.edges.page <= pagination.edges.total_pages;
+
+            if (!canLoadNodes && !canLoadEdges) {
+                console.log('所有数据已加载完毕');
+                return;
+            }
+
+            isLoading = true;
+            document.getElementById('loading').style.display = 'block';
+
+            try {
+                const url = `/visualizer/api/graph/paged?nodes_page=${pagination.nodes.page}&nodes_per_page=${pagination.nodes.per_page}&edges_page=${pagination.edges.page}&edges_per_page=${pagination.edges.per_page}`;
+                console.log(`正在请求: ${url}`);
+                const response = await fetch(url);
+                const result = await response.json();
+
+                if (result.success) {
+                    console.log(`成功获取 ${result.data.nodes.length} 个节点, ${result.data.edges.length} 个边`);
+                    updateGraph(result.data); // 追加数据
+                    
+                    // 更新分页信息
+                    if (result.data.pagination) {
+                        pagination.nodes.page++;
+                        pagination.edges.page++;
+                    }
+                } else {
+                    throw new Error('加载分页数据失败: ' + result.error);
+                }
+            } catch (error) {
+                console.error('加载更多数据失败:', error);
+                alert('加载失败: ' + error.message);
+            } finally {
+                isLoading = false;
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        // 更新图形显示（追加数据）
         function updateGraph(data) {
-            graphData = data;
+            // originalData 用于过滤器, 这里只追加, 不完全覆盖
+            if (!originalData) {
+                originalData = { nodes: [], edges: [] };
+            }
+            originalData.nodes.push(...data.nodes);
+            originalData.edges.push(...data.edges);
+
 
             // 处理节点数据
-            const nodes = data.nodes.map(node => ({
+            const newNodes = data.nodes.map(node => ({
                 id: node.id,
                 label: node.label,
                 title: node.title,
@@ -691,25 +756,31 @@
             }));
 
             // 处理边数据
-            const edges = data.edges.map(edge => ({
+            const newEdges = data.edges.map(edge => ({
                 id: edge.id,
                 from: edge.from,
                 to: edge.to,
                 label: edge.label,
                 title: edge.title,
-                width: edge.importance * 3 + 1
+                width: (edge.importance || 0.5) * 2 + 1
             }));
-
-            // 更新网络
-            network.setData({
-                nodes: new vis.DataSet(nodes),
-                edges: new vis.DataSet(edges)
-            });
-
-            // 注意：setData 会自动触发物理引擎重新布局
-            // stabilizationIterationsDone 事件监听器会自动停止物理引擎
+            
+            // 追加数据到 DataSet
+            if (newNodes.length > 0) {
+                graphData.nodes.add(newNodes);
+            }
+            if (newEdges.length > 0) {
+                graphData.edges.add(newEdges);
+            }
+            
+            // 第一次加载时设置数据
+            if (pagination.nodes.page === 2) { // 意味着第一页刚加载完
+                 network.setData({
+                    nodes: graphData.nodes,
+                    edges: graphData.edges
+                });
+            }
         }
-
         // 更新统计信息
         function updateStats(stats) {
             document.getElementById('statNodes').textContent = stats.total_nodes;
@@ -1163,13 +1234,42 @@
                 closeFileSelector();
             }
         }
+// 页面加载完成后初始化
+window.addEventListener('load', function() {
+    initNetwork();
+    loadGraph(); // 加载初始数据
+    loadFileList();
 
-        // 页面加载完成后初始化
-        window.addEventListener('load', function() {
-            initNetwork();
-            loadGraph();
-            loadFileList();
-        });
+    // 添加滚动加载监听器
+    const graphContainer = document.getElementById('memory-graph');
+    graphContainer.addEventListener('mousewheel', async (event) => {
+        if(network) {
+            const canvasHeight = network.canvas.body.height;
+            const viewPosition = network.getViewPosition();
+            const scale = network.getScale();
+            const viewHeight = canvasHeight / scale;
+
+            // 简单的滚动到底部检测（可能需要根据实际情况微调）
+            if (event.deltaY > 0 && !isLoading) {
+                const isAtBottom = viewPosition.y > (canvasHeight/2 - viewHeight/2) * 0.8;
+                if (isAtBottom) {
+                    console.log("滚动到底部，加载更多数据...");
+                    await loadMoreData();
+                }
+            }
+        }
+    });
+     // 添加一个按钮用于手动加载
+    const loadMoreBtn = document.createElement('button');
+    loadMoreBtn.textContent = '加载更多';
+    loadMoreBtn.className = 'btn';
+    loadMoreBtn.style.position = 'absolute';
+    loadMoreBtn.style.bottom = '20px';
+    loadMoreBtn.style.right = '20px';
+    loadMoreBtn.style.zIndex = '10';
+    loadMoreBtn.onclick = loadMoreData;
+    document.querySelector('.graph-container').appendChild(loadMoreBtn);
+});
     </script>
 </body>
 </html>
