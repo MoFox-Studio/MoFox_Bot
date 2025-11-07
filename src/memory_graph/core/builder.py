@@ -355,12 +355,12 @@ class MemoryBuilder:
         for node_id in self.graph_store.graph.nodes():
             node_data = self.graph_store.graph.nodes[node_id]
             if node_data.get("content") == content and node_data.get("node_type") == node_type.value:
-                # 重建 MemoryNode 对象
+                # 重建 MemoryNode 对象（embedding 数据从向量数据库单独获取）
                 return MemoryNode(
                     id=node_id,
                     content=node_data["content"],
                     node_type=NodeType(node_data["node_type"]),
-                    embedding=node_data.get("embedding"),
+                    embedding=None,  # 图存储不包含 embedding，需要从向量数据库获取
                     metadata=node_data.get("metadata", {}),
                 )
 
@@ -405,7 +405,7 @@ class MemoryBuilder:
                         id=node_id,
                         content=node_data["content"],
                         node_type=NodeType(node_data["node_type"]),
-                        embedding=node_data.get("embedding"),
+                        embedding=None,  # 图存储不包含 embedding，需要从向量数据库获取
                         metadata=node_data.get("metadata", {}),
                     )
                     # 添加当前记忆ID到元数据
@@ -455,7 +455,7 @@ class MemoryBuilder:
                         id=node_id,
                         content=node_data["content"],
                         node_type=NodeType(node_data["node_type"]),
-                        embedding=node_data.get("embedding"),
+                        embedding=None,  # 图存储不包含 embedding，需要从向量数据库获取
                         metadata=node_data.get("metadata", {}),
                     )
                     return existing_node
