@@ -122,7 +122,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                 + relationship_score * self.score_weights["relationship"]
                 + mentioned_score * self.score_weights["mentioned"]
             )
-            
+
             # 限制总分上限为1.0，确保分数在合理范围内
             total_score = min(raw_total_score, 1.0)
 
@@ -131,7 +131,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                 f"{relationship_score:.3f}*{self.score_weights['relationship']} + "
                 f"{mentioned_score:.3f}*{self.score_weights['mentioned']} = {raw_total_score:.3f}"
             )
-            
+
             if raw_total_score > 1.0:
                 logger.debug(f"[Affinity兴趣计算] 原始分数 {raw_total_score:.3f} 超过1.0，已限制为 {total_score:.3f}")
 
@@ -217,7 +217,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                 return 0.0
 
         except asyncio.TimeoutError:
-            logger.warning(f"⏱️ 兴趣匹配计算超时(>1.5秒)，返回默认分值0.5以保留其他分数")
+            logger.warning("⏱️ 兴趣匹配计算超时(>1.5秒)，返回默认分值0.5以保留其他分数")
             return 0.5  # 超时时返回默认分值，避免丢失提及分和关系分
         except Exception as e:
             logger.warning(f"智能兴趣匹配失败: {e}")
@@ -251,19 +251,19 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
     def _calculate_mentioned_score(self, message: "DatabaseMessages", bot_nickname: str) -> float:
         """计算提及分 - 区分强提及和弱提及
-        
+
         强提及（被@、被回复、私聊）: 使用 strong_mention_interest_score
         弱提及（文本匹配名字/别名）: 使用 weak_mention_interest_score
         """
         from src.chat.utils.utils import is_mentioned_bot_in_message
-        
+
         # 使用统一的提及检测函数
         is_mentioned, mention_type = is_mentioned_bot_in_message(message)
-        
+
         if not is_mentioned:
             logger.debug("[提及分计算] 未提及机器人，返回0.0")
             return 0.0
-        
+
         # mention_type: 0=未提及, 1=弱提及, 2=强提及
         if mention_type >= 2:
             # 强提及：被@、被回复、私聊
@@ -281,22 +281,22 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
     def _apply_no_reply_threshold_adjustment(self) -> tuple[float, float]:
         """应用阈值调整（包括连续不回复和回复后降低机制）
-        
+
         Returns:
             tuple[float, float]: (调整后的回复阈值, 调整后的动作阈值)
         """
         # 基础阈值
         base_reply_threshold = self.reply_threshold
         base_action_threshold = global_config.affinity_flow.non_reply_action_interest_threshold
-        
+
         total_reduction = 0.0
-        
+
         # 1. 连续不回复的阈值降低
         if self.no_reply_count > 0 and self.no_reply_count < self.max_no_reply_count:
             no_reply_reduction = self.no_reply_count * self.probability_boost_per_no_reply
             total_reduction += no_reply_reduction
             logger.debug(f"[阈值调整] 连续不回复降低: {no_reply_reduction:.3f} (计数: {self.no_reply_count})")
-        
+
         # 2. 回复后的阈值降低（使bot更容易连续对话）
         if self.enable_post_reply_boost and self.post_reply_boost_remaining > 0:
             # 计算衰减后的降低值
@@ -309,16 +309,16 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                 f"[阈值调整] 回复后降低: {post_reply_reduction:.3f} "
                 f"(剩余次数: {self.post_reply_boost_remaining}, 衰减: {decay_factor:.2f})"
             )
-        
+
         # 应用总降低量
         adjusted_reply_threshold = max(0.0, base_reply_threshold - total_reduction)
         adjusted_action_threshold = max(0.0, base_action_threshold - total_reduction)
-        
+
         return adjusted_reply_threshold, adjusted_action_threshold
-    
+
     def _apply_no_reply_boost(self, base_score: float) -> float:
         """【已弃用】应用连续不回复的概率提升
-        
+
         注意：此方法已被 _apply_no_reply_threshold_adjustment 替代
         保留用于向后兼容
         """
@@ -388,7 +388,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             self.no_reply_count = 0
         else:
             self.no_reply_count = min(self.no_reply_count + 1, self.max_no_reply_count)
-    
+
     def on_reply_sent(self):
         """当机器人发送回复后调用，激活回复后阈值降低机制"""
         if self.enable_post_reply_boost:
@@ -399,16 +399,16 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             )
             # 同时重置不回复计数
             self.no_reply_count = 0
-    
+
     def on_message_processed(self, replied: bool):
         """消息处理完成后调用，更新各种计数器
-        
+
         Args:
             replied: 是否回复了此消息
         """
         # 更新不回复计数
         self.update_no_reply_count(replied)
-        
+
         # 如果已回复，激活回复后降低机制
         if replied:
             self.on_reply_sent()

@@ -658,7 +658,7 @@
             try {
                 document.getElementById('loading').style.display = 'block';
                 
-                const response = await fetch('/api/graph/full');
+                const response = await fetch('/visualizer/api/graph/full');
                 const result = await response.json();
 
                 if (result.success) {
@@ -748,7 +748,7 @@
             }
 
             try {
-                const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=50`);
+                const response = await fetch(`/visualizer/api/search?q=${encodeURIComponent(query)}&limit=50`);
                 const result = await response.json();
 
                 if (result.success) {
@@ -1041,7 +1041,7 @@
         // 文件选择功能
         async function loadFileList() {
             try {
-                const response = await fetch('/api/files');
+                const response = await fetch('/visualizer/api/files');
                 const result = await response.json();
 
                 if (result.success) {
@@ -1130,7 +1130,7 @@
                 document.getElementById('loading').style.display = 'block';
                 closeFileSelector();
 
-                const response = await fetch('/api/select_file', {
+                const response = await fetch('/visualizer/api/select_file', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

@@ -113,7 +113,7 @@ class WebSurfingTool(BaseTool):
                 custom_args["num_results"] = custom_args.get("num_results", 5)
 
                 # 如果启用了answer模式且是Exa引擎，使用answer_search方法
-                if answer_mode and engine_name == "exa" and hasattr(engine, 'answer_search'):
+                if answer_mode and engine_name == "exa" and hasattr(engine, "answer_search"):
                     search_tasks.append(engine.answer_search(custom_args))
                 else:
                     search_tasks.append(engine.search(custom_args))
@@ -162,7 +162,7 @@ class WebSurfingTool(BaseTool):
                 custom_args["num_results"] = custom_args.get("num_results", 5)
 
                 # 如果启用了answer模式且是Exa引擎，使用answer_search方法
-                if answer_mode and engine_name == "exa" and hasattr(engine, 'answer_search'):
+                if answer_mode and engine_name == "exa" and hasattr(engine, "answer_search"):
                     logger.info("使用Exa答案模式进行搜索（fallback策略）")
                     results = await engine.answer_search(custom_args)
                 else:
@@ -195,7 +195,7 @@ class WebSurfingTool(BaseTool):
                 custom_args["num_results"] = custom_args.get("num_results", 5)
 
                 # 如果启用了answer模式且是Exa引擎，使用answer_search方法
-                if answer_mode and engine_name == "exa" and hasattr(engine, 'answer_search'):
+                if answer_mode and engine_name == "exa" and hasattr(engine, "answer_search"):
                     logger.info("使用Exa答案模式进行搜索")
                     results = await engine.answer_search(custom_args)
                 else:

@@ -73,7 +73,7 @@ class SingleStreamContextManager:
                 cache_enabled = global_config.chat.enable_message_cache
                 use_cache_system = message_manager.is_running and cache_enabled
                 if not cache_enabled:
-                    logger.debug(f"消息缓存系统已在配置中禁用")
+                    logger.debug("消息缓存系统已在配置中禁用")
             except Exception as e:
                 logger.debug(f"MessageManager不可用，使用直接添加: {e}")
                 use_cache_system = False
@@ -129,13 +129,13 @@ class SingleStreamContextManager:
                 await self._calculate_message_interest(message)
                 self.total_messages += 1
                 self.last_access_time = time.time()
-                
+
                 logger.debug(f"添加消息{message.processed_plain_text}到单流上下文: {self.stream_id}")
                 return True
-            
+
             # 不应该到达这里，但为了类型检查添加返回值
             return True
-            
+
         except Exception as e:
             logger.error(f"添加消息到单流上下文失败 {self.stream_id}: {e}", exc_info=True)
             return False

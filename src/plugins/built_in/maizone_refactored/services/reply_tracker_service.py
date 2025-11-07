@@ -3,10 +3,11 @@
 负责记录和管理已回复过的评论ID，避免重复回复
 """
 
-import orjson
 import time
 from pathlib import Path
 from typing import Any
+
+import orjson
 
 from src.common.logger import get_logger
 
@@ -117,8 +118,8 @@ class ReplyTrackerService:
             temp_file = self.reply_record_file.with_suffix(".tmp")
 
             # 先写入临时文件
-            with open(temp_file, "w", encoding="utf-8") as f:
-                orjson.dumps(self.replied_comments, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS).decode('utf-8')
+            with open(temp_file, "w", encoding="utf-8"):
+                orjson.dumps(self.replied_comments, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS).decode("utf-8")
 
             # 如果写入成功，重命名为正式文件
             if temp_file.stat().st_size > 0:  # 确保写入成功

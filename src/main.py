@@ -423,15 +423,16 @@ MoFox_Bot(第三方修改版)
 
         # 注册API路由
         try:
+            from src.api.memory_visualizer_router import router as visualizer_router
             from src.api.message_router import router as message_router
             from src.api.statistic_router import router as llm_statistic_router
 
             self.server.register_router(message_router, prefix="/api")
             self.server.register_router(llm_statistic_router, prefix="/api")
+            self.server.register_router(visualizer_router, prefix="/visualizer")
             logger.info("API路由注册成功")
         except Exception as e:
             logger.error(f"注册API路由失败: {e}")
-
         # 初始化统一调度器
         try:
             from src.schedule.unified_scheduler import initialize_scheduler

@@ -3,8 +3,9 @@ Serper search engine implementation
 Google Search via Serper.dev API
 """
 
-import aiohttp
 from typing import Any
+
+import aiohttp
 
 from src.common.logger import get_logger
 from src.plugin_system.apis import config_api

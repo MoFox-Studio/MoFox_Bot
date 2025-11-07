@@ -1,5 +1,4 @@
 import os
-import random
 import time
 from datetime import datetime
 from typing import Any
@@ -135,20 +134,20 @@ class ExpressionLearner:
     async def cleanup_expired_expressions(self, expiration_days: int | None = None) -> int:
         """
         清理过期的表达方式
-        
+
         Args:
             expiration_days: 过期天数，超过此天数未激活的表达方式将被删除（不指定则从配置读取）
-        
+
         Returns:
             int: 删除的表达方式数量
         """
         # 从配置读取过期天数
         if expiration_days is None:
             expiration_days = global_config.expression.expiration_days
-        
+
         current_time = time.time()
         expiration_threshold = current_time - (expiration_days * 24 * 3600)
-        
+
         try:
             deleted_count = 0
             async with get_db_session() as session:
@@ -160,15 +159,15 @@ class ExpressionLearner:
                     )
                 )
                 expired_expressions = list(query.scalars())
-                
+
                 if expired_expressions:
                     for expr in expired_expressions:
                         await session.delete(expr)
                         deleted_count += 1
-                    
+
                     await session.commit()
                     logger.info(f"清理了 {deleted_count} 个过期表达方式（超过 {expiration_days} 天未使用）")
-                    
+
                     # 清除缓存
                     from src.common.database.optimization.cache_manager import get_cache
                     from src.common.database.utils.decorators import generate_cache_key
@@ -176,7 +175,7 @@ class ExpressionLearner:
                     await cache.delete(generate_cache_key("chat_expressions", self.chat_id))
                 else:
                     logger.debug(f"没有发现过期的表达方式（阈值：{expiration_days} 天）")
-            
+
             return deleted_count
         except Exception as e:
             logger.error(f"清理过期表达方式失败: {e}")
@@ -460,7 +459,7 @@ class ExpressionLearner:
                         )
                     )
                     same_situation_expr = query_same_situation.scalar()
-                    
+
                     # 情况2：相同 chat_id + type + style（相同表达，不同情景）
                     query_same_style = await session.execute(
                         select(Expression).where(
@@ -470,7 +469,7 @@ class ExpressionLearner:
                         )
                     )
                     same_style_expr = query_same_style.scalar()
-                    
+
                     # 情况3：完全相同（相同情景+相同表达）
                     query_exact_match = await session.execute(
                         select(Expression).where(
@@ -481,7 +480,7 @@ class ExpressionLearner:
                         )
                     )
                     exact_match_expr = query_exact_match.scalar()
-                    
+
                     # 优先处理完全匹配的情况
                     if exact_match_expr:
                         # 完全相同：增加count，更新时间

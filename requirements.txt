@@ -71,6 +71,7 @@ lunar_python
 fuzzywuzzy
 python-multipart
 aiofiles
+jinja2
 inkfox
 soundfile
 pedalboard

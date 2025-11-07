@@ -4,8 +4,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import numpy as np
 
 from src.common.logger import get_logger
@@ -72,7 +70,7 @@ class EmbeddingGenerator:
             logger.warning(f"⚠️  Embedding API 初始化失败: {e}")
             self._api_available = False
 
-  
+
     async def generate(self, text: str) -> np.ndarray | None:
         """
         生成单个文本的嵌入向量
@@ -130,7 +128,7 @@ class EmbeddingGenerator:
             logger.debug(f"API 嵌入生成失败: {e}")
             return None
 
-    
+
     def _get_dimension(self) -> int:
         """获取嵌入维度"""
         # 优先使用 API 维度

@@ -680,9 +680,9 @@ class EmojiManager:
         try:
             # 🔧 使用 QueryBuilder 以启用数据库缓存
             from src.common.database.api.query import QueryBuilder
-            
+
             logger.debug("[数据库] 开始加载所有表情包记录 ...")
-            
+
             emoji_instances = await QueryBuilder(Emoji).all()
             emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
 
@@ -802,7 +802,7 @@ class EmojiManager:
             # 如果内存中没有，从数据库查找（使用 QueryBuilder 启用数据库缓存）
             try:
                 from src.common.database.api.query import QueryBuilder
-                
+
                 emoji_record = await QueryBuilder(Emoji).filter(emoji_hash=emoji_hash).first()
                 if emoji_record and emoji_record.description:
                     logger.info(f"[缓存命中] 从数据库获取表情包描述: {emoji_record.description[:50]}...")
@@ -966,7 +966,7 @@ class EmojiManager:
             existing_description = None
             try:
                 from src.common.database.api.query import QueryBuilder
-                
+
                 existing_image = await QueryBuilder(Images).filter(emoji_hash=image_hash, type="emoji").first()
                 if existing_image and existing_image.description:
                     existing_description = existing_image.description

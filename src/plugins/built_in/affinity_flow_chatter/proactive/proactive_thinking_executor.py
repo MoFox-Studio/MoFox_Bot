@@ -3,7 +3,6 @@
 当定时任务触发时，负责搜集信息、调用LLM决策、并根据决策生成回复
 """
 
-import orjson
 from datetime import datetime
 from typing import Any, Literal
 

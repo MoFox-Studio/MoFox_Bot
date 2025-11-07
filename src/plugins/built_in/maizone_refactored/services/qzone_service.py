@@ -136,10 +136,10 @@ class QZoneService:
         logger.info(f"[DEBUG] 准备获取API客户端，qq_account={qq_account}")
         api_client = await self._get_api_client(qq_account, stream_id)
         if not api_client:
-            logger.error(f"[DEBUG] API客户端获取失败，返回错误")
+            logger.error("[DEBUG] API客户端获取失败，返回错误")
             return {"success": False, "message": "获取QZone API客户端失败"}
 
-        logger.info(f"[DEBUG] API客户端获取成功，准备读取说说")
+        logger.info("[DEBUG] API客户端获取成功，准备读取说说")
         num_to_read = self.get_config("read.read_number", 5)
 
         # 尝试执行，如果Cookie失效则自动重试一次
@@ -186,7 +186,7 @@ class QZoneService:
 
                 # 检查是否是Cookie失效（-3000错误）
                 if "错误码: -3000" in error_msg and retry_count == 0:
-                    logger.warning(f"检测到Cookie失效（-3000错误），准备删除缓存并重试...")
+                    logger.warning("检测到Cookie失效（-3000错误），准备删除缓存并重试...")
 
                     # 删除Cookie缓存文件
                     cookie_file = self.cookie_service._get_cookie_file_path(qq_account)
@@ -623,7 +623,7 @@ class QZoneService:
             logger.error(f"获取API客户端失败：Cookie中缺少关键的 'p_skey'。Cookie内容: {cookies}")
             return None
 
-        logger.info(f"[DEBUG] p_skey获取成功")
+        logger.info("[DEBUG] p_skey获取成功")
 
         gtk = self._generate_gtk(p_skey)
         uin = cookies.get("uin", "").lstrip("o")
@@ -1230,7 +1230,7 @@ class QZoneService:
                 logger.error(f"监控好友动态失败: {e}", exc_info=True)
                 return []
 
-        logger.info(f"[DEBUG] API客户端构造完成，返回包含6个方法的字典")
+        logger.info("[DEBUG] API客户端构造完成，返回包含6个方法的字典")
         return {
             "publish": _publish,
             "list_feeds": _list_feeds,

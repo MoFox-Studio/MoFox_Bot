@@ -2,7 +2,6 @@ import os
 import shutil
 import sys
 from datetime import datetime
-from typing import Optional
 
 import tomlkit
 from pydantic import Field
@@ -381,7 +380,7 @@ class Config(ValidatedConfigBase):
     notice: NoticeConfig = Field(..., description="Notice消息配置")
     emoji: EmojiConfig = Field(..., description="表情配置")
     expression: ExpressionConfig = Field(..., description="表达配置")
-    memory: Optional[MemoryConfig] = Field(default=None, description="记忆配置")
+    memory: MemoryConfig | None = Field(default=None, description="记忆配置")
     mood: MoodConfig = Field(..., description="情绪配置")
     reaction: ReactionConfig = Field(default_factory=ReactionConfig, description="反应规则配置")
     chinese_typo: ChineseTypoConfig = Field(..., description="中文错别字配置")

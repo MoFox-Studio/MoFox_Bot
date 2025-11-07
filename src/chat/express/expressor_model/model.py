@@ -72,21 +72,21 @@ class ExpressorModel:
             是否删除成功
         """
         removed = False
-        
+
         if cid in self._candidates:
             del self._candidates[cid]
             removed = True
-        
+
         if cid in self._situations:
             del self._situations[cid]
-        
+
         # 从nb模型中删除
         if cid in self.nb.cls_counts:
             del self.nb.cls_counts[cid]
-        
+
         if cid in self.nb.token_counts:
             del self.nb.token_counts[cid]
-        
+
         return removed
 
     def predict(self, text: str, k: int | None = None) -> tuple[str | None, dict[str, float]]:

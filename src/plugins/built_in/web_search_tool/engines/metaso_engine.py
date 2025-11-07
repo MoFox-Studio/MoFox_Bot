@@ -1,10 +1,10 @@
 """
 Metaso Search Engine (Chat Completions Mode)
 """
-import orjson
 from typing import Any
 
 import httpx
+import orjson
 
 from src.common.logger import get_logger
 from src.plugin_system.apis import config_api
