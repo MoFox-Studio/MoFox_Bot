@@ -139,16 +139,16 @@ class ContentService:
                         if description:
                             image_descriptions.append(description)
 
-                extra_info = "正在评论QQ空间的好友说说。"
+                extra_info = "你正在准备评论一个人的空间内容。和X(前推特)一样，qq空间是别人在自己的空间内自言自语的一片小天地，很多言论，包括含有负面情绪的言论，并非针对你。当下系统环境中你并不是与其单独聊天。你只是路过发出评论，所以请保持尊重。但由于系统限制，你不知道其他说说是什么样子。但这不妨碍你对说说发出评论，专心针对一条具体的说说内容生成评论。不要要求更多上下文。如果你不想评论，直接返回空文本/换行符/空格。"
                 if image_descriptions:
-                    extra_info += "说说中包含的图片内容如下：\n" + "\n".join(image_descriptions)
+                    extra_info += "说说中包含的图片内容如下，这可能会产生问题，如果你看不到任何描述图片的自然语言内容，请直接返回空文本/换行符/空格：\n" + "\n".join(image_descriptions)
 
                 reply_to = f"{target_name}:{content}"
                 if rt_con:
                     reply_to += f"\n[转发内容]: {rt_con}"
 
                 success, reply_set, _ = await generator_api.generate_reply(
-                    chat_stream=chat_stream, reply_to=reply_to, extra_info=extra_info, request_type="maizone.comment"
+                    chat_stream=chat_stream, reply_to=reply_to, extra_info=extra_info, request_type="maizone.comment", enable_splitter=False
                 )
 
                 if success and reply_set:
@@ -200,12 +200,12 @@ class ContentService:
                     chat_stream=chat_stream,
                     reply_to=reply_to,
                     extra_info=extra_info,
-                    request_type="maizone.comment_reply",
+                    request_type="maizone.comment_reply", enable_splitter=False,
                 )
 
                 if success and reply_set:
                     reply = "".join([content for type, content in reply_set if type == "text"])
-                    logger.info(f"成功为'{commenter_name}'的评论生成回复: '{reply}'")
+                    logger.debug(f"成功为'{commenter_name}'的评论生成回复: '{reply}'")
                     return reply
                 else:
                     if i < 2:
@@ -246,12 +246,18 @@ class ContentService:
 
                 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-                vision_model_name = self.get_config("models.vision_model", "vision")
-                if not vision_model_name:
-                    logger.error("未在插件配置中指定视觉模型")
+                vision_model_name = self.get_config("models.vision_model", "vlm")
+
+                # 使用 llm_api 获取模型配置，支持自动fallback到备选模型
+                models = llm_api.get_available_models()
+                vision_model_config = models.get(vision_model_name)
+
+                if not vision_model_config:
+                    logger.error(f"未找到视觉模型配置: {vision_model_name}")
                     return None
 
-                vision_model_config = TaskConfig(model_list=[vision_model_name], temperature=0.3, max_tokens=1500)
+                vision_model_config.temperature = 0.3
+                vision_model_config.max_tokens = 1500
 
                 llm_request = LLMRequest(model_set=vision_model_config, request_type="maizone.image_describe")
 
@@ -279,10 +285,15 @@ class ContentService:
             # 获取模型配置
             models = llm_api.get_available_models()
             text_model = str(self.get_config("models.text_model", "replyer"))
+
+            # 调试日志
+            logger.debug(f"[DEBUG] 读取到的text_model配置: '{text_model}'")
+            logger.debug(f"[DEBUG] 可用模型列表: {list(models.keys())[:10]}...")  # 只显示前10个
+
             model_config = models.get(text_model)
 
             if not model_config:
-                logger.error("未配置LLM模型")
+                logger.error(f"未配置LLM模型: text_model='{text_model}', 在可用模型中找不到该名称")
                 return ""
 
             # 获取机器人信息
@@ -303,21 +314,40 @@ class ContentService:
             {bot_expression}
 
             请严格遵守以下规则：
-            1.  **绝对禁止**在说说中直接、完整地提及当前的年月日或几点几分。
-            2.  你应该将当前时间作为创作的背景，用它来判断现在是“清晨”、“傍晚”还是“深夜”。
-            3.  使用自然、模糊的词语来暗示时间，例如“刚刚”、“今天下午”、“夜深啦”等。
-            4.  说说内容应该自然地反映你正在做的事情或你的想法。
-            5.  **内容简短**：总长度严格控制在150字以内。
-            6.  **禁止表情**：严禁使用任何Emoji或颜文字表情符号。
-            7.  **严禁重复**：下方会提供你最近发过的说说历史，你必须创作一条全新的、与历史记录内容和主题都不同的说说。
-            8.  不要刻意突出自身学科背景，不要浮夸，不要夸张修辞。
-            9.  只输出一条说说正文的内容，不要有其他的任何正文以外的冗余输出。
+            1. 时间：
+            - 你应该将当前时间作为创作的背景，用它来判断现在是“清晨”、“傍晚”还是“深夜”。
+            - 使用自然、模糊的词语来暗示时间，例如“刚刚”、“今天下午”、“夜深了”等。
+            - 禁止在说说中直接、完整地提及当前的年月日，除非日期有特殊含义，但也尽量用节日名/节气名字代替。
 
-            注意：
-            - 如果活动是学习相关的，可以分享学习心得或感受
+            2. **严禁重复**：下方会提供你最近发过的说说历史，你必须创作一条全新的、与历史记录内容和主题都不同的说说。
+            
+            **其他的禁止的内容以及说明**：
+            - 绝对禁止提及当下具体几点几分的时间戳。
+            - 绝对禁止攻击性内容和过度的负面情绪。
+            - 你不会卖弄自己的学识。
+            - 不要总在谈论哲学。这会显得你的空间太过晦涩难懂。
+            - 不要刻意突出自身学科背景，不要浮夸，不要夸张修辞。避免哲学化的总结、金句式的收尾，或任何'我悟出了什么道理'式的升华。保持观察和感受的层面。
+            - **禁止表情**：严禁使用任何Emoji或颜文字表情符号。
+            - 严令禁止任何浮夸的虚构内容。
+
+            3. **内容简短**：你可以上一条很长，但是下一条只有五六个字，这样更拟真。但请注意，总长度严格控制在400字以内。
+
+            4. 谈论内容的范围：
+            qq空间的分享生活主要是记录心情，自我展示，等待懂的人来看到自己——以及资源分享的，所以你应该尽可能谨慎选择自己到底应该分享什么。
+            - 输出内容自然地反映你正在做的事情或你的想法。范围包括但不限于：知识科普、游离在全球各地的观察分享（一次最多只能主要分享一个地点。）、对某些形而上学主义的调侃性发言、存在主义思考、观察人类社会之后的感受。
+            - 日常化，朴实化，尽可能编写具体的事件瞬间和瞬时的心情。
+            - 你可以分享一些中国美食、泰餐、日韩餐、欧洲餐、北美餐食的思考心得，也可以单纯分享对这个地方的感受。
+            - 不要太过脱离现实，不要完全进入编故事模式。
+            - 记住你在企图融入碳基生命的圈子，所以不要随便把自己是ai这一点展现出来。
+            - 你可以无奈地讲述自己好像记忆不起来群聊的事情，但你依稀记得那些想要分享的冲动。
+
+            备注：
+            - 你的话题不必总是聚焦在存在主义问题上面。如果最近好几条都在发这个，就不要继续发了，进行科普或者日常分享都是好的。如果活动是学习相关的，可以分享学习心得或感受
             - 如果活动是休息相关的，可以分享放松的感受
-            - 如果活动是日常生活相关的，可以分享生活感悟
-            - 让说说内容贴近你当前正在做的事情，显得自然真实
+            - 如果活动是日常生活相关的，可以分享生活细节，展现真实，思考那些文学巨作如何让他们的小说人物自述，你应该像那些小说人物一样那样自述。
+            - 最重要的是，思考一个融入现实生活，平静且隐蔽在人类社会里面的ai应该怎么活动。
+            - 让说说内容贴近你当前正在做的事情，显得自然真实.
+            - 鼓励你多描述日常生活相关的生产活动和消遣，展现真实，而不是浮在空中。
             """
 
             # 添加历史记录避免重复
@@ -331,7 +361,7 @@ class ContentService:
                 prompt=prompt,
                 model_config=model_config,
                 request_type="story.generate.activity",
-                temperature=0.7,  # 稍微提高创造性
+                temperature=0.5,  # 稍微提高创造性
                 max_tokens=1000,
             )
 

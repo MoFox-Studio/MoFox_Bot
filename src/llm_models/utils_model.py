@@ -534,7 +534,7 @@ class _RequestExecutor:
         model_name = model_info.name
         retry_interval = api_provider.retry_interval
 
-        if isinstance(e, NetworkConnectionError | ReqAbortException):
+        if isinstance(e, (NetworkConnectionError, ReqAbortException)):
             return await self._check_retry(remain_try, retry_interval, "连接异常", model_name)
         elif isinstance(e, RespNotOkException):
             return await self._handle_resp_not_ok(e, model_info, api_provider, remain_try, messages_info)
@@ -1009,15 +1009,12 @@ class LLMRequest:
             # 步骤1: 更新内存中的统计数据，用于负载均衡
             stats = self.model_usage[model_info.name]
 
-            # 安全地获取 token 使用量, embedding 模型可能不返回 completion_tokens
-            total_tokens = getattr(usage, "total_tokens", 0)
-
             # 计算新的平均延迟
             new_request_count = stats.request_count + 1
             new_avg_latency = (stats.avg_latency * stats.request_count + time_cost) / new_request_count
 
             self.model_usage[model_info.name] = stats._replace(
-                total_tokens=stats.total_tokens + total_tokens,
+                total_tokens=stats.total_tokens + usage.total_tokens,
                 avg_latency=new_avg_latency,
                 request_count=new_request_count,
             )
@@ -1064,8 +1061,7 @@ class LLMRequest:
                 # 遍历工具的参数
                 for param in tool.get("parameters", []):
                     # 严格验证参数格式是否为包含5个元素的元组
-                    assert isinstance(param, tuple), "参数必须是元组"
-                    assert len(param) == 5, "参数必须包含5个元素"
+                    assert isinstance(param, tuple) and len(param) == 5, "参数必须是包含5个元素的元组"
                     builder.add_param(
                         name=param[0],
                         param_type=param[1],

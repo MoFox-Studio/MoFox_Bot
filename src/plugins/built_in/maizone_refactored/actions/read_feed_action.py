@@ -2,8 +2,6 @@
 阅读说说动作组件
 """
 
-from typing import ClassVar
-
 from src.common.logger import get_logger
 from src.plugin_system import ActionActivationType, BaseAction, ChatMode
 from src.plugin_system.apis import generator_api
@@ -23,9 +21,9 @@ class ReadFeedAction(BaseAction):
     action_description: str = "读取好友的最新动态并进行评论点赞"
     activation_type: ActionActivationType = ActionActivationType.KEYWORD
     mode_enable: ChatMode = ChatMode.ALL
-    activation_keywords: ClassVar[list] = ["看说说", "看空间", "看动态", "刷空间"]
+    activation_keywords: list = ["看说说", "看空间", "看动态", "刷空间"]
 
-    action_parameters: ClassVar[dict] = {
+    action_parameters = {
         "target_name": "需要阅读动态的好友的昵称",
         "user_name": "请求你阅读动态的好友的昵称",
     }
@@ -69,20 +67,15 @@ class ReadFeedAction(BaseAction):
             result = await qzone_service.read_and_process_feeds(target_name, stream_id)
 
             if result.get("success"):
-                _, reply_set, _ = await generator_api.generate_reply(
-                    chat_stream=self.chat_stream,
-                    action_data={
-                        "extra_info_block": f"你刚刚看完了'{target_name}'的空间，并进行了互动。{result.get('message', '')}"
-                    },
-                )
-                if reply_set and isinstance(reply_set, list):
-                    for reply_type, reply_content in reply_set:
-                        if reply_type == "text":
-                            await self.send_text(reply_content)
+                # 直接发送明确的成功信息，不使用AI生成
+                success_message = result.get("message", "操作完成")
+                await self.send_text(success_message)
                 return True, "阅读成功"
             else:
-                await self.send_text(f"看'{target_name}'的空间时好像失败了：{result.get('message', '未知错误')}")
-                return False, result.get("message", "未知错误")
+                # 发送明确的失败信息
+                error_message = result.get("message", "未知错误")
+                await self.send_text(f"看'{target_name}'的空间时失败了：{error_message}")
+                return False, error_message
 
         except Exception as e:
             logger.error(f"执行阅读说说动作时发生未知异常: {e}", exc_info=True)
