@@ -417,8 +417,7 @@ class SchedulerDispatcher:
             stream_id: 流ID
         """
         try:
-            # 从追踪中移除（因为是一次性任务）
-            old_schedule_id = self.stream_schedules.pop(stream_id, None)
+            old_schedule_id = self.stream_schedules.get(stream_id)
             
             logger.info(
                 f"⏰ Schedule 触发: 流={stream_id[:8]}..., "
@@ -445,14 +444,8 @@ class SchedulerDispatcher:
             if not success:
                 self.stats["total_failures"] += 1
             
-            # 处理完成后，检查是否需要创建新的 schedule
-            if stream_id in self.stream_schedules:
-                logger.info(
-                    f"⚠️ 处理完成时发现已有新 schedule: 流={stream_id[:8]}..., "
-                    f"可能是打断创建的，跳过创建新 schedule"
-                )
-                return
-                
+            self.stream_schedules.pop(stream_id, None)
+           
             # 检查缓存中是否有待处理的消息
             from src.chat.message_manager.message_manager import message_manager
             

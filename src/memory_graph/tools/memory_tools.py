@@ -506,16 +506,18 @@ class MemoryTools:
                     try:
                         query_embedding = await self.builder.embedding_generator.generate(query)
 
-                        # 使用共享的图扩展工具函数
-                        expanded_results = await expand_memories_with_semantic_filter(
-                            graph_store=self.graph_store,
-                            vector_store=self.vector_store,
-                            initial_memory_ids=list(initial_memory_ids),
-                            query_embedding=query_embedding,
-                            max_depth=expand_depth,
-                            semantic_threshold=self.expand_semantic_threshold,  # 使用配置的阈值
-                            max_expanded=top_k * 2
-                        )
+                        # 只有在嵌入生成成功时才进行语义扩展
+                        if query_embedding is not None:
+                            # 使用共享的图扩展工具函数
+                            expanded_results = await expand_memories_with_semantic_filter(
+                                graph_store=self.graph_store,
+                                vector_store=self.vector_store,
+                                initial_memory_ids=list(initial_memory_ids),
+                                query_embedding=query_embedding,
+                                max_depth=expand_depth,
+                                semantic_threshold=self.expand_semantic_threshold,  # 使用配置的阈值
+                                max_expanded=top_k * 2
+                            )
 
                         # 合并扩展结果
                         expanded_memory_scores.update(dict(expanded_results))
@@ -714,12 +716,14 @@ class MemoryTools:
             相似节点列表 [(node_id, similarity, metadata), ...]
         """
         # 生成查询嵌入
+        query_embedding = None
         if self.builder.embedding_generator:
             query_embedding = await self.builder.embedding_generator.generate(query)
-        else:
-            logger.warning("未配置嵌入生成器，使用随机向量")
-            import numpy as np
-            query_embedding = np.random.rand(384).astype(np.float32)
+
+        # 如果嵌入生成失败，无法进行向量搜索
+        if query_embedding is None:
+            logger.warning("嵌入生成失败，跳过节点搜索")
+            return []
 
         # 向量搜索
         similar_nodes = await self.vector_store.search_similar_nodes(
@@ -766,8 +770,14 @@ class MemoryTools:
 
             for sub_query, weight in multi_queries:
                 embedding = await self.builder.embedding_generator.generate(sub_query)
-                query_embeddings.append(embedding)
-                query_weights.append(weight)
+                if embedding is not None:
+                    query_embeddings.append(embedding)
+                    query_weights.append(weight)
+
+            # 如果所有嵌入都生成失败，回退到单查询模式
+            if not query_embeddings:
+                logger.warning("所有查询嵌入生成失败，回退到单查询模式")
+                return await self._single_query_search(query, top_k)
 
             # 3. 多查询融合搜索
             similar_nodes = await self.vector_store.search_with_multiple_queries(
@@ -806,11 +816,14 @@ class MemoryTools:
             找到的记忆，如果没有则返回 None
         """
         # 使用语义搜索查找最相关的记忆
+        query_embedding = None
         if self.builder.embedding_generator:
             query_embedding = await self.builder.embedding_generator.generate(description)
-        else:
-            import numpy as np
-            query_embedding = np.random.rand(384).astype(np.float32)
+
+        # 如果嵌入生成失败，无法进行语义搜索
+        if query_embedding is None:
+            logger.debug("嵌入生成失败，跳过描述搜索")
+            return None
 
         # 搜索相似节点
         similar_nodes = await self.vector_store.search_similar_nodes(

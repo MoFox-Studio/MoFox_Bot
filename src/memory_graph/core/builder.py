@@ -318,7 +318,7 @@ class MemoryBuilder:
 
         return nodes, edges
 
-    async def _generate_embedding(self, text: str) -> np.ndarray:
+    async def _generate_embedding(self, text: str) -> np.ndarray | None:
         """
         生成文本的嵌入向量
 
@@ -326,17 +326,17 @@ class MemoryBuilder:
             text: 文本内容
 
         Returns:
-            嵌入向量
+            嵌入向量，失败时返回 None
         """
         if self.embedding_generator:
             try:
                 embedding = await self.embedding_generator.generate(text)
                 return embedding
             except Exception as e:
-                logger.warning(f"嵌入生成失败，使用随机向量: {e}")
+                logger.warning(f"嵌入生成失败，跳过: {e}")
 
-        # 回退：生成随机向量（仅用于测试）
-        return np.random.rand(384).astype(np.float32)
+        # 嵌入生成失败，返回 None
+        return None
 
     async def _find_existing_node(
         self, content: str, node_type: NodeType
@@ -367,7 +367,7 @@ class MemoryBuilder:
         return None
 
     async def _find_similar_topic(
-        self, content: str, embedding: np.ndarray
+        self, content: str, embedding: np.ndarray | None
     ) -> MemoryNode | None:
         """
         查找相似的主题节点（基于语义相似度）
@@ -379,6 +379,11 @@ class MemoryBuilder:
         Returns:
             相似节点，如果没有则返回 None
         """
+        # 如果嵌入为空，无法进行相似性搜索
+        if embedding is None:
+            logger.debug("嵌入向量为空，跳过相似节点搜索")
+            return None
+
         try:
             # 搜索相似节点（阈值 0.95）
             similar_nodes = await self.vector_store.search_similar_nodes(
@@ -412,7 +417,7 @@ class MemoryBuilder:
         return None
 
     async def _find_similar_object(
-        self, content: str, embedding: np.ndarray
+        self, content: str, embedding: np.ndarray | None
     ) -> MemoryNode | None:
         """
         查找相似的客体节点（基于语义相似度）
@@ -424,6 +429,11 @@ class MemoryBuilder:
         Returns:
             相似节点，如果没有则返回 None
         """
+        # 如果嵌入为空，无法进行相似性搜索
+        if embedding is None:
+            logger.debug("嵌入向量为空，跳过相似节点搜索")
+            return None
+
         try:
             # 搜索相似节点（阈值 0.95）
             similar_nodes = await self.vector_store.search_similar_nodes(
