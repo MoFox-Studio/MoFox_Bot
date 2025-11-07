@@ -14,6 +14,7 @@ from src.memory_graph.storage.graph_store import GraphStore
 from src.memory_graph.storage.persistence import PersistenceManager
 from src.memory_graph.storage.vector_store import VectorStore
 from src.memory_graph.utils.embeddings import EmbeddingGenerator
+from src.memory_graph.utils.graph_expansion import expand_memories_with_semantic_filter
 
 logger = get_logger(__name__)
 
@@ -505,25 +506,16 @@ class MemoryTools:
                     try:
                         query_embedding = await self.builder.embedding_generator.generate(query)
 
-                        # 直接使用图扩展逻辑（避免循环依赖）
-                        expanded_results = await self._expand_with_semantic_filter(
+                        # 使用共享的图扩展工具函数
+                        expanded_results = await expand_memories_with_semantic_filter(
+                            graph_store=self.graph_store,
+                            vector_store=self.vector_store,
                             initial_memory_ids=list(initial_memory_ids),
                             query_embedding=query_embedding,
                             max_depth=expand_depth,
                             semantic_threshold=self.expand_semantic_threshold,  # 使用配置的阈值
                             max_expanded=top_k * 2
                         )
-
-                        # 旧代码（如果需要使用Manager）：
-                        # from src.memory_graph.manager import MemoryManager
-                        # manager = MemoryManager.get_instance()
-                        # expanded_results = await manager.expand_memories_with_semantic_filter(
-                        #     initial_memory_ids=list(initial_memory_ids),
-                        #     query_embedding=query_embedding,
-                        #     max_depth=expand_depth,
-                        #     semantic_threshold=0.5,
-                        #     max_expanded=top_k * 2
-                        # )
 
                         # 合并扩展结果
                         expanded_memory_scores.update(dict(expanded_results))
@@ -860,154 +852,6 @@ class MemoryTools:
         memory_type = memory.metadata.get("memory_type", "")
 
         return f"{subject} - {memory_type}: {topic}"
-
-    async def _expand_with_semantic_filter(
-        self,
-        initial_memory_ids: list[str],
-        query_embedding,
-        max_depth: int = 2,
-        semantic_threshold: float = 0.5,
-        max_expanded: int = 20
-    ) -> list[tuple[str, float]]:
-        """
-        从初始记忆集合出发，沿图结构扩展，并用语义相似度过滤
-
-        Args:
-            initial_memory_ids: 初始记忆ID集合
-            query_embedding: 查询向量
-            max_depth: 最大扩展深度
-            semantic_threshold: 语义相似度阈值
-            max_expanded: 最多扩展多少个记忆
-
-        Returns:
-            List[(memory_id, relevance_score)]
-        """
-        if not initial_memory_ids or query_embedding is None:
-            return []
-
-        try:
-
-            visited_memories = set(initial_memory_ids)
-            expanded_memories: dict[str, float] = {}
-
-            current_level = initial_memory_ids
-
-            for depth in range(max_depth):
-                next_level = []
-
-                for memory_id in current_level:
-                    memory = self.graph_store.get_memory_by_id(memory_id)
-                    if not memory:
-                        continue
-
-                    for node in memory.nodes:
-                        if not node.has_embedding():
-                            continue
-
-                        try:
-                            neighbors = list(self.graph_store.graph.neighbors(node.id))
-                        except Exception:
-                            continue
-
-                        for neighbor_id in neighbors:
-                            neighbor_node_data = self.graph_store.graph.nodes.get(neighbor_id)
-                            if not neighbor_node_data:
-                                continue
-
-                            neighbor_vector_data = await self.vector_store.get_node_by_id(neighbor_id)
-                            if neighbor_vector_data is None:
-                                continue
-
-                            neighbor_embedding = neighbor_vector_data.get("embedding")
-                            if neighbor_embedding is None:
-                                continue
-
-                            # 计算语义相似度
-                            semantic_sim = self._cosine_similarity(
-                                query_embedding,
-                                neighbor_embedding
-                            )
-
-                            # 获取边权重
-                            try:
-                                edge_data = self.graph_store.graph.get_edge_data(node.id, neighbor_id)
-                                edge_importance = edge_data.get("importance", 0.5) if edge_data else 0.5
-                            except Exception:
-                                edge_importance = 0.5
-
-                            # 综合评分
-                            depth_decay = 1.0 / (depth + 1)
-                            relevance_score = (
-                                semantic_sim * 0.7 +
-                                edge_importance * 0.2 +
-                                depth_decay * 0.1
-                            )
-
-                            if relevance_score < semantic_threshold:
-                                continue
-
-                            # 提取记忆ID
-                            neighbor_memory_ids = neighbor_node_data.get("memory_ids", [])
-                            if isinstance(neighbor_memory_ids, str):
-                                import orjson
-                                try:
-                                    neighbor_memory_ids = orjson.loads(neighbor_memory_ids)
-                                except Exception:
-                                    neighbor_memory_ids = [neighbor_memory_ids]
-
-                            for neighbor_mem_id in neighbor_memory_ids:
-                                if neighbor_mem_id in visited_memories:
-                                    continue
-
-                                if neighbor_mem_id not in expanded_memories:
-                                    expanded_memories[neighbor_mem_id] = relevance_score
-                                    visited_memories.add(neighbor_mem_id)
-                                    next_level.append(neighbor_mem_id)
-                                else:
-                                    expanded_memories[neighbor_mem_id] = max(
-                                        expanded_memories[neighbor_mem_id],
-                                        relevance_score
-                                    )
-
-                if not next_level or len(expanded_memories) >= max_expanded:
-                    break
-
-                current_level = next_level[:max_expanded]
-
-            sorted_results = sorted(
-                expanded_memories.items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:max_expanded]
-
-            return sorted_results
-
-        except Exception as e:
-            logger.error(f"图扩展失败: {e}", exc_info=True)
-            return []
-
-    def _cosine_similarity(self, vec1, vec2) -> float:
-        """计算余弦相似度"""
-        try:
-            import numpy as np
-
-            if not isinstance(vec1, np.ndarray):
-                vec1 = np.array(vec1)
-            if not isinstance(vec2, np.ndarray):
-                vec2 = np.array(vec2)
-
-            vec1_norm = np.linalg.norm(vec1)
-            vec2_norm = np.linalg.norm(vec2)
-
-            if vec1_norm == 0 or vec2_norm == 0:
-                return 0.0
-
-            similarity = np.dot(vec1, vec2) / (vec1_norm * vec2_norm)
-            return float(similarity)
-
-        except Exception as e:
-            logger.warning(f"计算余弦相似度失败: {e}")
-            return 0.0
 
     @staticmethod
     def get_all_tool_schemas() -> list[dict[str, Any]]:
