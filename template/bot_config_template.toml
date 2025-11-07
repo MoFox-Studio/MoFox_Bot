@@ -1,5 +1,5 @@
 [inner]
-version = "7.6.4"
+version = "7.6.5"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -478,9 +478,10 @@ exa_api_keys = ["None"]# EXA API密钥列表，支持轮询机制
 metaso_api_keys = ["None"]# Metaso API密钥列表，支持轮询机制
 searxng_instances = [] # SearXNG 实例 URL 列表
 searxng_api_keys = []# SearXNG 实例 API 密钥列表
+serper_api_keys = []# serper API 密钥列表
 
 # 搜索引擎配置
-enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing", "metaso"
+enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing", "metaso","serper"
 search_strategy = "single" # 搜索策略: "single"(使用第一个可用引擎), "parallel"(并行使用所有启用的引擎), "fallback"(按顺序尝试，失败则尝试下一个)
 
 [cross_context] # 跨群聊/私聊上下文共享配置
