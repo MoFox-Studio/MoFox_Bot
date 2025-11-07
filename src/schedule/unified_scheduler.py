@@ -530,7 +530,7 @@ class UnifiedScheduler:
             if executing_task and not executing_task.done():
                 logger.debug(f"取消正在执行的任务: {task.task_name}")
                 executing_task.cancel()
-                # 不需要等待，让它在后台取消
+                await executing_task
                 self._executing_tasks.pop(schedule_id, None)
             
             await self._remove_task_internal(schedule_id)
