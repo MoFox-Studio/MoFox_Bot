@@ -453,6 +453,10 @@ class MemoryConfig(ValidatedConfigBase):
     activation_propagation_strength: float = Field(default=0.5, description="激活传播强度")
     activation_propagation_depth: int = Field(default=2, description="激活传播深度")
 
+    # 记忆激活配置（强制执行）
+    auto_activate_base_strength: float = Field(default=0.1, description="记忆被检索时自动激活的基础强度")
+    auto_activate_max_count: int = Field(default=5, description="单次搜索最多自动激活的记忆数量")
+
     # 性能配置
     max_memory_nodes_per_memory: int = Field(default=10, description="每个记忆最多包含的节点数")
     max_related_memories: int = Field(default=5, description="相关记忆最大数量")

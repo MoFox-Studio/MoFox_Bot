@@ -437,6 +437,11 @@ class MemoryManager:
             logger.info(
                 f"搜索完成: 找到 {len(filtered_memories)} 条记忆 (策略={strategy})"
             )
+
+            # 强制激活被检索到的记忆（核心功能）
+            if filtered_memories:
+                await self._auto_activate_searched_memories(filtered_memories)
+
             return filtered_memories[:top_k]
 
         except Exception as e:
@@ -536,6 +541,8 @@ class MemoryManager:
                 "access_count": activation_info.get("access_count", 0) + 1,
             })
 
+            # 同步更新 memory.activation 字段，确保数据一致性
+            memory.activation = new_activation
             memory.metadata["activation"] = activation_info
             memory.last_accessed = now
 
@@ -561,6 +568,49 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"激活记忆失败: {e}", exc_info=True)
             return False
+
+    async def _auto_activate_searched_memories(self, memories: list[Memory]) -> None:
+        """
+        自动激活被搜索到的记忆
+
+        Args:
+            memories: 被检索到的记忆列表
+        """
+        try:
+            # 获取配置参数
+            base_strength = getattr(self.config, "auto_activate_base_strength", 0.1)
+            max_activate_count = getattr(self.config, "auto_activate_max_count", 5)
+
+            # 激活强度根据记忆重要性调整
+            activate_tasks = []
+            for i, memory in enumerate(memories[:max_activate_count]):
+                # 重要性越高，激活强度越大
+                strength = base_strength * (0.5 + memory.importance)
+
+                # 创建异步激活任务
+                task = self.activate_memory(memory.id, strength=strength)
+                activate_tasks.append(task)
+
+                if i >= max_activate_count - 1:
+                    break
+
+            # 并发执行激活任务（但不等待所有完成，避免阻塞搜索）
+            if activate_tasks:
+                import asyncio
+                # 使用 asyncio.gather 但设置较短的 timeout
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*activate_tasks, return_exceptions=True),
+                        timeout=2.0  # 2秒超时，避免阻塞主流程
+                    )
+                    logger.debug(f"自动激活 {len(activate_tasks)} 条记忆完成")
+                except asyncio.TimeoutError:
+                    logger.warning(f"自动激活记忆超时，已激活部分记忆")
+                except Exception as e:
+                    logger.warning(f"自动激活记忆失败: {e}")
+
+        except Exception as e:
+            logger.warning(f"自动激活搜索记忆失败: {e}")
 
     def _get_related_memories(self, memory_id: str, max_depth: int = 1) -> list[str]:
         """

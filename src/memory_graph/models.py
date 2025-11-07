@@ -199,6 +199,17 @@ class Memory:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Memory:
         """从字典创建记忆"""
+        metadata = data.get("metadata", {})
+
+        # 优先从 metadata 中获取激活度信息
+        activation_level = 0.0
+        activation_info = metadata.get("activation", {})
+        if activation_info and "level" in activation_info:
+            activation_level = activation_info["level"]
+        else:
+            # 备选：使用直接的 activation 字段
+            activation_level = data.get("activation", 0.0)
+
         return cls(
             id=data["id"],
             subject_id=data["subject_id"],
@@ -206,13 +217,13 @@ class Memory:
             nodes=[MemoryNode.from_dict(n) for n in data["nodes"]],
             edges=[MemoryEdge.from_dict(e) for e in data["edges"]],
             importance=data.get("importance", 0.5),
-            activation=data.get("activation", 0.0),
+            activation=activation_level,  # 使用统一的激活度值
             status=MemoryStatus(data.get("status", "staged")),
             created_at=datetime.fromisoformat(data["created_at"]),
             last_accessed=datetime.fromisoformat(data.get("last_accessed", data["created_at"])),
             access_count=data.get("access_count", 0),
             decay_factor=data.get("decay_factor", 1.0),
-            metadata=data.get("metadata", {}),
+            metadata=metadata,
         )
 
     def update_access(self) -> None:

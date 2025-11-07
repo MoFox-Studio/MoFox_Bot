@@ -41,19 +41,11 @@ class InterestManager:
 
     async def initialize(self):
         """初始化管理器"""
-        if self._worker_task is None:
-            self._worker_task = asyncio.create_task(self._calculation_worker())
-            logger.info("兴趣值管理器已启动")
+        pass
 
     async def shutdown(self):
         """关闭管理器"""
         self._shutdown_event.set()
-        if self._worker_task:
-            self._worker_task.cancel()
-            try:
-                await self._worker_task
-            except asyncio.CancelledError:
-                pass
 
         if self._current_calculator:
             await self._current_calculator.cleanup()

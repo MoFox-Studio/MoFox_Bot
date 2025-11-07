@@ -552,7 +552,7 @@ class MemoryTools:
             for memory_id in sorted_memory_ids:
                 memory = self.graph_store.get_memory_by_id(memory_id)
                 if memory:
-                    # 综合评分：相似度(60%) + 重要性(30%) + 时效性(10%)
+                    # 综合评分：相似度(40%) + 重要性(20%) + 时效性(10%) + 激活度(30%)
                     similarity_score = final_scores[memory_id]
                     importance_score = memory.importance
 
@@ -567,11 +567,20 @@ class MemoryTools:
                     age_days = (now - memory_time).total_seconds() / 86400
                     recency_score = 1.0 / (1.0 + age_days / 30)  # 30天半衰期
 
-                    # 综合分数
+                    # 获取激活度分数（从metadata中读取，兼容memory.activation字段）
+                    activation_info = memory.metadata.get("activation", {})
+                    activation_score = activation_info.get("level", memory.activation)
+
+                    # 如果metadata中没有激活度信息，使用memory.activation作为备选
+                    if activation_score == 0.0 and memory.activation > 0.0:
+                        activation_score = memory.activation
+
+                    # 综合分数 - 加入激活度影响
                     final_score = (
-                        similarity_score * 0.6 +
-                        importance_score * 0.3 +
-                        recency_score * 0.1
+                        similarity_score * 0.4 +      # 向量相似度 40%
+                        importance_score * 0.2 +      # 重要性 20%
+                        recency_score * 0.1 +         # 时效性 10%
+                        activation_score * 0.3        # 激活度 30% ← 新增
                     )
 
                     memories_with_scores.append((memory, final_score))
