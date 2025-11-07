@@ -649,6 +649,7 @@ class MemoryTools:
 **当前查询：** {query}
 **发送者：** {sender if sender else '未知'}
 **参与者：** {', '.join(participants) if participants else '无'}
+**当前时间：** {__import__('datetime').datetime.now().__str__()}
 
 **最近聊天记录（最近5条）：**
 {recent_chat if recent_chat else '无聊天历史'}
@@ -664,6 +665,7 @@ class MemoryTools:
 2. **关键概念查询**（权重0.8）：查询中的核心概念，特别是聊天中提到的实体
 3. **话题扩展查询**（权重0.7）：基于最近聊天话题的相关查询
 4. **动作/情感查询**（权重0.6）：如果涉及情感或动作，生成相关查询
+5. **精准时间查询**（权重0.5）：针对时间相关的查询，生成更具体的时间范围，如2023年5月1日 12:00
 
 **输出JSON格式：**
 ```json
