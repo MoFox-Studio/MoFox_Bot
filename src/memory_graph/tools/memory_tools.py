@@ -4,12 +4,12 @@ LLM 工具接口：定义记忆系统的工具 schema 和执行逻辑
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from src.common.logger import get_logger
 from src.memory_graph.core.builder import MemoryBuilder
 from src.memory_graph.core.extractor import MemoryExtractor
-from src.memory_graph.models import Memory, MemoryStatus
+from src.memory_graph.models import Memory
 from src.memory_graph.storage.graph_store import GraphStore
 from src.memory_graph.storage.persistence import PersistenceManager
 from src.memory_graph.storage.vector_store import VectorStore
@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 class MemoryTools:
     """
     记忆系统工具集
-    
+
     提供给 LLM 使用的工具接口：
     1. create_memory: 创建新记忆
     2. link_memories: 关联两个记忆
@@ -33,7 +33,7 @@ class MemoryTools:
         vector_store: VectorStore,
         graph_store: GraphStore,
         persistence_manager: PersistenceManager,
-        embedding_generator: Optional[EmbeddingGenerator] = None,
+        embedding_generator: EmbeddingGenerator | None = None,
         max_expand_depth: int = 1,
         expand_semantic_threshold: float = 0.3,
     ):
@@ -72,10 +72,10 @@ class MemoryTools:
             self._initialized = True
 
     @staticmethod
-    def get_create_memory_schema() -> Dict[str, Any]:
+    def get_create_memory_schema() -> dict[str, Any]:
         """
         获取 create_memory 工具的 JSON schema
-        
+
         Returns:
             工具 schema 定义
         """
@@ -145,15 +145,15 @@ class MemoryTools:
                                 "description": "时间信息（强烈建议填写）：\n- 具体日期：'2025-11-05'、'2025年11月'\n- 相对时间：'今天'、'昨天'、'上周'、'最近'、'3天前'\n- 时间段：'今天下午'、'上个月'、'这学期'",
                             },
                             "地点": {
-                                "type": "string", 
+                                "type": "string",
                                 "description": "地点信息（如涉及）：\n- 具体地址、城市名、国家\n- 场所类型：'在家'、'公司'、'学校'、'咖啡店'"
                             },
                             "原因": {
-                                "type": "string", 
+                                "type": "string",
                                 "description": "为什么这样做/这样想（如明确提到）"
                             },
                             "方式": {
-                                "type": "string", 
+                                "type": "string",
                                 "description": "怎么做的/通过什么方式（如明确提到）"
                             },
                             "结果": {
@@ -183,10 +183,10 @@ class MemoryTools:
         }
 
     @staticmethod
-    def get_link_memories_schema() -> Dict[str, Any]:
+    def get_link_memories_schema() -> dict[str, Any]:
         """
         获取 link_memories 工具的 JSON schema
-        
+
         Returns:
             工具 schema 定义
         """
@@ -239,10 +239,10 @@ class MemoryTools:
         }
 
     @staticmethod
-    def get_search_memories_schema() -> Dict[str, Any]:
+    def get_search_memories_schema() -> dict[str, Any]:
         """
         获取 search_memories 工具的 JSON schema
-        
+
         Returns:
             工具 schema 定义
         """
@@ -307,13 +307,13 @@ class MemoryTools:
             },
         }
 
-    async def create_memory(self, **params) -> Dict[str, Any]:
+    async def create_memory(self, **params) -> dict[str, Any]:
         """
         执行 create_memory 工具
-        
+
         Args:
             **params: 工具参数
-            
+
         Returns:
             执行结果
         """
@@ -353,13 +353,13 @@ class MemoryTools:
                 "message": "记忆创建失败",
             }
 
-    async def link_memories(self, **params) -> Dict[str, Any]:
+    async def link_memories(self, **params) -> dict[str, Any]:
         """
         执行 link_memories 工具
-        
+
         Args:
             **params: 工具参数
-            
+
         Returns:
             执行结果
         """
@@ -433,15 +433,15 @@ class MemoryTools:
                 "message": "记忆关联失败",
             }
 
-    async def search_memories(self, **params) -> Dict[str, Any]:
+    async def search_memories(self, **params) -> dict[str, Any]:
         """
         执行 search_memories 工具
-        
+
         使用多策略检索优化：
         1. 查询分解（识别主要实体和概念）
         2. 多查询并行检索
         3. 结果融合和重排
-        
+
         Args:
             **params: 工具参数
                 - query: 查询字符串
@@ -449,7 +449,7 @@ class MemoryTools:
                 - expand_depth: 扩展深度（暂未使用）
                 - use_multi_query: 是否使用多查询策略（默认True）
                 - context: 查询上下文（可选）
-            
+
         Returns:
             搜索结果
         """
@@ -477,7 +477,7 @@ class MemoryTools:
             # 2. 提取初始记忆ID（来自向量搜索）
             initial_memory_ids = set()
             memory_scores = {}  # 记录每个记忆的初始分数
-            
+
             for node_id, similarity, metadata in similar_nodes:
                 if "memory_ids" in metadata:
                     ids = metadata["memory_ids"]
@@ -486,7 +486,7 @@ class MemoryTools:
                         import orjson
                         try:
                             ids = orjson.loads(ids)
-                        except:
+                        except Exception:
                             ids = [ids]
                     if isinstance(ids, list):
                         for mem_id in ids:
@@ -499,12 +499,12 @@ class MemoryTools:
             expanded_memory_scores = {}
             if expand_depth > 0 and initial_memory_ids:
                 logger.info(f"开始图扩展: 初始记忆{len(initial_memory_ids)}个, 深度={expand_depth}")
-                
+
                 # 获取查询的embedding用于语义过滤
                 if self.builder.embedding_generator:
                     try:
                         query_embedding = await self.builder.embedding_generator.generate(query)
-                        
+
                         # 直接使用图扩展逻辑（避免循环依赖）
                         expanded_results = await self._expand_with_semantic_filter(
                             initial_memory_ids=list(initial_memory_ids),
@@ -513,7 +513,7 @@ class MemoryTools:
                             semantic_threshold=self.expand_semantic_threshold,  # 使用配置的阈值
                             max_expanded=top_k * 2
                         )
-                        
+
                         # 旧代码（如果需要使用Manager）：
                         # from src.memory_graph.manager import MemoryManager
                         # manager = MemoryManager.get_instance()
@@ -524,19 +524,18 @@ class MemoryTools:
                         #     semantic_threshold=0.5,
                         #     max_expanded=top_k * 2
                         # )
-                        
+
                         # 合并扩展结果
-                        for mem_id, score in expanded_results:
-                            expanded_memory_scores[mem_id] = score
-                        
+                        expanded_memory_scores.update(dict(expanded_results))
+
                         logger.info(f"图扩展完成: 新增{len(expanded_memory_scores)}个相关记忆")
-                        
+
                     except Exception as e:
                         logger.warning(f"图扩展失败: {e}")
 
             # 4. 合并初始记忆和扩展记忆
             all_memory_ids = set(initial_memory_ids) | set(expanded_memory_scores.keys())
-            
+
             # 计算最终分数：初始记忆保持原分数，扩展记忆使用扩展分数
             final_scores = {}
             for mem_id in all_memory_ids:
@@ -546,7 +545,7 @@ class MemoryTools:
                 elif mem_id in expanded_memory_scores:
                     # 扩展记忆：使用图扩展分数（稍微降权）
                     final_scores[mem_id] = expanded_memory_scores[mem_id] * 0.8
-            
+
             # 按分数排序
             sorted_memory_ids = sorted(
                 final_scores.keys(),
@@ -562,7 +561,7 @@ class MemoryTools:
                     # 综合评分：相似度(60%) + 重要性(30%) + 时效性(10%)
                     similarity_score = final_scores[memory_id]
                     importance_score = memory.importance
-                    
+
                     # 计算时效性分数（最近的记忆得分更高）
                     from datetime import datetime, timezone
                     now = datetime.now(timezone.utc)
@@ -573,16 +572,16 @@ class MemoryTools:
                         memory_time = memory.created_at
                     age_days = (now - memory_time).total_seconds() / 86400
                     recency_score = 1.0 / (1.0 + age_days / 30)  # 30天半衰期
-                    
+
                     # 综合分数
                     final_score = (
                         similarity_score * 0.6 +
                         importance_score * 0.3 +
                         recency_score * 0.1
                     )
-                    
+
                     memories_with_scores.append((memory, final_score))
-            
+
             # 按综合分数排序
             memories_with_scores.sort(key=lambda x: x[1], reverse=True)
             memories = [mem for mem, _ in memories_with_scores[:top_k]]
@@ -624,16 +623,16 @@ class MemoryTools:
             }
 
     async def _generate_multi_queries_simple(
-        self, query: str, context: Optional[Dict[str, Any]] = None
-    ) -> List[Tuple[str, float]]:
+        self, query: str, context: dict[str, Any] | None = None
+    ) -> list[tuple[str, float]]:
         """
         简化版多查询生成（直接在 Tools 层实现，避免循环依赖）
-        
+
         让小模型直接生成3-5个不同角度的查询语句。
         """
         try:
-            from src.llm_models.utils_model import LLMRequest
             from src.config.config import model_config
+            from src.llm_models.utils_model import LLMRequest
 
             llm = LLMRequest(
                 model_set=model_config.model_task_config.utils_small,
@@ -648,10 +647,10 @@ class MemoryTools:
             # 处理聊天历史，提取最近5条左右的对话
             recent_chat = ""
             if chat_history:
-                lines = chat_history.strip().split('\n')
+                lines = chat_history.strip().split("\n")
                 # 取最近5条消息
                 recent_lines = lines[-5:] if len(lines) > 5 else lines
-                recent_chat = '\n'.join(recent_lines)
+                recent_chat = "\n".join(recent_lines)
 
             prompt = f"""基于聊天上下文为查询生成3-5个不同角度的搜索语句（JSON格式）。
 
@@ -685,36 +684,38 @@ class MemoryTools:
 """
 
             response, _ = await llm.generate_response_async(prompt, temperature=0.3, max_tokens=250)
-            
-            import orjson, re
-            response = re.sub(r'```json\s*', '', response)
-            response = re.sub(r'```\s*$', '', response).strip()
-            
+
+            import re
+
+            import orjson
+            response = re.sub(r"```json\s*", "", response)
+            response = re.sub(r"```\s*$", "", response).strip()
+
             data = orjson.loads(response)
             queries = data.get("queries", [])
-            
-            result = [(item.get("text", "").strip(), float(item.get("weight", 0.5))) 
+
+            result = [(item.get("text", "").strip(), float(item.get("weight", 0.5)))
                      for item in queries if item.get("text", "").strip()]
-            
+
             if result:
                 logger.info(f"生成查询: {[q for q, _ in result]}")
                 return result
-                
+
         except Exception as e:
             logger.warning(f"多查询生成失败: {e}")
-        
+
         return [(query, 1.0)]
 
     async def _single_query_search(
         self, query: str, top_k: int
-    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+    ) -> list[tuple[str, float, dict[str, Any]]]:
         """
         传统的单查询搜索
-        
+
         Args:
             query: 查询字符串
             top_k: 返回结果数
-            
+
         Returns:
             相似节点列表 [(node_id, similarity, metadata), ...]
         """
@@ -735,30 +736,30 @@ class MemoryTools:
         return similar_nodes
 
     async def _multi_query_search(
-        self, query: str, top_k: int, context: Optional[Dict[str, Any]] = None
-    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+        self, query: str, top_k: int, context: dict[str, Any] | None = None
+    ) -> list[tuple[str, float, dict[str, Any]]]:
         """
         多查询策略搜索（简化版）
-        
+
         直接使用小模型生成多个查询，无需复杂的分解和组合。
-        
+
         步骤：
         1. 让小模型生成3-5个不同角度的查询
         2. 为每个查询生成嵌入
         3. 并行搜索并融合结果
-        
+
         Args:
             query: 查询字符串
             top_k: 返回结果数
             context: 查询上下文
-            
+
         Returns:
             融合后的相似节点列表
         """
         try:
             # 1. 使用小模型生成多个查询
             multi_queries = await self._generate_multi_queries_simple(query, context)
-            
+
             logger.debug(f"生成 {len(multi_queries)} 个查询: {multi_queries}")
 
             # 2. 生成所有查询的嵌入
@@ -800,13 +801,13 @@ class MemoryTools:
             if node.embedding is not None:
                 await self.vector_store.add_node(node)
 
-    async def _find_memory_by_description(self, description: str) -> Optional[Memory]:
+    async def _find_memory_by_description(self, description: str) -> Memory | None:
         """
         通过描述查找记忆
-        
+
         Args:
             description: 记忆描述
-            
+
         Returns:
             找到的记忆，如果没有则返回 None
         """
@@ -827,13 +828,13 @@ class MemoryTools:
             return None
 
         # 获取最相似节点关联的记忆
-        node_id, similarity, metadata = similar_nodes[0]
-        
+        _node_id, _similarity, metadata = similar_nodes[0]
+
         if "memory_ids" not in metadata or not metadata["memory_ids"]:
             return None
-        
+
         ids = metadata["memory_ids"]
-        
+
         # 确保是列表
         if isinstance(ids, str):
             import orjson
@@ -842,11 +843,11 @@ class MemoryTools:
             except Exception as e:
                 logger.warning(f"JSON 解析失败: {e}")
                 ids = [ids]
-        
+
         if isinstance(ids, list) and ids:
             memory_id = ids[0]
             return self.graph_store.get_memory_by_id(memory_id)
-        
+
         return None
 
     def _summarize_memory(self, memory: Memory) -> str:
@@ -862,103 +863,102 @@ class MemoryTools:
 
     async def _expand_with_semantic_filter(
         self,
-        initial_memory_ids: List[str],
+        initial_memory_ids: list[str],
         query_embedding,
         max_depth: int = 2,
         semantic_threshold: float = 0.5,
         max_expanded: int = 20
-    ) -> List[Tuple[str, float]]:
+    ) -> list[tuple[str, float]]:
         """
         从初始记忆集合出发，沿图结构扩展，并用语义相似度过滤
-        
+
         Args:
             initial_memory_ids: 初始记忆ID集合
             query_embedding: 查询向量
             max_depth: 最大扩展深度
             semantic_threshold: 语义相似度阈值
             max_expanded: 最多扩展多少个记忆
-            
+
         Returns:
             List[(memory_id, relevance_score)]
         """
         if not initial_memory_ids or query_embedding is None:
             return []
-        
+
         try:
-            import numpy as np
-            
+
             visited_memories = set(initial_memory_ids)
-            expanded_memories: Dict[str, float] = {}
-            
+            expanded_memories: dict[str, float] = {}
+
             current_level = initial_memory_ids
-            
+
             for depth in range(max_depth):
                 next_level = []
-                
+
                 for memory_id in current_level:
                     memory = self.graph_store.get_memory_by_id(memory_id)
                     if not memory:
                         continue
-                    
+
                     for node in memory.nodes:
                         if not node.has_embedding():
                             continue
-                        
+
                         try:
                             neighbors = list(self.graph_store.graph.neighbors(node.id))
-                        except:
+                        except Exception:
                             continue
-                        
+
                         for neighbor_id in neighbors:
                             neighbor_node_data = self.graph_store.graph.nodes.get(neighbor_id)
                             if not neighbor_node_data:
                                 continue
-                            
+
                             neighbor_vector_data = await self.vector_store.get_node_by_id(neighbor_id)
                             if neighbor_vector_data is None:
                                 continue
-                            
+
                             neighbor_embedding = neighbor_vector_data.get("embedding")
                             if neighbor_embedding is None:
                                 continue
-                            
+
                             # 计算语义相似度
                             semantic_sim = self._cosine_similarity(
                                 query_embedding,
                                 neighbor_embedding
                             )
-                            
+
                             # 获取边权重
                             try:
                                 edge_data = self.graph_store.graph.get_edge_data(node.id, neighbor_id)
                                 edge_importance = edge_data.get("importance", 0.5) if edge_data else 0.5
-                            except:
+                            except Exception:
                                 edge_importance = 0.5
-                            
+
                             # 综合评分
                             depth_decay = 1.0 / (depth + 1)
                             relevance_score = (
-                                semantic_sim * 0.7 + 
-                                edge_importance * 0.2 + 
+                                semantic_sim * 0.7 +
+                                edge_importance * 0.2 +
                                 depth_decay * 0.1
                             )
-                            
+
                             if relevance_score < semantic_threshold:
                                 continue
-                            
+
                             # 提取记忆ID
                             neighbor_memory_ids = neighbor_node_data.get("memory_ids", [])
                             if isinstance(neighbor_memory_ids, str):
                                 import orjson
                                 try:
                                     neighbor_memory_ids = orjson.loads(neighbor_memory_ids)
-                                except:
+                                except Exception:
                                     neighbor_memory_ids = [neighbor_memory_ids]
-                            
+
                             for neighbor_mem_id in neighbor_memory_ids:
                                 if neighbor_mem_id in visited_memories:
                                     continue
-                                
+
                                 if neighbor_mem_id not in expanded_memories:
                                     expanded_memories[neighbor_mem_id] = relevance_score
                                     visited_memories.add(neighbor_mem_id)
@@ -968,52 +968,52 @@ class MemoryTools:
                                         expanded_memories[neighbor_mem_id],
                                         relevance_score
                                     )
-                
+
                 if not next_level or len(expanded_memories) >= max_expanded:
                     break
-                
+
                 current_level = next_level[:max_expanded]
-            
+
             sorted_results = sorted(
                 expanded_memories.items(),
                 key=lambda x: x[1],
                 reverse=True
             )[:max_expanded]
-            
+
             return sorted_results
-            
+
         except Exception as e:
             logger.error(f"图扩展失败: {e}", exc_info=True)
             return []
-    
+
     def _cosine_similarity(self, vec1, vec2) -> float:
         """计算余弦相似度"""
         try:
             import numpy as np
-            
+
             if not isinstance(vec1, np.ndarray):
                 vec1 = np.array(vec1)
             if not isinstance(vec2, np.ndarray):
                 vec2 = np.array(vec2)
-            
+
             vec1_norm = np.linalg.norm(vec1)
             vec2_norm = np.linalg.norm(vec2)
-            
+
             if vec1_norm == 0 or vec2_norm == 0:
                 return 0.0
-            
+
             similarity = np.dot(vec1, vec2) / (vec1_norm * vec2_norm)
             return float(similarity)
-            
+
         except Exception as e:
             logger.warning(f"计算余弦相似度失败: {e}")
             return 0.0
 
     @staticmethod
-    def get_all_tool_schemas() -> List[Dict[str, Any]]:
+    def get_all_tool_schemas() -> list[dict[str, Any]]:
         """
         获取所有工具的 schema
-        
+
         Returns:
             工具 schema 列表
         """

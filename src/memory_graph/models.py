@@ -10,7 +10,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -60,8 +60,8 @@ class MemoryNode:
     id: str  # 节点唯一ID
     content: str  # 节点内容（如："我"、"吃饭"、"白米饭"）
     node_type: NodeType  # 节点类型
-    embedding: Optional[np.ndarray] = None  # 语义向量（仅主题/客体需要）
-    metadata: Dict[str, Any] = field(default_factory=dict)  # 扩展元数据
+    embedding: np.ndarray | None = None  # 语义向量（仅主题/客体需要）
+    metadata: dict[str, Any] = field(default_factory=dict)  # 扩展元数据
     created_at: datetime = field(default_factory=datetime.now)
 
     def __post_init__(self):
@@ -69,7 +69,7 @@ class MemoryNode:
         if not self.id:
             self.id = str(uuid.uuid4())
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典（用于序列化）"""
         return {
             "id": self.id,
@@ -81,7 +81,7 @@ class MemoryNode:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> MemoryNode:
+    def from_dict(cls, data: dict[str, Any]) -> MemoryNode:
         """从字典创建节点"""
         embedding = None
         if data.get("embedding") is not None:
@@ -114,7 +114,7 @@ class MemoryEdge:
     relation: str  # 关系名称（如："是"、"做"、"时间"、"因为"）
     edge_type: EdgeType  # 边类型
     importance: float = 0.5  # 重要性 [0-1]
-    metadata: Dict[str, Any] = field(default_factory=dict)  # 扩展元数据
+    metadata: dict[str, Any] = field(default_factory=dict)  # 扩展元数据
     created_at: datetime = field(default_factory=datetime.now)
 
     def __post_init__(self):
@@ -124,7 +124,7 @@ class MemoryEdge:
         # 确保重要性在有效范围内
         self.importance = max(0.0, min(1.0, self.importance))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典（用于序列化）"""
         return {
             "id": self.id,
@@ -138,7 +138,7 @@ class MemoryEdge:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> MemoryEdge:
+    def from_dict(cls, data: dict[str, Any]) -> MemoryEdge:
         """从字典创建边"""
         return cls(
             id=data["id"],
@@ -162,8 +162,8 @@ class Memory:
     id: str  # 记忆唯一ID
     subject_id: str  # 主体节点ID
     memory_type: MemoryType  # 记忆类型
-    nodes: List[MemoryNode]  # 该记忆包含的所有节点
-    edges: List[MemoryEdge]  # 该记忆包含的所有边
+    nodes: list[MemoryNode]  # 该记忆包含的所有节点
+    edges: list[MemoryEdge]  # 该记忆包含的所有边
     importance: float = 0.5  # 整体重要性 [0-1]
     activation: float = 0.0  # 激活度 [0-1]，用于记忆整合和遗忘
     status: MemoryStatus = MemoryStatus.STAGED  # 记忆状态
@@ -171,7 +171,7 @@ class Memory:
     last_accessed: datetime = field(default_factory=datetime.now)  # 最后访问时间
     access_count: int = 0  # 访问次数
     decay_factor: float = 1.0  # 衰减因子（随时间变化）
-    metadata: Dict[str, Any] = field(default_factory=dict)  # 扩展元数据
+    metadata: dict[str, Any] = field(default_factory=dict)  # 扩展元数据
 
     def __post_init__(self):
         """后初始化处理"""
@@ -181,7 +181,7 @@ class Memory:
         self.importance = max(0.0, min(1.0, self.importance))
         self.activation = max(0.0, min(1.0, self.activation))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典（用于序列化）"""
         return {
             "id": self.id,
@@ -200,7 +200,7 @@ class Memory:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Memory:
+    def from_dict(cls, data: dict[str, Any]) -> Memory:
         """从字典创建记忆"""
         return cls(
             id=data["id"],
@@ -223,14 +223,14 @@ class Memory:
         self.last_accessed = datetime.now()
         self.access_count += 1
 
-    def get_node_by_id(self, node_id: str) -> Optional[MemoryNode]:
+    def get_node_by_id(self, node_id: str) -> MemoryNode | None:
         """根据ID获取节点"""
         for node in self.nodes:
             if node.id == node_id:
                 return node
         return None
 
-    def get_subject_node(self) -> Optional[MemoryNode]:
+    def get_subject_node(self) -> MemoryNode | None:
         """获取主体节点"""
         return self.get_node_by_id(self.subject_id)
 
@@ -274,10 +274,10 @@ class StagedMemory:
     memory: Memory  # 原始记忆对象
     status: MemoryStatus = MemoryStatus.STAGED  # 状态
     created_at: datetime = field(default_factory=datetime.now)
-    consolidated_at: Optional[datetime] = None  # 整理时间
-    merge_history: List[str] = field(default_factory=list)  # 被合并的节点ID列表
+    consolidated_at: datetime | None = None  # 整理时间
+    merge_history: list[str] = field(default_factory=list)  # 被合并的节点ID列表
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """转换为字典"""
         return {
             "memory": self.memory.to_dict(),
@@ -288,7 +288,7 @@ class StagedMemory:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> StagedMemory:
+    def from_dict(cls, data: dict[str, Any]) -> StagedMemory:
         """从字典创建临时记忆"""
         return cls(
             memory=Memory.from_dict(data["memory"]),

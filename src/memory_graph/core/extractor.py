@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 from src.common.logger import get_logger
 from src.memory_graph.models import MemoryType
@@ -17,7 +17,7 @@ logger = get_logger(__name__)
 class MemoryExtractor:
     """
     记忆提取器
-    
+
     负责：
     1. 从工具调用参数中提取记忆元素
     2. 验证参数完整性和有效性
@@ -25,19 +25,19 @@ class MemoryExtractor:
     4. 清洗和格式化数据
     """
 
-    def __init__(self, time_parser: Optional[TimeParser] = None):
+    def __init__(self, time_parser: TimeParser | None = None):
         """
         初始化记忆提取器
-        
+
         Args:
             time_parser: 时间解析器（可选）
         """
         self.time_parser = time_parser or TimeParser()
 
-    def extract_from_tool_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_from_tool_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         从工具参数中提取记忆元素
-        
+
         Args:
             params: 工具调用参数，例如：
                 {
@@ -48,7 +48,7 @@ class MemoryExtractor:
                     "attributes": {"时间": "今天", "地点": "家里"},
                     "importance": 0.3
                 }
-        
+
         Returns:
             提取和标准化后的参数字典
         """
@@ -64,11 +64,11 @@ class MemoryExtractor:
             }
 
             # 3. 提取可选的客体
-            if "object" in params and params["object"]:
+            if params.get("object"):
                 extracted["object"] = self._clean_text(params["object"])
 
             # 4. 提取和标准化属性
-            if "attributes" in params and params["attributes"]:
+            if params.get("attributes"):
                 extracted["attributes"] = self._process_attributes(params["attributes"])
             else:
                 extracted["attributes"] = {}
@@ -86,13 +86,13 @@ class MemoryExtractor:
             logger.error(f"记忆提取失败: {e}", exc_info=True)
             raise ValueError(f"记忆提取失败: {e}")
 
-    def _validate_required_params(self, params: Dict[str, Any]) -> None:
+    def _validate_required_params(self, params: dict[str, Any]) -> None:
         """
         验证必需参数
-        
+
         Args:
             params: 参数字典
-            
+
         Raises:
             ValueError: 如果缺少必需参数
         """
@@ -105,10 +105,10 @@ class MemoryExtractor:
     def _clean_text(self, text: Any) -> str:
         """
         清洗文本
-        
+
         Args:
             text: 输入文本
-            
+
         Returns:
             清洗后的文本
         """
@@ -128,13 +128,13 @@ class MemoryExtractor:
     def _parse_memory_type(self, type_str: str) -> MemoryType:
         """
         解析记忆类型
-        
+
         Args:
             type_str: 类型字符串
-            
+
         Returns:
             MemoryType 枚举
-            
+
         Raises:
             ValueError: 如果类型无效
         """
@@ -166,10 +166,10 @@ class MemoryExtractor:
     def _parse_importance(self, importance: Any) -> float:
         """
         解析重要性值
-        
+
         Args:
             importance: 重要性值（可以是数字、字符串等）
-            
+
         Returns:
             0-1之间的浮点数
         """
@@ -181,13 +181,13 @@ class MemoryExtractor:
             logger.warning(f"无效的重要性值: {importance}，使用默认值 0.5")
             return 0.5
 
-    def _process_attributes(self, attributes: Dict[str, Any]) -> Dict[str, Any]:
+    def _process_attributes(self, attributes: dict[str, Any]) -> dict[str, Any]:
         """
         处理属性字典
-        
+
         Args:
             attributes: 原始属性字典
-            
+
         Returns:
             处理后的属性字典
         """
@@ -222,10 +222,10 @@ class MemoryExtractor:
 
         return processed
 
-    def extract_link_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_link_params(self, params: dict[str, Any]) -> dict[str, Any]:
         """
         提取记忆关联参数（用于 link_memories 工具）
-        
+
         Args:
             params: 工具参数，例如：
                 {
@@ -234,7 +234,7 @@ class MemoryExtractor:
                     "relation_type": "导致",
                     "importance": 0.6
                 }
-        
+
         Returns:
             提取后的参数
         """
@@ -266,10 +266,10 @@ class MemoryExtractor:
     def validate_relation_type(self, relation_type: str) -> str:
         """
         验证关系类型
-        
+
         Args:
             relation_type: 关系类型字符串
-            
+
         Returns:
             标准化的关系类型
         """

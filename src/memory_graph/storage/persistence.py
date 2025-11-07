@@ -8,14 +8,12 @@ import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import orjson
 
 from src.common.logger import get_logger
-from src.memory_graph.models import Memory, StagedMemory
+from src.memory_graph.models import StagedMemory
 from src.memory_graph.storage.graph_store import GraphStore
-from src.memory_graph.storage.vector_store import VectorStore
 
 logger = get_logger(__name__)
 
@@ -23,7 +21,7 @@ logger = get_logger(__name__)
 class PersistenceManager:
     """
     持久化管理器
-    
+
     负责：
     1. 图数据的保存和加载
     2. 定期自动保存
@@ -39,7 +37,7 @@ class PersistenceManager:
     ):
         """
         初始化持久化管理器
-        
+
         Args:
             data_dir: 数据存储目录
             graph_file_name: 图数据文件名
@@ -55,7 +53,7 @@ class PersistenceManager:
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
         self.auto_save_interval = auto_save_interval
-        self._auto_save_task: Optional[asyncio.Task] = None
+        self._auto_save_task: asyncio.Task | None = None
         self._running = False
 
         logger.info(f"初始化持久化管理器: data_dir={data_dir}")
@@ -63,7 +61,7 @@ class PersistenceManager:
     async def save_graph_store(self, graph_store: GraphStore) -> None:
         """
         保存图存储到文件
-        
+
         Args:
             graph_store: 图存储对象
         """
@@ -95,10 +93,10 @@ class PersistenceManager:
             logger.error(f"保存图数据失败: {e}", exc_info=True)
             raise
 
-    async def load_graph_store(self) -> Optional[GraphStore]:
+    async def load_graph_store(self) -> GraphStore | None:
         """
         从文件加载图存储
-        
+
         Returns:
             GraphStore 对象，如果文件不存在则返回 None
         """
@@ -129,7 +127,7 @@ class PersistenceManager:
     async def save_staged_memories(self, staged_memories: list[StagedMemory]) -> None:
         """
         保存临时记忆列表
-        
+
         Args:
             staged_memories: 临时记忆列表
         """
@@ -158,7 +156,7 @@ class PersistenceManager:
     async def load_staged_memories(self) -> list[StagedMemory]:
         """
         加载临时记忆列表
-        
+
         Returns:
             临时记忆列表
         """
@@ -179,10 +177,10 @@ class PersistenceManager:
             logger.error(f"加载临时记忆失败: {e}", exc_info=True)
             return []
 
-    async def create_backup(self) -> Optional[Path]:
+    async def create_backup(self) -> Path | None:
         """
         创建当前数据的备份
-        
+
         Returns:
             备份文件路径，如果失败则返回 None
         """
@@ -208,7 +206,7 @@ class PersistenceManager:
             logger.error(f"创建备份失败: {e}", exc_info=True)
             return None
 
-    async def _load_from_backup(self) -> Optional[GraphStore]:
+    async def _load_from_backup(self) -> GraphStore | None:
         """从最新的备份加载数据"""
         try:
             # 查找最新的备份文件
@@ -236,7 +234,7 @@ class PersistenceManager:
     async def _cleanup_old_backups(self, keep: int = 10) -> None:
         """
         清理旧备份，只保留最近的几个
-        
+
         Args:
             keep: 保留的备份数量
         """
@@ -254,11 +252,11 @@ class PersistenceManager:
     async def start_auto_save(
         self,
         graph_store: GraphStore,
-        staged_memories_getter: callable = None,
+        staged_memories_getter: callable | None = None,
     ) -> None:
         """
         启动自动保存任务
-        
+
         Args:
             graph_store: 图存储对象
             staged_memories_getter: 获取临时记忆的回调函数
@@ -310,7 +308,7 @@ class PersistenceManager:
     async def export_to_json(self, output_file: Path, graph_store: GraphStore) -> None:
         """
         导出图数据到指定的 JSON 文件（用于数据迁移或分析）
-        
+
         Args:
             output_file: 输出文件路径
             graph_store: 图存储对象
@@ -334,13 +332,13 @@ class PersistenceManager:
             logger.error(f"导出图数据失败: {e}", exc_info=True)
             raise
 
-    async def import_from_json(self, input_file: Path) -> Optional[GraphStore]:
+    async def import_from_json(self, input_file: Path) -> GraphStore | None:
         """
         从 JSON 文件导入图数据
-        
+
         Args:
             input_file: 输入文件路径
-            
+
         Returns:
             GraphStore 对象
         """
@@ -360,7 +358,7 @@ class PersistenceManager:
     def get_data_size(self) -> dict[str, int]:
         """
         获取数据文件的大小信息
-        
+
         Returns:
             文件大小字典（字节）
         """

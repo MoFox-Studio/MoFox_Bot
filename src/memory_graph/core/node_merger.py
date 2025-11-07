@@ -4,11 +4,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
-
-import numpy as np
-
 from src.common.logger import get_logger
 from src.config.official_configs import MemoryConfig
 from src.memory_graph.models import MemoryNode, NodeType
@@ -21,7 +16,7 @@ logger = get_logger(__name__)
 class NodeMerger:
     """
     节点合并器
-    
+
     负责：
     1. 基于语义相似度查找重复节点
     2. 验证上下文匹配
@@ -36,7 +31,7 @@ class NodeMerger:
     ):
         """
         初始化节点合并器
-        
+
         Args:
             vector_store: 向量存储
             graph_store: 图存储
@@ -54,17 +49,17 @@ class NodeMerger:
     async def find_similar_nodes(
         self,
         node: MemoryNode,
-        threshold: Optional[float] = None,
+        threshold: float | None = None,
         limit: int = 5,
-    ) -> List[Tuple[MemoryNode, float]]:
+    ) -> list[tuple[MemoryNode, float]]:
         """
         查找与指定节点相似的节点
-        
+
         Args:
             node: 查询节点
             threshold: 相似度阈值（可选，默认使用配置值）
             limit: 返回结果数量
-            
+
         Returns:
             List of (similar_node, similarity)
         """
@@ -112,12 +107,12 @@ class NodeMerger:
     ) -> bool:
         """
         判断两个节点是否应该合并
-        
+
         Args:
             source_node: 源节点
             target_node: 目标节点
             similarity: 语义相似度
-            
+
         Returns:
             是否应该合并
         """
@@ -157,16 +152,16 @@ class NodeMerger:
     ) -> bool:
         """
         检查两个节点的上下文是否匹配
-        
+
         上下文匹配的标准：
         1. 节点类型相同
         2. 邻居节点有重叠
         3. 邻居节点的内容相似
-        
+
         Args:
             source_node: 源节点
             target_node: 目标节点
-            
+
         Returns:
             是否匹配
         """
@@ -207,7 +202,7 @@ class NodeMerger:
         # 如果有 30% 以上的邻居重叠，认为上下文匹配
         return overlap_ratio > 0.3
 
-    def _get_node_content(self, node_id: str) -> Optional[str]:
+    def _get_node_content(self, node_id: str) -> str | None:
         """获取节点的内容"""
         memories = self.graph_store.get_memories_by_node(node_id)
         if memories:
@@ -223,13 +218,13 @@ class NodeMerger:
     ) -> bool:
         """
         合并两个节点
-        
+
         将 source 节点的所有边转移到 target 节点，然后删除 source
-        
+
         Args:
             source: 源节点（将被删除）
             target: 目标节点（保留）
-            
+
         Returns:
             是否成功
         """
@@ -255,7 +250,7 @@ class NodeMerger:
     def _update_memory_references(self, old_node_id: str, new_node_id: str) -> None:
         """
         更新记忆中的节点引用
-        
+
         Args:
             old_node_id: 旧节点ID
             new_node_id: 新节点ID
@@ -280,16 +275,16 @@ class NodeMerger:
 
     async def batch_merge_similar_nodes(
         self,
-        nodes: List[MemoryNode],
-        progress_callback: Optional[callable] = None,
+        nodes: list[MemoryNode],
+        progress_callback: callable | None = None,
     ) -> dict:
         """
         批量处理节点合并
-        
+
         Args:
             nodes: 要处理的节点列表
             progress_callback: 进度回调函数
-            
+
         Returns:
             统计信息字典
         """
@@ -344,14 +339,14 @@ class NodeMerger:
         self,
         min_similarity: float = 0.85,
         limit: int = 100,
-    ) -> List[Tuple[str, str, float]]:
+    ) -> list[tuple[str, str, float]]:
         """
         获取待合并的候选节点对
-        
+
         Args:
             min_similarity: 最小相似度
             limit: 最大返回数量
-            
+
         Returns:
             List of (node_id_1, node_id_2, similarity)
         """

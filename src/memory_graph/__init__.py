@@ -6,24 +6,24 @@
 
 from src.memory_graph.manager import MemoryManager
 from src.memory_graph.models import (
+    EdgeType,
     Memory,
     MemoryEdge,
     MemoryNode,
     MemoryStatus,
     MemoryType,
     NodeType,
-    EdgeType,
 )
 
 __all__ = [
-    "MemoryManager",
+    "EdgeType",
     "Memory",
-    "MemoryNode",
     "MemoryEdge",
+    "MemoryManager",
+    "MemoryNode",
+    "MemoryStatus",
     "MemoryType",
     "NodeType",
-    "EdgeType",
-    "MemoryStatus",
 ]
 
 __version__ = "0.1.0"

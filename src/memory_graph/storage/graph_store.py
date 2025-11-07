@@ -4,12 +4,10 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set, Tuple
-
 import networkx as nx
 
 from src.common.logger import get_logger
-from src.memory_graph.models import Memory, MemoryEdge, MemoryNode
+from src.memory_graph.models import Memory, MemoryEdge
 
 logger = get_logger(__name__)
 
@@ -17,7 +15,7 @@ logger = get_logger(__name__)
 class GraphStore:
     """
     图存储封装类
-    
+
     负责：
     1. 记忆图的构建和维护
     2. 节点和边的快速查询
@@ -31,17 +29,17 @@ class GraphStore:
         self.graph = nx.DiGraph()
 
         # 索引：记忆ID -> 记忆对象
-        self.memory_index: Dict[str, Memory] = {}
+        self.memory_index: dict[str, Memory] = {}
 
         # 索引：节点ID -> 所属记忆ID集合
-        self.node_to_memories: Dict[str, Set[str]] = {}
+        self.node_to_memories: dict[str, set[str]] = {}
 
         logger.info("初始化图存储")
 
     def add_memory(self, memory: Memory) -> None:
         """
         添加记忆到图
-        
+
         Args:
             memory: 要添加的记忆
         """
@@ -84,34 +82,34 @@ class GraphStore:
             logger.error(f"添加记忆失败: {e}", exc_info=True)
             raise
 
-    def get_memory_by_id(self, memory_id: str) -> Optional[Memory]:
+    def get_memory_by_id(self, memory_id: str) -> Memory | None:
         """
         根据ID获取记忆
-        
+
         Args:
             memory_id: 记忆ID
-            
+
         Returns:
             记忆对象或 None
         """
         return self.memory_index.get(memory_id)
 
-    def get_all_memories(self) -> List[Memory]:
+    def get_all_memories(self) -> list[Memory]:
         """
         获取所有记忆
-        
+
         Returns:
             所有记忆的列表
         """
         return list(self.memory_index.values())
 
-    def get_memories_by_node(self, node_id: str) -> List[Memory]:
+    def get_memories_by_node(self, node_id: str) -> list[Memory]:
         """
         获取包含指定节点的所有记忆
-        
+
         Args:
             node_id: 节点ID
-            
+
         Returns:
             记忆列表
         """
@@ -121,14 +119,14 @@ class GraphStore:
         memory_ids = self.node_to_memories[node_id]
         return [self.memory_index[mid] for mid in memory_ids if mid in self.memory_index]
 
-    def get_edges_from_node(self, node_id: str, relation_types: Optional[List[str]] = None) -> List[Dict]:
+    def get_edges_from_node(self, node_id: str, relation_types: list[str] | None = None) -> list[dict]:
         """
         获取从指定节点出发的所有边
-        
+
         Args:
             node_id: 源节点ID
             relation_types: 关系类型过滤（可选）
-            
+
         Returns:
             边信息列表
         """
@@ -155,16 +153,16 @@ class GraphStore:
         return edges
 
     def get_neighbors(
-        self, node_id: str, direction: str = "out", relation_types: Optional[List[str]] = None
-    ) -> List[Tuple[str, Dict]]:
+        self, node_id: str, direction: str = "out", relation_types: list[str] | None = None
+    ) -> list[tuple[str, dict]]:
         """
         获取节点的邻居节点
-        
+
         Args:
             node_id: 节点ID
             direction: 方向 ("out"=出边, "in"=入边, "both"=双向)
             relation_types: 关系类型过滤
-            
+
         Returns:
             List of (neighbor_id, edge_data)
         """
@@ -187,15 +185,15 @@ class GraphStore:
 
         return neighbors
 
-    def find_path(self, source_id: str, target_id: str, max_length: Optional[int] = None) -> Optional[List[str]]:
+    def find_path(self, source_id: str, target_id: str, max_length: int | None = None) -> list[str] | None:
         """
         查找两个节点之间的最短路径
-        
+
         Args:
             source_id: 源节点ID
             target_id: 目标节点ID
             max_length: 最大路径长度（可选）
-            
+
         Returns:
             路径节点ID列表，或 None（如果不存在路径）
         """
@@ -220,18 +218,18 @@ class GraphStore:
 
     def bfs_expand(
         self,
-        start_nodes: List[str],
+        start_nodes: list[str],
         depth: int = 1,
-        relation_types: Optional[List[str]] = None,
-    ) -> Set[str]:
+        relation_types: list[str] | None = None,
+    ) -> set[str]:
         """
         从起始节点进行广度优先搜索扩展
-        
+
         Args:
             start_nodes: 起始节点ID列表
             depth: 扩展深度
             relation_types: 关系类型过滤
-            
+
         Returns:
             扩展到的所有节点ID集合
         """
@@ -256,13 +254,13 @@ class GraphStore:
 
         return visited
 
-    def get_subgraph(self, node_ids: List[str]) -> nx.DiGraph:
+    def get_subgraph(self, node_ids: list[str]) -> nx.DiGraph:
         """
         获取包含指定节点的子图
-        
+
         Args:
             node_ids: 节点ID列表
-            
+
         Returns:
             NetworkX 子图
         """
@@ -271,7 +269,7 @@ class GraphStore:
     def merge_nodes(self, source_id: str, target_id: str) -> None:
         """
         合并两个节点（将source的所有边转移到target，然后删除source）
-        
+
         Args:
             source_id: 源节点ID（将被删除）
             target_id: 目标节点ID（保留）
@@ -308,13 +306,13 @@ class GraphStore:
             logger.error(f"合并节点失败: {e}", exc_info=True)
             raise
 
-    def get_node_degree(self, node_id: str) -> Tuple[int, int]:
+    def get_node_degree(self, node_id: str) -> tuple[int, int]:
         """
         获取节点的度数
-        
+
         Args:
             node_id: 节点ID
-            
+
         Returns:
             (in_degree, out_degree)
         """
@@ -323,7 +321,7 @@ class GraphStore:
 
         return (self.graph.in_degree(node_id), self.graph.out_degree(node_id))
 
-    def get_statistics(self) -> Dict[str, int]:
+    def get_statistics(self) -> dict[str, int]:
         """获取图的统计信息"""
         return {
             "total_nodes": self.graph.number_of_nodes(),
@@ -332,10 +330,10 @@ class GraphStore:
             "connected_components": nx.number_weakly_connected_components(self.graph),
         }
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """
         将图转换为字典（用于持久化）
-        
+
         Returns:
             图的字典表示
         """
@@ -356,13 +354,13 @@ class GraphStore:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> GraphStore:
+    def from_dict(cls, data: dict) -> GraphStore:
         """
         从字典加载图
-        
+
         Args:
             data: 图的字典表示
-            
+
         Returns:
             GraphStore 实例
         """
@@ -406,7 +404,6 @@ class GraphStore:
         规则：对于图中每条边(u, v, data)，会尝试将该边注入到所有包含 u 或 v 的记忆中（避免遗漏跨记忆边）。
         已存在的边（通过 edge.id 检查）将不会重复添加。
         """
-        from src.memory_graph.models import MemoryEdge
 
         # 构建快速查重索引：memory_id -> set(edge_id)
         existing_edges = {mid: {e.id for e in mem.edges} for mid, mem in self.memory_index.items()}
@@ -465,10 +462,10 @@ class GraphStore:
     def remove_memory(self, memory_id: str) -> bool:
         """
         从图中删除指定记忆
-        
+
         Args:
             memory_id: 要删除的记忆ID
-            
+
         Returns:
             是否删除成功
         """
@@ -477,9 +474,9 @@ class GraphStore:
             if memory_id not in self.memory_index:
                 logger.warning(f"记忆不存在，无法删除: {memory_id}")
                 return False
-            
+
             memory = self.memory_index[memory_id]
-            
+
             # 2. 从节点映射中移除此记忆
             for node in memory.nodes:
                 if node.id in self.node_to_memories:
@@ -489,13 +486,13 @@ class GraphStore:
                         if self.graph.has_node(node.id):
                             self.graph.remove_node(node.id)
                         del self.node_to_memories[node.id]
-            
+
             # 3. 从记忆索引中移除
             del self.memory_index[memory_id]
-            
+
             logger.info(f"成功删除记忆: {memory_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"删除记忆失败 {memory_id}: {e}", exc_info=True)
             return False

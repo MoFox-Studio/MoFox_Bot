@@ -4,9 +4,8 @@
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -19,7 +18,7 @@ logger = get_logger(__name__)
 class VectorStore:
     """
     向量存储封装类
-    
+
     负责：
     1. 节点的语义向量存储和检索
     2. 基于相似度的向量搜索
@@ -29,12 +28,12 @@ class VectorStore:
     def __init__(
         self,
         collection_name: str = "memory_nodes",
-        data_dir: Optional[Path] = None,
-        embedding_function: Optional[Any] = None,
+        data_dir: Path | None = None,
+        embedding_function: Any | None = None,
     ):
         """
         初始化向量存储
-        
+
         Args:
             collection_name: ChromaDB 集合名称
             data_dir: 数据存储目录
@@ -80,7 +79,7 @@ class VectorStore:
     async def add_node(self, node: MemoryNode) -> None:
         """
         添加节点到向量存储
-        
+
         Args:
             node: 要添加的节点
         """
@@ -98,17 +97,17 @@ class VectorStore:
                 "node_type": node.node_type.value,
                 "created_at": node.created_at.isoformat(),
             }
-            
+
             # 处理额外的元数据，将 list 转换为 JSON 字符串
             for key, value in node.metadata.items():
                 if isinstance(value, (list, dict)):
                     import orjson
-                    metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
+                    metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode("utf-8")
                 elif isinstance(value, (str, int, float, bool)) or value is None:
                     metadata[key] = value
                 else:
                     metadata[key] = str(value)
-            
+
             self.collection.add(
                 ids=[node.id],
                 embeddings=[node.embedding.tolist()],
@@ -122,10 +121,10 @@ class VectorStore:
             logger.error(f"添加节点失败: {e}", exc_info=True)
             raise
 
-    async def add_nodes_batch(self, nodes: List[MemoryNode]) -> None:
+    async def add_nodes_batch(self, nodes: list[MemoryNode]) -> None:
         """
         批量添加节点
-        
+
         Args:
             nodes: 节点列表
         """
@@ -151,13 +150,13 @@ class VectorStore:
                 }
                 for key, value in n.metadata.items():
                     if isinstance(value, (list, dict)):
-                        metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
+                        metadata[key] = orjson.dumps(value, option=orjson.OPT_NON_STR_KEYS).decode("utf-8")
                     elif isinstance(value, (str, int, float, bool)) or value is None:
                         metadata[key] = value  # type: ignore
                     else:
                         metadata[key] = str(value)
                 metadatas.append(metadata)
-            
+
             self.collection.add(
                 ids=[n.id for n in valid_nodes],
                 embeddings=[n.embedding.tolist() for n in valid_nodes],  # type: ignore
@@ -175,18 +174,18 @@ class VectorStore:
         self,
         query_embedding: np.ndarray,
         limit: int = 10,
-        node_types: Optional[List[NodeType]] = None,
+        node_types: list[NodeType] | None = None,
         min_similarity: float = 0.0,
-    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+    ) -> list[tuple[str, float, dict[str, Any]]]:
         """
         搜索相似节点
-        
+
         Args:
             query_embedding: 查询向量
             limit: 返回结果数量
             node_types: 限制节点类型（可选）
             min_similarity: 最小相似度阈值
-            
+
         Returns:
             List of (node_id, similarity, metadata)
         """
@@ -214,7 +213,7 @@ class VectorStore:
             if ids is not None and len(ids) > 0 and len(ids[0]) > 0:
                 distances = results.get("distances")
                 metadatas = results.get("metadatas")
-                
+
                 for i, node_id in enumerate(ids[0]):
                     # ChromaDB 返回的是距离，需要转换为相似度
                     # 余弦距离: distance = 1 - similarity
@@ -223,15 +222,15 @@ class VectorStore:
 
                     if similarity >= min_similarity:
                         metadata = metadatas[0][i] if metadatas is not None and len(metadatas) > 0 else {}  # type: ignore
-                        
+
                         # 解析 JSON 字符串回列表/字典
                         for key, value in list(metadata.items()):
-                            if isinstance(value, str) and (value.startswith('[') or value.startswith('{')):
+                            if isinstance(value, str) and (value.startswith("[") or value.startswith("{")):
                                 try:
                                     metadata[key] = orjson.loads(value)
-                                except:
+                                except Exception:
                                     pass  # 保持原值
-                        
+
                         similar_nodes.append((node_id, similarity, metadata))
 
             logger.debug(f"相似节点搜索: 找到 {len(similar_nodes)} 个结果")
@@ -243,19 +242,19 @@ class VectorStore:
 
     async def search_with_multiple_queries(
         self,
-        query_embeddings: List[np.ndarray],
-        query_weights: Optional[List[float]] = None,
+        query_embeddings: list[np.ndarray],
+        query_weights: list[float] | None = None,
         limit: int = 10,
-        node_types: Optional[List[NodeType]] = None,
+        node_types: list[NodeType] | None = None,
         min_similarity: float = 0.0,
         fusion_strategy: str = "weighted_max",
-    ) -> List[Tuple[str, float, Dict[str, Any]]]:
+    ) -> list[tuple[str, float, dict[str, Any]]]:
         """
         多查询融合搜索
-        
+
         使用多个查询向量进行搜索，然后融合结果。
         这能解决单一查询向量无法同时关注多个关键概念的问题。
-        
+
         Args:
             query_embeddings: 查询向量列表
             query_weights: 每个查询的权重（可选，默认均等）
@@ -266,7 +265,7 @@ class VectorStore:
                 - "weighted_max": 加权最大值（推荐）
                 - "weighted_sum": 加权求和
                 - "rrf": Reciprocal Rank Fusion
-            
+
         Returns:
             融合后的节点列表 [(node_id, fused_score, metadata), ...]
         """
@@ -279,7 +278,7 @@ class VectorStore:
         # 默认权重均等
         if query_weights is None:
             query_weights = [1.0 / len(query_embeddings)] * len(query_embeddings)
-        
+
         # 归一化权重
         total_weight = sum(query_weights)
         if total_weight > 0:
@@ -287,7 +286,7 @@ class VectorStore:
 
         try:
             # 1. 对每个查询执行搜索
-            all_results: Dict[str, Dict[str, Any]] = {}  # node_id -> {scores, metadata}
+            all_results: dict[str, dict[str, Any]] = {}  # node_id -> {scores, metadata}
 
             for i, (query_emb, weight) in enumerate(zip(query_embeddings, query_weights)):
                 # 搜索更多结果以提高融合质量
@@ -307,13 +306,13 @@ class VectorStore:
                             "ranks": [],
                             "metadata": metadata,
                         }
-                    
+
                     all_results[node_id]["scores"].append((similarity, weight))
                     all_results[node_id]["ranks"].append((rank, weight))
 
             # 2. 融合分数
             fused_results = []
-            
+
             for node_id, data in all_results.items():
                 scores = data["scores"]
                 ranks = data["ranks"]
@@ -356,13 +355,13 @@ class VectorStore:
             logger.error(f"多查询融合搜索失败: {e}", exc_info=True)
             raise
 
-    async def get_node_by_id(self, node_id: str) -> Optional[Dict[str, Any]]:
+    async def get_node_by_id(self, node_id: str) -> dict[str, Any] | None:
         """
         根据ID获取节点元数据
-        
+
         Args:
             node_id: 节点ID
-            
+
         Returns:
             节点元数据或 None
         """
@@ -378,7 +377,7 @@ class VectorStore:
                 if ids is not None and len(ids) > 0:
                     metadatas = result.get("metadatas")
                     embeddings = result.get("embeddings")
-                    
+
                     return {
                         "id": ids[0],
                         "metadata": metadatas[0] if metadatas is not None and len(metadatas) > 0 else {},
@@ -394,7 +393,7 @@ class VectorStore:
     async def delete_node(self, node_id: str) -> None:
         """
         删除节点
-        
+
         Args:
             node_id: 节点ID
         """
@@ -412,7 +411,7 @@ class VectorStore:
     async def update_node_embedding(self, node_id: str, embedding: np.ndarray) -> None:
         """
         更新节点的 embedding
-        
+
         Args:
             node_id: 节点ID
             embedding: 新的向量
