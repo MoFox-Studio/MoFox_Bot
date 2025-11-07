@@ -4,10 +4,10 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from src.common.database.compatibility import db_get
-from src.common.database.core.models import LLMUsage
+from src.chat.utils.statistic import (
+    StatisticOutputTask,
+)
 from src.common.logger import get_logger
-from src.config.config import model_config
 
 logger = get_logger("LLM统计API")
 
@@ -36,108 +36,6 @@ COST_BY_TYPE = "costs_by_type"
 COST_BY_USER = "costs_by_user"
 COST_BY_MODEL = "costs_by_model"
 COST_BY_MODULE = "costs_by_module"
-
-
-async def _collect_stats_in_period(start_time: datetime, end_time: datetime) -> dict[str, Any]:
-    """在指定时间段内收集LLM使用统计信息"""
-    records = await db_get(
-        model_class=LLMUsage,
-        filters={"timestamp": {"$gte": start_time, "$lt": end_time}},
-    )
-    if not records:
-        return {}
-
-    # 创建一个从 model_identifier 到 name 的映射
-    model_identifier_to_name_map = {model.model_identifier: model.name for model in model_config.models}
-
-    stats: dict[str, Any] = {
-        TOTAL_REQ_CNT: 0,
-        TOTAL_COST: 0.0,
-        REQ_CNT_BY_TYPE: defaultdict(int),
-        REQ_CNT_BY_USER: defaultdict(int),
-        REQ_CNT_BY_MODEL: defaultdict(int),
-        REQ_CNT_BY_MODULE: defaultdict(int),
-        IN_TOK_BY_TYPE: defaultdict(int),
-        IN_TOK_BY_USER: defaultdict(int),
-        IN_TOK_BY_MODEL: defaultdict(int),
-        IN_TOK_BY_MODULE: defaultdict(int),
-        OUT_TOK_BY_TYPE: defaultdict(int),
-        OUT_TOK_BY_USER: defaultdict(int),
-        OUT_TOK_BY_MODEL: defaultdict(int),
-        OUT_TOK_BY_MODULE: defaultdict(int),
-        TOTAL_TOK_BY_TYPE: defaultdict(int),
-        TOTAL_TOK_BY_USER: defaultdict(int),
-        TOTAL_TOK_BY_MODEL: defaultdict(int),
-        TOTAL_TOK_BY_MODULE: defaultdict(int),
-        COST_BY_TYPE: defaultdict(float),
-        COST_BY_USER: defaultdict(float),
-        COST_BY_MODEL: defaultdict(float),
-        COST_BY_MODULE: defaultdict(float),
-    }
-
-    for record in records:
-        if not isinstance(record, dict):
-            continue
-
-        stats[TOTAL_REQ_CNT] += 1
-
-        request_type = record.get("request_type") or "unknown"
-        user_id = record.get("user_id") or "unknown"
-        # 从数据库获取的是真实模型名 (model_identifier)
-        real_model_name = record.get("model_name") or "unknown"
-        module_name = request_type.split(".")[0] if "." in request_type else request_type
-
-        # 尝试通过真实模型名找到配置文件中的模型名
-        config_model_name = model_identifier_to_name_map.get(real_model_name, real_model_name)
-
-        prompt_tokens = record.get("prompt_tokens") or 0
-        completion_tokens = record.get("completion_tokens") or 0
-        total_tokens = prompt_tokens + completion_tokens
-
-        cost = 0.0
-        try:
-            # 使用配置文件中的模型名来获取模型信息
-            model_info = model_config.get_model_info(config_model_name)
-            if model_info:
-                input_cost = (prompt_tokens / 1000000) * model_info.price_in
-                output_cost = (completion_tokens / 1000000) * model_info.price_out
-                cost = round(input_cost + output_cost, 6)
-        except KeyError as e:
-            logger.info(str(e))
-            logger.warning(f"模型 '{config_model_name}' (真实名称: '{real_model_name}') 在配置中未找到，成本计算将使用默认值 0.0")
-
-        stats[TOTAL_COST] += cost
-
-        # 按类型统计
-        stats[REQ_CNT_BY_TYPE][request_type] += 1
-        stats[IN_TOK_BY_TYPE][request_type] += prompt_tokens
-        stats[OUT_TOK_BY_TYPE][request_type] += completion_tokens
-        stats[TOTAL_TOK_BY_TYPE][request_type] += total_tokens
-        stats[COST_BY_TYPE][request_type] += cost
-
-        # 按用户统计
-        stats[REQ_CNT_BY_USER][user_id] += 1
-        stats[IN_TOK_BY_USER][user_id] += prompt_tokens
-        stats[OUT_TOK_BY_USER][user_id] += completion_tokens
-        stats[TOTAL_TOK_BY_USER][user_id] += total_tokens
-        stats[COST_BY_USER][user_id] += cost
-
-        # 按模型统计 (使用配置文件中的名称)
-        stats[REQ_CNT_BY_MODEL][config_model_name] += 1
-        stats[IN_TOK_BY_MODEL][config_model_name] += prompt_tokens
-        stats[OUT_TOK_BY_MODEL][config_model_name] += completion_tokens
-        stats[TOTAL_TOK_BY_MODEL][config_model_name] += total_tokens
-        stats[COST_BY_MODEL][config_model_name] += cost
-
-        # 按模块统计
-        stats[REQ_CNT_BY_MODULE][module_name] += 1
-        stats[IN_TOK_BY_MODULE][module_name] += prompt_tokens
-        stats[OUT_TOK_BY_MODULE][module_name] += completion_tokens
-        stats[TOTAL_TOK_BY_MODULE][module_name] += total_tokens
-        stats[COST_BY_MODULE][module_name] += cost
-
-    return stats
-
 
 @router.get("/llm/stats")
 async def get_llm_stats(
@@ -179,7 +77,8 @@ async def get_llm_stats(
         if start_time is None:
             raise HTTPException(status_code=400, detail="无法确定查询的起始时间")
 
-        period_stats = await _collect_stats_in_period(start_time, end_time)
+        stats_data = await StatisticOutputTask._collect_model_request_for_period([("custom", start_time)])
+        period_stats = stats_data.get("custom", {})
 
         if not period_stats:
             return {"period": {"start": start_time.isoformat(), "end": end_time.isoformat()}, "data": {}}
