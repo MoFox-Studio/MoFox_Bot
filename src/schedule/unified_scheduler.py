@@ -530,9 +530,9 @@ class UnifiedScheduler:
             if executing_task and not executing_task.done():
                 logger.debug(f"取消正在执行的任务: {task.task_name}")
                 executing_task.cancel()
-                await executing_task
+                await asyncio.wait_for(executing_task, 3)
                 self._executing_tasks.pop(schedule_id, None)
-            
+
             await self._remove_task_internal(schedule_id)
             logger.debug(f"移除调度任务: {task.task_name}")
             return True
