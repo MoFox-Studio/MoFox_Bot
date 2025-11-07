@@ -205,7 +205,7 @@ async def _process_single_segment(segment: Seg, state: dict, message_info: BaseM
                     return result
                 else:
                     logger.warning(f"[at处理] 无法解析格式: '{segment.data}'")
-                    return f"@{segment.data}"        
+                    return f"@{segment.data}"
             logger.warning(f"[at处理] 数据类型异常: {type(segment.data)}")
             return f"@{segment.data}" if isinstance(segment.data, str) else "@未知用户"
 

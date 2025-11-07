@@ -368,13 +368,13 @@ class CacheManager:
 
         if expired_keys:
             logger.info(f"清理了 {len(expired_keys)} 个过期的L1缓存条目")
-    
+
     def get_health_stats(self) -> dict[str, Any]:
         """获取缓存健康统计信息"""
         # 简化的健康统计，不包含内存监控（因为相关属性未定义）
         return {
             "l1_count": len(self.l1_kv_cache),
-            "l1_vector_count": self.l1_vector_index.ntotal if hasattr(self.l1_vector_index, 'ntotal') else 0,
+            "l1_vector_count": self.l1_vector_index.ntotal if hasattr(self.l1_vector_index, "ntotal") else 0,
             "tool_stats": {
                 "total_tool_calls": self.tool_stats.get("total_tool_calls", 0),
                 "tracked_tools": len(self.tool_stats.get("most_used_tools", {})),
@@ -397,7 +397,7 @@ class CacheManager:
             warnings.append(f"⚠️ L1缓存条目数较多: {l1_size}")
 
         # 检查向量索引大小
-        vector_count = self.l1_vector_index.ntotal if hasattr(self.l1_vector_index, 'ntotal') else 0
+        vector_count = self.l1_vector_index.ntotal if hasattr(self.l1_vector_index, "ntotal") else 0
         if isinstance(vector_count, int) and vector_count > 500:
             warnings.append(f"⚠️ 向量索引条目数较多: {vector_count}")
 

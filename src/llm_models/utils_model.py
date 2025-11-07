@@ -534,7 +534,7 @@ class _RequestExecutor:
         model_name = model_info.name
         retry_interval = api_provider.retry_interval
 
-        if isinstance(e, (NetworkConnectionError, ReqAbortException)):
+        if isinstance(e, NetworkConnectionError | ReqAbortException):
             return await self._check_retry(remain_try, retry_interval, "连接异常", model_name)
         elif isinstance(e, RespNotOkException):
             return await self._handle_resp_not_ok(e, model_info, api_provider, remain_try, messages_info)

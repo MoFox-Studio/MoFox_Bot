@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Any
 
 import numpy as np
-import orjson
 from sqlalchemy import select
 
 from src.common.config_helpers import resolve_embedding_dimension
@@ -124,7 +123,7 @@ class BotInterestManager:
             tags_info = [f"  - '{tag.tag_name}' (权重: {tag.weight:.2f})" for tag in loaded_interests.get_active_tags()]
             tags_str = "\n".join(tags_info)
             logger.info(f"当前兴趣标签:\n{tags_str}")
-            
+
             # 为加载的标签生成embedding（数据库不存储embedding，启动时动态生成）
             logger.info("🧠 为加载的标签生成embedding向量...")
             await self._generate_embeddings_for_tags(loaded_interests)
@@ -326,13 +325,13 @@ class BotInterestManager:
             raise RuntimeError("❌ Embedding客户端未初始化，无法生成embedding")
 
         total_tags = len(interests.interest_tags)
-        
+
         # 尝试从文件加载缓存
         file_cache = await self._load_embedding_cache_from_file(interests.personality_id)
         if file_cache:
             logger.info(f"📂 从文件加载 {len(file_cache)} 个embedding缓存")
             self.embedding_cache.update(file_cache)
-        
+
         logger.info(f"🧠 开始为 {total_tags} 个兴趣标签生成embedding向量...")
 
         memory_cached_count = 0
@@ -477,14 +476,14 @@ class BotInterestManager:
         self, message_text: str, keywords: list[str] | None = None
     ) -> InterestMatchResult:
         """计算消息与机器人兴趣的匹配度（优化版 - 标签扩展策略）
-        
+
         核心优化：将短标签扩展为完整的描述性句子，解决语义粒度不匹配问题
-        
+
         原问题：
         - 消息: "今天天气不错" (完整句子)
-        - 标签: "蹭人治愈" (2-4字短语) 
+        - 标签: "蹭人治愈" (2-4字短语)
         - 结果: 误匹配，因为短标签的 embedding 过于抽象
-        
+
         解决方案：
         - 标签扩展: "蹭人治愈" -> "表达亲近、寻求安慰、撒娇的内容"
         - 现在是: 句子 vs 句子，匹配更准确
@@ -527,18 +526,18 @@ class BotInterestManager:
             if tag.embedding:
                 # 🔧 优化：获取扩展标签的 embedding（带缓存）
                 expanded_embedding = await self._get_expanded_tag_embedding(tag.tag_name)
-                
+
                 if expanded_embedding:
                     # 使用扩展标签的 embedding 进行匹配
                     similarity = self._calculate_cosine_similarity(message_embedding, expanded_embedding)
-                    
+
                     # 同时计算原始标签的相似度作为参考
                     original_similarity = self._calculate_cosine_similarity(message_embedding, tag.embedding)
-                    
+
                     # 混合策略：扩展标签权重更高（70%），原始标签作为补充（30%）
                     # 这样可以兼顾准确性（扩展）和灵活性（原始）
                     final_similarity = similarity * 0.7 + original_similarity * 0.3
-                    
+
                     logger.debug(f"标签'{tag.tag_name}': 原始={original_similarity:.3f}, 扩展={similarity:.3f}, 最终={final_similarity:.3f}")
                 else:
                     # 如果扩展 embedding 获取失败，使用原始 embedding
@@ -603,27 +602,27 @@ class BotInterestManager:
         logger.debug(
             f"最终结果: 总分={result.overall_score:.3f}, 置信度={result.confidence:.3f}, 匹配标签数={len(result.matched_tags)}"
         )
-        
+
         # 如果有新生成的扩展embedding，保存到缓存文件
-        if hasattr(self, '_new_expanded_embeddings_generated') and self._new_expanded_embeddings_generated:
+        if hasattr(self, "_new_expanded_embeddings_generated") and self._new_expanded_embeddings_generated:
             await self._save_embedding_cache_to_file(self.current_interests.personality_id)
             self._new_expanded_embeddings_generated = False
             logger.debug("💾 已保存新生成的扩展embedding到缓存文件")
-        
+
         return result
 
     async def _get_expanded_tag_embedding(self, tag_name: str) -> list[float] | None:
         """获取扩展标签的 embedding（带缓存）
-        
+
         优先使用缓存，如果没有则生成并缓存
         """
         # 检查缓存
         if tag_name in self.expanded_embedding_cache:
             return self.expanded_embedding_cache[tag_name]
-        
+
         # 扩展标签
         expanded_tag = self._expand_tag_for_matching(tag_name)
-        
+
         # 生成 embedding
         try:
             embedding = await self._get_embedding(expanded_tag)
@@ -636,19 +635,19 @@ class BotInterestManager:
                 return embedding
         except Exception as e:
             logger.warning(f"为标签'{tag_name}'生成扩展embedding失败: {e}")
-        
+
         return None
 
     def _expand_tag_for_matching(self, tag_name: str) -> str:
         """将短标签扩展为完整的描述性句子
-        
+
         这是解决"标签太短导致误匹配"的核心方法
-        
+
         策略：
         1. 优先使用 LLM 生成的 expanded 字段（最准确）
         2. 如果没有，使用基于规则的回退方案
         3. 最后使用通用模板
-        
+
         示例：
         - "Python" + expanded -> "讨论Python编程语言、写Python代码、Python脚本开发、Python技术问题"
         - "蹭人治愈" + expanded -> "想要获得安慰、寻求温暖关怀、撒娇卖萌、表达亲昵、求抱抱求陪伴的对话"
@@ -656,7 +655,7 @@ class BotInterestManager:
         # 使用缓存
         if tag_name in self.expanded_tag_cache:
             return self.expanded_tag_cache[tag_name]
-        
+
         # 🎯 优先策略：使用 LLM 生成的 expanded 字段
         if self.current_interests:
             for tag in self.current_interests.interest_tags:
@@ -664,66 +663,66 @@ class BotInterestManager:
                     logger.debug(f"✅ 使用LLM生成的扩展描述: {tag_name} -> {tag.expanded[:50]}...")
                     self.expanded_tag_cache[tag_name] = tag.expanded
                     return tag.expanded
-        
+
         # 🔧 回退策略：基于规则的扩展（用于兼容旧数据或LLM未生成扩展的情况）
         logger.debug(f"⚠️ 标签'{tag_name}'没有LLM扩展描述，使用规则回退方案")
         tag_lower = tag_name.lower()
-        
+
         # 技术编程类标签（具体化描述）
-        if any(word in tag_lower for word in ['python', 'java', 'code', '代码', '编程', '脚本', '算法', '开发']):
-            if 'python' in tag_lower:
-                return f"讨论Python编程语言、写Python代码、Python脚本开发、Python技术问题"
-            elif '算法' in tag_lower:
-                return f"讨论算法题目、数据结构、编程竞赛、刷LeetCode题目、代码优化"
-            elif '代码' in tag_lower or '被窝' in tag_lower:
-                return f"讨论写代码、编程开发、代码实现、技术方案、编程技巧"
+        if any(word in tag_lower for word in ["python", "java", "code", "代码", "编程", "脚本", "算法", "开发"]):
+            if "python" in tag_lower:
+                return "讨论Python编程语言、写Python代码、Python脚本开发、Python技术问题"
+            elif "算法" in tag_lower:
+                return "讨论算法题目、数据结构、编程竞赛、刷LeetCode题目、代码优化"
+            elif "代码" in tag_lower or "被窝" in tag_lower:
+                return "讨论写代码、编程开发、代码实现、技术方案、编程技巧"
             else:
-                return f"讨论编程开发、软件技术、代码编写、技术实现"
-        
+                return "讨论编程开发、软件技术、代码编写、技术实现"
+
         # 情感表达类标签（具体化为真实对话场景）
-        elif any(word in tag_lower for word in ['治愈', '撒娇', '安慰', '呼噜', '蹭', '卖萌']):
-            return f"想要获得安慰、寻求温暖关怀、撒娇卖萌、表达亲昵、求抱抱求陪伴的对话"
-        
+        elif any(word in tag_lower for word in ["治愈", "撒娇", "安慰", "呼噜", "蹭", "卖萌"]):
+            return "想要获得安慰、寻求温暖关怀、撒娇卖萌、表达亲昵、求抱抱求陪伴的对话"
+
         # 游戏娱乐类标签（具体游戏场景）
-        elif any(word in tag_lower for word in ['游戏', '网游', 'mmo', '游', '玩']):
-            return f"讨论网络游戏、MMO游戏、游戏玩法、组队打副本、游戏攻略心得"
-        
+        elif any(word in tag_lower for word in ["游戏", "网游", "mmo", "游", "玩"]):
+            return "讨论网络游戏、MMO游戏、游戏玩法、组队打副本、游戏攻略心得"
+
         # 动漫影视类标签（具体观看行为）
-        elif any(word in tag_lower for word in ['番', '动漫', '视频', 'b站', '弹幕', '追番', '云新番']):
+        elif any(word in tag_lower for word in ["番", "动漫", "视频", "b站", "弹幕", "追番", "云新番"]):
             # 特别处理"云新番" - 它的意思是在网上看新动漫，不是泛泛的"新东西"
-            if '云' in tag_lower or '新番' in tag_lower:
-                return f"讨论正在播出的新动漫、新番剧集、动漫剧情、追番心得、动漫角色"
+            if "云" in tag_lower or "新番" in tag_lower:
+                return "讨论正在播出的新动漫、新番剧集、动漫剧情、追番心得、动漫角色"
             else:
-                return f"讨论动漫番剧内容、B站视频、弹幕文化、追番体验"
-        
+                return "讨论动漫番剧内容、B站视频、弹幕文化、追番体验"
+
         # 社交平台类标签（具体平台行为）
-        elif any(word in tag_lower for word in ['小红书', '贴吧', '论坛', '社区', '吃瓜', '八卦']):
-            if '吃瓜' in tag_lower:
-                return f"聊八卦爆料、吃瓜看热闹、网络热点事件、社交平台热议话题"
+        elif any(word in tag_lower for word in ["小红书", "贴吧", "论坛", "社区", "吃瓜", "八卦"]):
+            if "吃瓜" in tag_lower:
+                return "聊八卦爆料、吃瓜看热闹、网络热点事件、社交平台热议话题"
             else:
-                return f"讨论社交平台内容、网络社区话题、论坛讨论、分享生活"
-        
+                return "讨论社交平台内容、网络社区话题、论坛讨论、分享生活"
+
         # 生活日常类标签（具体萌宠场景）
-        elif any(word in tag_lower for word in ['猫', '宠物', '尾巴', '耳朵', '毛绒']):
-            return f"讨论猫咪宠物、晒猫分享、萌宠日常、可爱猫猫、养猫心得"
-        
+        elif any(word in tag_lower for word in ["猫", "宠物", "尾巴", "耳朵", "毛绒"]):
+            return "讨论猫咪宠物、晒猫分享、萌宠日常、可爱猫猫、养猫心得"
+
         # 状态心情类标签（具体情绪状态）
-        elif any(word in tag_lower for word in ['社恐', '隐身', '流浪', '深夜', '被窝']):
-            if '社恐' in tag_lower:
-                return f"表达社交焦虑、不想见人、想躲起来、害怕社交的心情"
-            elif '深夜' in tag_lower:
-                return f"深夜睡不着、熬夜、夜猫子、深夜思考人生的对话"
+        elif any(word in tag_lower for word in ["社恐", "隐身", "流浪", "深夜", "被窝"]):
+            if "社恐" in tag_lower:
+                return "表达社交焦虑、不想见人、想躲起来、害怕社交的心情"
+            elif "深夜" in tag_lower:
+                return "深夜睡不着、熬夜、夜猫子、深夜思考人生的对话"
             else:
-                return f"表达当前心情状态、个人感受、生活状态"
-        
+                return "表达当前心情状态、个人感受、生活状态"
+
         # 物品装备类标签（具体使用场景）
-        elif any(word in tag_lower for word in ['键盘', '耳机', '装备', '设备']):
-            return f"讨论键盘耳机装备、数码产品、使用体验、装备推荐评测"
-        
+        elif any(word in tag_lower for word in ["键盘", "耳机", "装备", "设备"]):
+            return "讨论键盘耳机装备、数码产品、使用体验、装备推荐评测"
+
         # 互动关系类标签
-        elif any(word in tag_lower for word in ['拾风', '互怼', '互动']):
-            return f"聊天互动、开玩笑、友好互怼、日常对话交流"
-        
+        elif any(word in tag_lower for word in ["拾风", "互怼", "互动"]):
+            return "聊天互动、开玩笑、友好互怼、日常对话交流"
+
         # 默认：尽量具体化
         else:
             return f"明确讨论{tag_name}这个特定主题的具体内容和相关话题"
@@ -1011,56 +1010,58 @@ class BotInterestManager:
     async def _load_embedding_cache_from_file(self, personality_id: str) -> dict[str, list[float]] | None:
         """从文件加载embedding缓存"""
         try:
-            import orjson
             from pathlib import Path
-            
+
+            import orjson
+
             cache_dir = Path("data/embedding")
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_file = cache_dir / f"{personality_id}_embeddings.json"
-            
+
             if not cache_file.exists():
                 logger.debug(f"📂 Embedding缓存文件不存在: {cache_file}")
                 return None
-            
+
             # 读取缓存文件
             with open(cache_file, "rb") as f:
                 cache_data = orjson.loads(f.read())
-            
+
             # 验证缓存版本和embedding模型
             cache_version = cache_data.get("version", 1)
             cache_embedding_model = cache_data.get("embedding_model", "")
             current_embedding_model = self.embedding_config.model_list[0] if hasattr(self.embedding_config, "model_list") else ""
-            
+
             if cache_embedding_model != current_embedding_model:
                 logger.warning(f"⚠️ Embedding模型已变更 ({cache_embedding_model} → {current_embedding_model})，忽略旧缓存")
                 return None
-            
+
             embeddings = cache_data.get("embeddings", {})
-            
+
             # 同时加载扩展标签的embedding缓存
             expanded_embeddings = cache_data.get("expanded_embeddings", {})
             if expanded_embeddings:
                 self.expanded_embedding_cache.update(expanded_embeddings)
                 logger.info(f"📂 加载 {len(expanded_embeddings)} 个扩展标签embedding缓存")
-            
+
             logger.info(f"✅ 成功从文件加载 {len(embeddings)} 个标签embedding缓存 (版本: {cache_version}, 模型: {cache_embedding_model})")
             return embeddings
-            
+
         except Exception as e:
             logger.warning(f"⚠️ 加载embedding缓存文件失败: {e}")
             return None
-    
+
     async def _save_embedding_cache_to_file(self, personality_id: str):
         """保存embedding缓存到文件（包括扩展标签的embedding）"""
         try:
-            import orjson
-            from pathlib import Path
             from datetime import datetime
-            
+            from pathlib import Path
+
+            import orjson
+
             cache_dir = Path("data/embedding")
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_file = cache_dir / f"{personality_id}_embeddings.json"
-            
+
             # 准备缓存数据
             current_embedding_model = self.embedding_config.model_list[0] if hasattr(self.embedding_config, "model_list") and self.embedding_config.model_list else ""
             cache_data = {
@@ -1071,13 +1072,13 @@ class BotInterestManager:
                 "embeddings": self.embedding_cache,
                 "expanded_embeddings": self.expanded_embedding_cache,  # 同时保存扩展标签的embedding
             }
-            
+
             # 写入文件
             with open(cache_file, "wb") as f:
                 f.write(orjson.dumps(cache_data, option=orjson.OPT_INDENT_2))
-            
+
             logger.debug(f"💾 已保存 {len(self.embedding_cache)} 个标签embedding和 {len(self.expanded_embedding_cache)} 个扩展embedding到缓存文件: {cache_file}")
-            
+
         except Exception as e:
             logger.warning(f"⚠️ 保存embedding缓存文件失败: {e}")
 

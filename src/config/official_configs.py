@@ -401,16 +401,16 @@ class MemoryConfig(ValidatedConfigBase):
     memory_system_load_balancing: bool = Field(default=True, description="启用记忆系统负载均衡")
     memory_build_throttling: bool = Field(default=True, description="启用记忆构建节流")
     memory_priority_queue_enabled: bool = Field(default=True, description="启用记忆优先级队列")
-    
+
     # === 记忆图系统配置 (Memory Graph System) ===
     # 新一代记忆系统的配置项
     enable: bool = Field(default=True, description="启用记忆图系统")
     data_dir: str = Field(default="data/memory_graph", description="记忆数据存储目录")
-    
+
     # 向量存储配置
     vector_collection_name: str = Field(default="memory_nodes", description="向量集合名称")
     vector_db_path: str = Field(default="data/memory_graph/chroma_db", description="向量数据库路径")
-    
+
     # 检索配置
     search_top_k: int = Field(default=10, description="默认检索返回数量")
     search_min_importance: float = Field(default=0.3, description="最小重要性阈值")
@@ -418,13 +418,13 @@ class MemoryConfig(ValidatedConfigBase):
     search_max_expand_depth: int = Field(default=2, description="检索时图扩展深度（0-3）")
     search_expand_semantic_threshold: float = Field(default=0.3, description="图扩展时语义相似度阈值（建议0.3-0.5，过低可能引入无关记忆，过高无法扩展）")
     enable_query_optimization: bool = Field(default=True, description="启用查询优化")
-    
+
     # 检索权重配置 (记忆图系统)
     search_vector_weight: float = Field(default=0.4, description="向量相似度权重")
     search_graph_distance_weight: float = Field(default=0.2, description="图距离权重")
     search_importance_weight: float = Field(default=0.2, description="重要性权重")
     search_recency_weight: float = Field(default=0.2, description="时效性权重")
-    
+
     # 记忆整合配置
     consolidation_enabled: bool = Field(default=False, description="是否启用记忆整合")
     consolidation_interval_hours: float = Field(default=2.0, description="整合任务执行间隔（小时）")
@@ -442,21 +442,21 @@ class MemoryConfig(ValidatedConfigBase):
     consolidation_linking_min_confidence: float = Field(default=0.7, description="LLM分析最低置信度阈值")
     consolidation_linking_llm_temperature: float = Field(default=0.2, description="LLM分析温度参数")
     consolidation_linking_llm_max_tokens: int = Field(default=1500, description="LLM分析最大输出长度")
-    
+
     # 遗忘配置 (记忆图系统)
     forgetting_enabled: bool = Field(default=True, description="是否启用自动遗忘")
     forgetting_activation_threshold: float = Field(default=0.1, description="激活度阈值")
     forgetting_min_importance: float = Field(default=0.8, description="最小保护重要性")
-    
+
     # 激活配置
     activation_decay_rate: float = Field(default=0.9, description="激活度衰减率")
     activation_propagation_strength: float = Field(default=0.5, description="激活传播强度")
     activation_propagation_depth: int = Field(default=2, description="激活传播深度")
-    
+
     # 性能配置
     max_memory_nodes_per_memory: int = Field(default=10, description="每个记忆最多包含的节点数")
     max_related_memories: int = Field(default=5, description="相关记忆最大数量")
-    
+
     # 节点去重合并配置
     node_merger_similarity_threshold: float = Field(default=0.85, description="节点去重相似度阈值")
     node_merger_context_match_required: bool = Field(default=True, description="节点合并是否要求上下文匹配")

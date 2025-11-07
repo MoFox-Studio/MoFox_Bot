@@ -542,7 +542,7 @@ class DefaultReplyer:
         all_memories = []
         try:
             from src.memory_graph.manager_singleton import get_memory_manager, is_initialized
-            
+
             if is_initialized():
                 manager = get_memory_manager()
                 if manager:
@@ -552,12 +552,12 @@ class DefaultReplyer:
                     sender_name = ""
                     if user_info_obj:
                         sender_name = getattr(user_info_obj, "user_nickname", "") or getattr(user_info_obj, "user_cardname", "")
-                    
+
                     # 获取参与者信息
                     participants = []
                     try:
                         # 尝试从聊天流中获取参与者信息
-                        if hasattr(stream, 'chat_history_manager'):
+                        if hasattr(stream, "chat_history_manager"):
                             history_manager = stream.chat_history_manager
                             # 获取最近的参与者列表
                             recent_records = history_manager.get_memory_chat_history(
@@ -586,16 +586,16 @@ class DefaultReplyer:
                     formatted_history = ""
                     if chat_history:
                         # 移除过长的历史记录，只保留最近部分
-                        lines = chat_history.strip().split('\n')
+                        lines = chat_history.strip().split("\n")
                         recent_lines = lines[-10:] if len(lines) > 10 else lines
-                        formatted_history = '\n'.join(recent_lines)
+                        formatted_history = "\n".join(recent_lines)
 
                     query_context = {
                         "chat_history": formatted_history,
                         "sender": sender_name,
                         "participants": participants,
                     }
-                    
+
                     # 使用记忆管理器的智能检索（多查询策略）
                     memories = await manager.search_memories(
                         query=target,
@@ -605,23 +605,23 @@ class DefaultReplyer:
                         use_multi_query=True,
                         context=query_context,
                     )
-                    
+
                     if memories:
                         logger.info(f"[记忆图] 检索到 {len(memories)} 条相关记忆")
-                        
+
                         # 使用新的格式化工具构建完整的记忆描述
                         from src.memory_graph.utils.memory_formatter import (
                             format_memory_for_prompt,
                             get_memory_type_label,
                         )
-                        
+
                         for memory in memories:
                             # 使用格式化工具生成完整的主谓宾描述
                             content = format_memory_for_prompt(memory, include_metadata=False)
-                            
+
                             # 获取记忆类型
                             mem_type = memory.memory_type.value if memory.memory_type else "未知"
-                            
+
                             if content:
                                 all_memories.append({
                                     "content": content,
@@ -636,7 +636,7 @@ class DefaultReplyer:
         except Exception as e:
             logger.debug(f"[记忆图] 检索失败: {e}")
             all_memories = []
-        
+
         # 构建记忆字符串，使用方括号格式
         memory_str = ""
         has_any_memory = False
@@ -725,7 +725,7 @@ class DefaultReplyer:
                 for tool_result in tool_results:
                     tool_name = tool_result.get("tool_name", "unknown")
                     content = tool_result.get("content", "")
-                    result_type = tool_result.get("type", "tool_result")
+                    tool_result.get("type", "tool_result")
 
                     # 不进行截断，让工具自己处理结果长度
                     current_results_parts.append(f"- **{tool_name}**: {content}")
@@ -744,7 +744,7 @@ class DefaultReplyer:
             logger.error(f"工具信息获取失败: {e}")
             return ""
 
-    
+
     def _parse_reply_target(self, target_message: str) -> tuple[str, str]:
         """解析回复目标消息 - 使用共享工具"""
         from src.chat.utils.prompt import Prompt
@@ -1897,7 +1897,7 @@ class DefaultReplyer:
     async def _store_chat_memory_async(self, reply_to: str, reply_message: DatabaseMessages | dict[str, Any] | None = None):
         """
         [已废弃] 异步存储聊天记忆（从build_memory_block迁移而来）
-        
+
         此函数已被记忆图系统的工具调用方式替代。
         记忆现在由LLM在对话过程中通过CreateMemoryTool主动创建。
 
@@ -1906,14 +1906,13 @@ class DefaultReplyer:
             reply_message: 回复的原始消息
         """
         return  # 已禁用，保留函数签名以防其他地方有引用
-        
+
         # 以下代码已废弃，不再执行
         try:
             if not global_config.memory.enable_memory:
                 return
 
             # 使用统一记忆系统存储记忆
-            from src.chat.memory_system import get_memory_system
 
             stream = self.chat_stream
             user_info_obj = getattr(stream, "user_info", None)
@@ -2036,7 +2035,7 @@ class DefaultReplyer:
                     timestamp=time.time(),
                     limit=int(global_config.chat.max_context_size),
                 )
-            chat_history = await build_readable_messages(
+            await build_readable_messages(
                 message_list_before_short,
                 replace_bot_name=True,
                 merge_messages=False,

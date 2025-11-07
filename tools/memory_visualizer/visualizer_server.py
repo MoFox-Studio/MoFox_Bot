@@ -11,7 +11,6 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
@@ -28,7 +27,7 @@ app = Flask(__name__)
 CORS(app)  # 允许跨域请求
 
 # 全局记忆管理器
-memory_manager: Optional[MemoryManager] = None
+memory_manager: MemoryManager | None = None
 
 
 def init_memory_manager():
@@ -189,7 +188,7 @@ def search_memories():
             init_memory_manager()
 
         query = request.args.get("q", "")
-        memory_type = request.args.get("type", None)
+        request.args.get("type", None)
         limit = int(request.args.get("limit", 50))
 
         loop = asyncio.new_event_loop()

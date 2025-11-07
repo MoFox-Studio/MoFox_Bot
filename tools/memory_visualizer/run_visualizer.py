@@ -14,7 +14,7 @@ sys.path.insert(0, str(project_root))
 
 from tools.memory_visualizer.visualizer_server import run_server
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("=" * 60)
     print("🦊 MoFox Bot - 记忆图可视化工具")
     print("=" * 60)
@@ -24,10 +24,10 @@ if __name__ == '__main__':
     print("⏹️  按 Ctrl+C 停止服务器")
     print()
     print("=" * 60)
-    
+
     try:
         run_server(
-            host='127.0.0.1',
+            host="127.0.0.1",
             port=5000,
             debug=True
         )

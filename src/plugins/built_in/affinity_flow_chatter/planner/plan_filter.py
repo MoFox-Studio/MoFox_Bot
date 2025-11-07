@@ -14,9 +14,7 @@ from json_repair import repair_json
 # 旧的Hippocampus系统已被移除，现在使用增强记忆系统
 # from src.chat.memory_system.enhanced_memory_manager import enhanced_memory_manager
 from src.chat.utils.chat_message_builder import (
-    build_readable_actions,
     build_readable_messages_with_id,
-    get_actions_by_timestamp_with_chat,
 )
 from src.chat.utils.prompt import global_prompt_manager
 from src.common.data_models.info_data_model import ActionPlannerInfo, Plan
@@ -646,7 +644,7 @@ class ChatterPlanFilter:
                 memory_manager = get_memory_manager()
                 if not memory_manager:
                     return "记忆系统未初始化。"
-                    
+
                 # 将关键词转换为查询字符串
                 query = " ".join(keywords)
                 enhanced_memories = await memory_manager.search_memories(

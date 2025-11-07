@@ -15,7 +15,7 @@ from pathlib import Path
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     print("=" * 70)
     print("🦊 MoFox Bot - 记忆图可视化工具 (独立版)")
     print("=" * 70)
@@ -26,10 +26,10 @@ if __name__ == '__main__':
     print("  • 快速启动,无需完整初始化")
     print()
     print("=" * 70)
-    
+
     try:
         from tools.memory_visualizer.visualizer_simple import run_server
-        run_server(host='127.0.0.1', port=5001, debug=True)
+        run_server(host="127.0.0.1", port=5001, debug=True)
     except KeyboardInterrupt:
         print("\n\n👋 服务器已停止")
     except Exception as e:
