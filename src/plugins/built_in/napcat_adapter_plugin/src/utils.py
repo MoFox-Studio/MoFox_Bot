@@ -1,6 +1,6 @@
 import base64
 import io
-import json
+import orjson
 import ssl
 import uuid
 from typing import List, Optional, Tuple, Union
@@ -34,7 +34,7 @@ async def get_group_info(websocket: Server.ServerConnection, group_id: int) -> d
     """
     logger.debug("获取群聊信息中")
     request_uuid = str(uuid.uuid4())
-    payload = json.dumps({"action": "get_group_info", "params": {"group_id": group_id}, "echo": request_uuid})
+    payload = orjson.dumps({"action": "get_group_info", "params": {"group_id": group_id}, "echo": request_uuid}).decode('utf-8')
     try:
         await websocket.send(payload)
         socket_response: dict = await get_response(request_uuid)
@@ -56,7 +56,7 @@ async def get_group_detail_info(websocket: Server.ServerConnection, group_id: in
     """
     logger.debug("获取群详细信息中")
     request_uuid = str(uuid.uuid4())
-    payload = json.dumps({"action": "get_group_detail_info", "params": {"group_id": group_id}, "echo": request_uuid})
+    payload = orjson.dumps({"action": "get_group_detail_info", "params": {"group_id": group_id}, "echo": request_uuid}).decode('utf-8')
     try:
         await websocket.send(payload)
         socket_response: dict = await get_response(request_uuid)
@@ -78,13 +78,13 @@ async def get_member_info(websocket: Server.ServerConnection, group_id: int, use
     """
     logger.debug("获取群成员信息中")
     request_uuid = str(uuid.uuid4())
-    payload = json.dumps(
+    payload = orjson.dumps(
         {
             "action": "get_group_member_info",
             "params": {"group_id": group_id, "user_id": user_id, "no_cache": True},
             "echo": request_uuid,
         }
-    )
+    ).decode('utf-8')
     try:
         await websocket.send(payload)
         socket_response: dict = await get_response(request_uuid)
@@ -146,7 +146,7 @@ async def get_self_info(websocket: Server.ServerConnection) -> dict | None:
     """
     logger.debug("获取自身信息中")
     request_uuid = str(uuid.uuid4())
-    payload = json.dumps({"action": "get_login_info", "params": {}, "echo": request_uuid})
+    payload = orjson.dumps({"action": "get_login_info", "params": {}, "echo": request_uuid}).decode('utf-8')
     try:
         await websocket.send(payload)
         response: dict = await get_response(request_uuid)
@@ -183,7 +183,7 @@ async def get_stranger_info(websocket: Server.ServerConnection, user_id: int) ->
     """
     logger.debug("获取陌生人信息中")
     request_uuid = str(uuid.uuid4())
-    payload = json.dumps({"action": "get_stranger_info", "params": {"user_id": user_id}, "echo": request_uuid})
+    payload = orjson.dumps({"action": "get_stranger_info", "params": {"user_id": user_id}, "echo": request_uuid}).decode('utf-8')
     try:
         await websocket.send(payload)
         response: dict = await get_response(request_uuid)
@@ -208,7 +208,7 @@ async def get_message_detail(websocket: Server.ServerConnection, message_id: Uni
     """
     logger.debug("获取消息详情中")
     request_uuid = str(uuid.uuid4())
-    payload = json.dumps({"action": "get_msg", "params": {"message_id": message_id}, "echo": request_uuid})
+    payload = orjson.dumps({"action": "get_msg", "params": {"message_id": message_id}, "echo": request_uuid}).decode('utf-8')
     try:
         await websocket.send(payload)
         response: dict = await get_response(request_uuid, 30)  # 增加超时时间到30秒
@@ -236,13 +236,13 @@ async def get_record_detail(
     """
     logger.debug("获取语音消息详情中")
     request_uuid = str(uuid.uuid4())
-    payload = json.dumps(
+    payload = orjson.dumps(
         {
             "action": "get_record",
             "params": {"file": file, "file_id": file_id, "out_format": "wav"},
             "echo": request_uuid,
         }
-    )
+    ).decode('utf-8')
     try:
         await websocket.send(payload)
         response: dict = await get_response(request_uuid, 30)  # 增加超时时间到30秒

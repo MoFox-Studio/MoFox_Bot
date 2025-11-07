@@ -1,0 +1,9 @@
+# 记忆图可视化工具依赖
+
+# Web框架
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# 其他依赖由主项目提供
+# - src.memory_graph
+# - src.config

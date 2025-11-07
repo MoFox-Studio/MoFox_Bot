@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoFox Bot - 记忆图可视化</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .sidebar {
+            width: 320px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .graph-container {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            overflow: hidden;
+            position: relative;
+        }
+
+        #memory-graph {
+            width: 100%;
+            height: 100%;
+        }
+
+        .controls {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 20px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            color: #555;
+            font-size: 16px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .stat-item {
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .legend {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .legend-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .filter-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px;
+            background: #f8f9fa;
+            border-radius: 6px;
+        }
+
+        .filter-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .filter-item label {
+            flex: 1;
+            font-size: 13px;
+            cursor: pointer;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #667eea;
+            font-size: 18px;
+            font-weight: 500;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .info-panel h3 {
+            font-size: 14px;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .info-panel p {
+            margin: 4px 0;
+            color: #555;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .control-buttons .btn {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        /* 文件选择器模态框 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            position: relative;
+            background: white;
+            margin: 5% auto;
+            padding: 30px;
+            width: 80%;
+            max-width: 700px;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+        }
+
+        .close-btn {
+            font-size: 28px;
+            font-weight: bold;
+            color: #999;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        .file-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .file-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+
+        .file-item:hover {
+            background: #e9ecef;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .file-item.current {
+            border-color: #667eea;
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+        }
+
+        .file-item-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .file-item-info {
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .file-item-current {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            .sidebar {
+                width: 100%;
+                max-height: 300px;
+            }
+            .modal-content {
+                width: 95%;
+                margin: 10% auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 侧边栏 -->
+        <div class="sidebar">
+            <h1>🦊 记忆图可视化</h1>
+            
+            <!-- 文件选择 -->
+            <div>
+                <h2>📂 数据文件</h2>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button class="btn" style="flex: 1;" onclick="showFileSelector()">选择文件</button>
+                    <button class="btn btn-secondary" style="flex: 1;" onclick="loadFileList()">刷新列表</button>
+                </div>
+                <div id="currentFileInfo" style="font-size: 12px; color: #666; padding: 8px; background: #f8f9fa; border-radius: 6px;">
+                    <p>加载中...</p>
+                </div>
+            </div>
+
+            <!-- 搜索 -->
+            <div>
+                <h2>🔍 搜索记忆</h2>
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="输入关键词搜索...">
+                    <button class="btn" onclick="searchMemories()">搜索</button>
+                </div>
+            </div>
+
+            <!-- 统计信息 -->
+            <div>
+                <h2>📊 统计信息</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="statNodes">0</div>
+                        <div class="stat-label">节点数</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="statEdges">0</div>
+                        <div class="stat-label">边数</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="statMemories">0</div>
+                        <div class="stat-label">记忆数</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="statDensity">0%</div>
+                        <div class="stat-label">图密度</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 节点类型图例 -->
+            <div>
+                <h2>🎨 节点类型</h2>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FF6B6B;"></div>
+                        <span>主体 (SUBJECT)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #4ECDC4;"></div>
+                        <span>主题 (TOPIC)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #45B7D1;"></div>
+                        <span>客体 (OBJECT)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FFA07A;"></div>
+                        <span>属性 (ATTRIBUTE)</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #98D8C8;"></div>
+                        <span>值 (VALUE)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 过滤器 -->
+            <div>
+                <h2>🔧 过滤器</h2>
+                <div class="filter-group">
+                    <div class="filter-item">
+                        <input type="checkbox" id="filterSubject" checked onchange="applyFilters()">
+                        <label for="filterSubject">显示主体节点</label>
+                    </div>
+                    <div class="filter-item">
+                        <input type="checkbox" id="filterTopic" checked onchange="applyFilters()">
+                        <label for="filterTopic">显示主题节点</label>
+                    </div>
+                    <div class="filter-item">
+                        <input type="checkbox" id="filterObject" checked onchange="applyFilters()">
+                        <label for="filterObject">显示客体节点</label>
+                    </div>
+                    <div class="filter-item">
+                        <input type="checkbox" id="filterAttribute" checked onchange="applyFilters()">
+                        <label for="filterAttribute">显示属性节点</label>
+                    </div>
+                    <div class="filter-item">
+                        <input type="checkbox" id="filterValue" checked onchange="applyFilters()">
+                        <label for="filterValue">显示值节点</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 选中节点信息 -->
+            <div>
+                <h2>ℹ️ 节点信息</h2>
+                <div class="info-panel" id="nodeInfo">
+                    <p style="color: #999;">点击节点查看详细信息</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="main-content">
+            <!-- 控制按钮 -->
+            <div class="controls">
+                <div class="control-buttons">
+                    <button class="btn" onclick="loadGraph()">🔄 刷新图形</button>
+                    <button class="btn btn-secondary" onclick="fitNetwork()">📐 适应窗口</button>
+                    <button class="btn" onclick="exportGraph()">💾 导出数据</button>
+                </div>
+            </div>
+
+            <!-- 图形显示区 -->
+            <div class="graph-container">
+                <div id="memory-graph"></div>
+                <div class="loading" id="loading">
+                    <div class="loading-spinner"></div>
+                    <div>正在加载记忆图...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件选择模态框 -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📂 选择数据文件</h2>
+                <span class="close-btn" onclick="closeFileSelector()">&times;</span>
+            </div>
+            <div id="fileListContainer">
+                <div style="text-align: center; padding: 20px;">
+                    <div class="loading-spinner"></div>
+                    <p>加载文件列表...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let network = null;
+        let availableFiles = [];
+        let graphData = {
+            nodes: [],
+            edges: [],
+            memories: []
+        };
+        let originalData = null;
+
+        // 节点颜色配置
+        const nodeColors = {
+            'SUBJECT': '#FF6B6B',
+            'TOPIC': '#4ECDC4',
+            'OBJECT': '#45B7D1',
+            'ATTRIBUTE': '#FFA07A',
+            'VALUE': '#98D8C8'
+        };
+
+        // 初始化图形
+        function initNetwork() {
+            const container = document.getElementById('memory-graph');
+            
+            const options = {
+                nodes: {
+                    shape: 'dot',
+                    size: 20,
+                    font: {
+                        size: 14,
+                        color: '#333',
+                        face: 'Microsoft YaHei'
+                    },
+                    borderWidth: 2,
+                    borderWidthSelected: 4,
+                    shadow: true
+                },
+                edges: {
+                    width: 2,
+                    color: {
+                        color: '#848484',
+                        highlight: '#667eea',
+                        hover: '#764ba2'
+                    },
+                    arrows: {
+                        to: {
+                            enabled: true,
+                            scaleFactor: 0.5
+                        }
+                    },
+                    smooth: {
+                        enabled: true,
+                        type: 'dynamic'
+                    },
+                    font: {
+                        size: 11,
+                        color: '#666',
+                        face: 'Microsoft YaHei',
+                        align: 'middle'
+                    }
+                },
+                physics: {
+                    enabled: true,
+                    barnesHut: {
+                        gravitationalConstant: -8000,
+                        centralGravity: 0.3,
+                        springLength: 150,
+                        springConstant: 0.04,
+                        damping: 0.09,
+                        avoidOverlap: 0.1
+                    },
+                    stabilization: {
+                        enabled: true,
+                        iterations: 300,
+                        updateInterval: 25,
+                        onlyDynamicEdges: false,
+                        fit: true
+                    },
+                    // 稳定后自动停止物理引擎
+                    solver: 'barnesHut',
+                    timestep: 0.5,
+                    adaptiveTimestep: true
+                },
+                interaction: {
+                    hover: true,
+                    tooltipDelay: 100,
+                    zoomView: true,
+                    dragView: true
+                }
+            };
+
+            const data = {
+                nodes: new vis.DataSet([]),
+                edges: new vis.DataSet([])
+            };
+
+            network = new vis.Network(container, data, options);
+
+            // 添加事件监听
+            network.on('click', function(params) {
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    showNodeInfo(nodeId);
+                    highlightConnectedNodes(nodeId);
+                } else {
+                    // 点击空白处，恢复所有节点
+                    resetNodeHighlight();
+                }
+            });
+
+            // 稳定化完成后停止物理引擎
+            network.on('stabilizationIterationsDone', function() {
+                console.log('初始稳定化完成，停止物理引擎');
+                network.setOptions({ physics: { enabled: false } });
+            });
+
+            // 添加稳定化进度监听
+            network.on('stabilizationProgress', function(params) {
+                const progress = Math.round((params.iterations / params.total) * 100);
+                if (progress % 10 === 0) { // 每10%打印一次
+                    console.log(`稳定化进度: ${progress}%`);
+                }
+            });
+        }
+
+        // 加载图形数据
+        async function loadGraph() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                
+                const response = await fetch('/api/graph/full');
+                const result = await response.json();
+
+                if (result.success) {
+                    originalData = result.data;
+                    updateGraph(result.data);
+                    updateStats(result.data.stats);
+                } else {
+                    alert('加载失败: ' + result.error);
+                }
+            } catch (error) {
+                console.error('加载图形失败:', error);
+                alert('加载失败: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // 更新图形显示
+        function updateGraph(data) {
+            graphData = data;
+
+            // 处理节点数据
+            const nodes = data.nodes.map(node => ({
+                id: node.id,
+                label: node.label,
+                title: node.title,
+                group: node.group,
+                color: nodeColors[node.group] || '#999',
+                metadata: node.metadata
+            }));
+
+            // 处理边数据
+            const edges = data.edges.map(edge => ({
+                id: edge.id,
+                from: edge.from,
+                to: edge.to,
+                label: edge.label,
+                title: edge.title,
+                width: edge.importance * 3 + 1
+            }));
+
+            // 更新网络
+            network.setData({
+                nodes: new vis.DataSet(nodes),
+                edges: new vis.DataSet(edges)
+            });
+
+            // 注意：setData 会自动触发物理引擎重新布局
+            // stabilizationIterationsDone 事件监听器会自动停止物理引擎
+        }
+
+        // 更新统计信息
+        function updateStats(stats) {
+            document.getElementById('statNodes').textContent = stats.total_nodes;
+            document.getElementById('statEdges').textContent = stats.total_edges;
+            document.getElementById('statMemories').textContent = stats.total_memories;
+            
+            const density = stats.total_nodes > 0 
+                ? ((stats.total_edges / (stats.total_nodes * (stats.total_nodes - 1))) * 100).toFixed(2)
+                : 0;
+            document.getElementById('statDensity').textContent = density + '%';
+        }
+
+        // 显示节点信息
+        function showNodeInfo(nodeId) {
+            const node = graphData.nodes.find(n => n.id === nodeId);
+            if (!node) return;
+
+            const infoPanel = document.getElementById('nodeInfo');
+            infoPanel.innerHTML = `
+                <h3>${node.label}</h3>
+                <p><strong>类型:</strong> ${node.type}</p>
+                <p><strong>ID:</strong> ${node.id.substring(0, 8)}...</p>
+                <p><strong>创建时间:</strong> ${new Date(node.created_at).toLocaleString('zh-CN')}</p>
+                ${node.metadata && Object.keys(node.metadata).length > 0 
+                    ? `<p><strong>元数据:</strong> ${JSON.stringify(node.metadata, null, 2)}</p>`
+                    : ''}
+            `;
+        }
+
+        // 搜索记忆
+        async function searchMemories() {
+            const query = document.getElementById('searchInput').value;
+            if (!query) {
+                alert('请输入搜索关键词');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=50`);
+                const result = await response.json();
+
+                if (result.success) {
+                    highlightSearchResults(result.data.results);
+                } else {
+                    alert('搜索失败: ' + result.error);
+                }
+            } catch (error) {
+                console.error('搜索失败:', error);
+                alert('搜索失败: ' + error.message);
+            }
+        }
+
+        // 高亮搜索结果
+        function highlightSearchResults(results) {
+            const memoryIds = results.map(r => r.id);
+            const relatedNodeIds = new Set();
+
+            // 找出相关的节点
+            graphData.memories.forEach(memory => {
+                if (memoryIds.includes(memory.id)) {
+                    // 这里需要找到该记忆相关的所有节点
+                    // 简化实现：高亮所有节点
+                    graphData.nodes.forEach(node => relatedNodeIds.add(node.id));
+                }
+            });
+
+            // 高亮节点
+            if (relatedNodeIds.size > 0) {
+                network.selectNodes([...relatedNodeIds]);
+                network.fit({
+                    nodes: [...relatedNodeIds],
+                    animation: true
+                });
+            } else {
+                alert('未找到相关节点');
+            }
+        }
+
+        // 高亮与选中节点连接的节点（最多3跳深度）
+        function highlightConnectedNodes(nodeId) {
+            if (!network || !graphData) return;
+
+            // 使用 BFS 探索最多3跳深度的连接节点
+            const MAX_DEPTH = 3;
+            const connectedNodeIds = new Set();
+            const connectedEdgeIds = new Set();
+            const visited = new Set();
+            const queue = [{ nodeId: nodeId, depth: 0 }];
+
+            // 构建邻接表以提高查询效率
+            const adjacencyMap = new Map();
+            graphData.edges.forEach(edge => {
+                if (!adjacencyMap.has(edge.from)) {
+                    adjacencyMap.set(edge.from, []);
+                }
+                if (!adjacencyMap.has(edge.to)) {
+                    adjacencyMap.set(edge.to, []);
+                }
+                adjacencyMap.get(edge.from).push({ nodeId: edge.to, edgeId: edge.id });
+                adjacencyMap.get(edge.to).push({ nodeId: edge.from, edgeId: edge.id });
+            });
+
+            // BFS 遍历，限制深度为3跳
+            while (queue.length > 0) {
+                const { nodeId: currentNode, depth } = queue.shift();
+                
+                if (visited.has(currentNode)) continue;
+                visited.add(currentNode);
+                connectedNodeIds.add(currentNode);
+
+                // 如果已经达到最大深度，不再探索更深的节点
+                if (depth >= MAX_DEPTH) continue;
+
+                // 探索相邻节点
+                const neighbors = adjacencyMap.get(currentNode) || [];
+                neighbors.forEach(({ nodeId: neighborId, edgeId }) => {
+                    connectedEdgeIds.add(edgeId);
+                    if (!visited.has(neighborId)) {
+                        queue.push({ nodeId: neighborId, depth: depth + 1 });
+                    }
+                });
+            }
+
+            console.log(`选中节点: ${nodeId}, 连接的节点数: ${connectedNodeIds.size}, 连接的边数: ${connectedEdgeIds.size} (最大深度: ${MAX_DEPTH})`);
+
+            // 更新所有节点的透明度
+            const allNodes = network.body.data.nodes;
+            const allEdges = network.body.data.edges;
+            const updates = [];
+
+            allNodes.get().forEach(node => {
+                if (connectedNodeIds.has(node.id)) {
+                    // 连接的节点保持正常，甚至可以加强显示
+                    // 被选中的节点特别突出
+                    const isSelected = node.id === nodeId;
+                    updates.push({
+                        id: node.id,
+                        opacity: 1.0,
+                        borderWidth: isSelected ? 5 : 3,
+                        font: { 
+                            color: isSelected ? '#667eea' : '#333', 
+                            size: isSelected ? 16 : 14, 
+                            bold: true 
+                        }
+                    });
+                } else {
+                    // 无关节点变为高度透明
+                    const dimmedColor = hexToRgba(node.color, 0.08);
+                    updates.push({
+                        id: node.id,
+                        color: {
+                            background: dimmedColor,
+                            border: dimmedColor,
+                            highlight: { background: dimmedColor, border: dimmedColor }
+                        },
+                        opacity: 0.08,
+                        font: { color: 'rgba(51, 51, 51, 0.08)', size: 14 }
+                    });
+                }
+            });
+            allNodes.update(updates);
+
+            // 更新所有边的透明度
+            const edgeUpdates = [];
+            allEdges.get().forEach(edge => {
+                if (connectedEdgeIds.has(edge.id)) {
+                    // 连接的边加强显示
+                    edgeUpdates.push({
+                        id: edge.id,
+                        color: { color: '#667eea', opacity: 1.0 },
+                        width: 4,
+                        font: { color: '#667eea', size: 12 }
+                    });
+                } else {
+                    // 无关边变为高度透明
+                    edgeUpdates.push({
+                        id: edge.id,
+                        color: { color: '#848484', opacity: 0.03 },
+                        width: 1,
+                        font: { color: 'rgba(102, 102, 102, 0.03)', size: 11 }
+                    });
+                }
+            });
+            allEdges.update(edgeUpdates);
+
+            // 将视图聚焦到连接的子图
+            if (connectedNodeIds.size > 1 && connectedNodeIds.size < 100) {
+                network.fit({
+                    nodes: Array.from(connectedNodeIds),
+                    animation: {
+                        duration: 800,
+                        easingFunction: 'easeInOutQuad'
+                    }
+                });
+            }
+        }
+
+        // 重置节点高亮状态
+        function resetNodeHighlight() {
+            if (!network || !graphData) return;
+
+            const allNodes = network.body.data.nodes;
+            const allEdges = network.body.data.edges;
+
+            // 恢复所有节点 - 重新应用原始颜色
+            const nodeUpdates = [];
+            allNodes.get().forEach(node => {
+                const originalColor = nodeColors[node.group] || '#999';
+                nodeUpdates.push({
+                    id: node.id,
+                    color: originalColor,
+                    opacity: 1.0,
+                    borderWidth: 2,
+                    font: { color: '#333', size: 14, bold: false }
+                });
+            });
+            allNodes.update(nodeUpdates);
+
+            // 恢复所有边
+            const edgeUpdates = [];
+            allEdges.get().forEach(edge => {
+                edgeUpdates.push({
+                    id: edge.id,
+                    color: { color: '#848484', opacity: 1.0 },
+                    width: 2,
+                    font: { color: '#666', size: 11 }
+                });
+            });
+            allEdges.update(edgeUpdates);
+        }
+
+        // 辅助函数：将十六进制颜色转换为 rgba
+        function hexToRgba(hex, alpha) {
+            // 如果已经是 rgba 格式，直接返回
+            if (hex.startsWith('rgba')) return hex;
+            
+            // 处理 # 开头的十六进制
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
+        // 应用过滤器
+        function applyFilters() {
+            if (!originalData) return;
+
+            const filters = {
+                'SUBJECT': document.getElementById('filterSubject').checked,
+                'TOPIC': document.getElementById('filterTopic').checked,
+                'OBJECT': document.getElementById('filterObject').checked,
+                'ATTRIBUTE': document.getElementById('filterAttribute').checked,
+                'VALUE': document.getElementById('filterValue').checked
+            };
+
+            // 过滤节点
+            const filteredNodes = originalData.nodes.filter(node => 
+                filters[node.group]
+            );
+            const filteredNodeIds = new Set(filteredNodes.map(n => n.id));
+
+            // 过滤边（只保留两端节点都存在的边）
+            const filteredEdges = originalData.edges.filter(edge =>
+                filteredNodeIds.has(edge.from) && filteredNodeIds.has(edge.to)
+            );
+
+            // 更新图形
+            updateGraph({
+                nodes: filteredNodes,
+                edges: filteredEdges,
+                memories: originalData.memories,
+                stats: {
+                    total_nodes: filteredNodes.length,
+                    total_edges: filteredEdges.length,
+                    total_memories: originalData.stats.total_memories
+                }
+            });
+
+            // 重置高亮状态
+            resetNodeHighlight();
+
+            // 重新启用物理引擎以重新布局，避免节点排版错乱
+            if (network) {
+                network.setOptions({ physics: { enabled: true } });
+                
+                // 设置超时保护，确保物理引擎最终会停止
+                let stabilized = false;
+                const stabilizationTimeout = setTimeout(() => {
+                    if (!stabilized) {
+                        console.log('物理引擎稳定超时，强制停止');
+                        network.setOptions({ physics: { enabled: false } });
+                    }
+                }, 5000); // 5秒超时
+
+                // 等待稳定后再禁用物理引擎
+                network.once('stabilizationIterationsDone', function() {
+                    stabilized = true;
+                    clearTimeout(stabilizationTimeout);
+                    network.setOptions({ physics: { enabled: false } });
+                    console.log('物理引擎已稳定并停止');
+                });
+            }
+        }
+
+        // 适应窗口
+        function fitNetwork() {
+            if (network) {
+                network.fit({
+                    animation: {
+                        duration: 1000,
+                        easingFunction: 'easeInOutQuad'
+                    }
+                });
+            }
+        }
+
+        // 导出图形数据
+        function exportGraph() {
+            const dataStr = JSON.stringify(graphData, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(dataBlob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `memory_graph_${new Date().getTime()}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // 文件选择功能
+        async function loadFileList() {
+            try {
+                const response = await fetch('/api/files');
+                const result = await response.json();
+
+                if (result.success) {
+                    availableFiles = result.files;
+                    updateCurrentFileInfo(result.current_file, result.files);
+                    return result.files;
+                } else {
+                    console.error('加载文件列表失败:', result.error);
+                    return [];
+                }
+            } catch (error) {
+                console.error('加载文件列表失败:', error);
+                return [];
+            }
+        }
+
+        function updateCurrentFileInfo(currentFile, files) {
+            const infoDiv = document.getElementById('currentFileInfo');
+            
+            if (!currentFile || files.length === 0) {
+                infoDiv.innerHTML = '<p style="color: #e74c3c;">❌ 未找到数据文件</p>';
+                return;
+            }
+
+            const currentFileObj = files.find(f => f.path === currentFile);
+            if (currentFileObj) {
+                infoDiv.innerHTML = `
+                    <div style="margin-bottom: 5px;"><strong>📄 ${currentFileObj.name}</strong></div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span>大小: ${currentFileObj.size_kb} KB</span>
+                        <span>修改: ${currentFileObj.modified_readable.split(' ')[0]}</span>
+                    </div>
+                `;
+            }
+        }
+
+        async function showFileSelector() {
+            const modal = document.getElementById('fileModal');
+            const container = document.getElementById('fileListContainer');
+            
+            modal.style.display = 'block';
+            container.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <div class="loading-spinner"></div>
+                    <p>加载文件列表...</p>
+                </div>
+            `;
+
+            const files = await loadFileList();
+
+            if (files.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #999;">
+                        <p style="font-size: 48px; margin-bottom: 10px;">📭</p>
+                        <p>未找到任何数据文件</p>
+                        <p style="font-size: 12px; margin-top: 10px;">请先运行Bot生成记忆数据</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="file-list">';
+            files.forEach(file => {
+                const currentBadge = file.is_current ? '<span class="file-item-current">当前</span>' : '';
+                html += `
+                    <div class="file-item ${file.is_current ? 'current' : ''}" onclick="selectFile('${file.path.replace(/\\/g, '\\\\')}')">
+                        <div class="file-item-name">📄 ${file.name}${currentBadge}</div>
+                        <div class="file-item-info">
+                            <span>大小: ${file.size_kb} KB</span>
+                            <span>${file.modified_readable}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+
+            container.innerHTML = html;
+        }
+
+        function closeFileSelector() {
+            document.getElementById('fileModal').style.display = 'none';
+        }
+
+        async function selectFile(filePath) {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                closeFileSelector();
+
+                const response = await fetch('/api/select_file', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ file_path: filePath })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // 重新加载图形
+                    await loadGraph();
+                    await loadFileList();
+                    alert('✅ ' + result.message);
+                } else {
+                    alert('❌ 切换文件失败: ' + result.error);
+                }
+            } catch (error) {
+                console.error('切换文件失败:', error);
+                alert('❌ 切换文件失败: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // 点击模态框外部关闭
+        window.onclick = function(event) {
+            const modal = document.getElementById('fileModal');
+            if (event.target == modal) {
+                closeFileSelector();
+            }
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', function() {
+            initNetwork();
+            loadGraph();
+            loadFileList();
+        });
+    </script>
+</body>
+</html>

@@ -7,7 +7,7 @@
 """
 
 import atexit
-import json
+import orjson
 import os
 import threading
 from typing import Any, ClassVar
@@ -100,10 +100,10 @@ class PluginStorage:
                 if os.path.exists(self.file_path):
                     with open(self.file_path, encoding="utf-8") as f:
                         content = f.read()
-                        self._data = json.loads(content) if content else {}
+                        self._data = orjson.loads(content) if content else {}
                 else:
                     self._data = {}
-            except (json.JSONDecodeError, Exception) as e:
+            except (orjson.JSONDecodeError, Exception) as e:
                 logger.warning(f"从 '{self.file_path}' 加载数据失败: {e}，将初始化为空数据。")
                 self._data = {}
 
@@ -125,7 +125,7 @@ class PluginStorage:
 
             try:
                 with open(self.file_path, "w", encoding="utf-8") as f:
-                    json.dump(self._data, f, indent=4, ensure_ascii=False)
+                    f.write(orjson.dumps(self._data, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS).decode('utf-8'))
                 self._dirty = False  # 保存后重置标志
                 logger.debug(f"插件 '{self.name}' 的数据已成功保存到磁盘。")
             except Exception as e:

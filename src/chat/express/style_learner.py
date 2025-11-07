@@ -36,6 +36,8 @@ class StyleLearner:
 
         # 动态风格管理
         self.max_styles = 2000  # 每个chat_id最多2000个风格
+        self.cleanup_threshold = 0.9  # 达到90%容量时触发清理
+        self.cleanup_ratio = 0.2  # 每次清理20%的风格
         self.style_to_id: dict[str, str] = {}  # style文本 -> style_id
         self.id_to_style: dict[str, str] = {}  # style_id -> style文本
         self.id_to_situation: dict[str, str] = {}  # style_id -> situation文本
@@ -45,6 +47,7 @@ class StyleLearner:
         self.learning_stats = {
             "total_samples": 0,
             "style_counts": {},
+            "style_last_used": {},  # 记录每个风格最后使用时间
             "last_update": time.time(),
         }
 
@@ -66,10 +69,19 @@ class StyleLearner:
             if style in self.style_to_id:
                 return True
 
-            # 检查是否超过最大限制
-            if len(self.style_to_id) >= self.max_styles:
-                logger.warning(f"已达到最大风格数量限制 ({self.max_styles})")
-                return False
+            # 检查是否需要清理
+            current_count = len(self.style_to_id)
+            cleanup_trigger = int(self.max_styles * self.cleanup_threshold)
+            
+            if current_count >= cleanup_trigger:
+                if current_count >= self.max_styles:
+                    # 已经达到最大限制，必须清理
+                    logger.warning(f"已达到最大风格数量限制 ({self.max_styles})，开始清理")
+                    self._cleanup_styles()
+                elif current_count >= cleanup_trigger:
+                    # 接近限制，提前清理
+                    logger.info(f"风格数量达到 {current_count}/{self.max_styles}，触发预防性清理")
+                    self._cleanup_styles()
 
             # 生成新的style_id
             style_id = f"style_{self.next_style_id}"
@@ -93,6 +105,80 @@ class StyleLearner:
         except Exception as e:
             logger.error(f"添加风格失败: {e}")
             return False
+
+    def _cleanup_styles(self):
+        """
+        清理低价值的风格，为新风格腾出空间
+        
+        清理策略：
+        1. 综合考虑使用次数和最后使用时间
+        2. 删除得分最低的风格
+        3. 默认清理 cleanup_ratio (20%) 的风格
+        """
+        try:
+            current_time = time.time()
+            cleanup_count = max(1, int(len(self.style_to_id) * self.cleanup_ratio))
+            
+            # 计算每个风格的价值分数
+            style_scores = []
+            for style_id in self.style_to_id.values():
+                # 使用次数
+                usage_count = self.learning_stats["style_counts"].get(style_id, 0)
+                
+                # 最后使用时间（越近越好）
+                last_used = self.learning_stats["style_last_used"].get(style_id, 0)
+                time_since_used = current_time - last_used if last_used > 0 else float('inf')
+                
+                # 综合分数：使用次数越多越好，距离上次使用时间越短越好
+                # 使用对数来平滑使用次数的影响
+                import math
+                usage_score = math.log1p(usage_count)  # log(1 + count)
+                
+                # 时间分数：转换为天数，使用指数衰减
+                days_unused = time_since_used / 86400  # 转换为天
+                time_score = math.exp(-days_unused / 30)  # 30天衰减因子
+                
+                # 综合分数：80%使用频率 + 20%时间新鲜度
+                total_score = 0.8 * usage_score + 0.2 * time_score
+                
+                style_scores.append((style_id, total_score, usage_count, days_unused))
+            
+            # 按分数排序，分数低的先删除
+            style_scores.sort(key=lambda x: x[1])
+            
+            # 删除分数最低的风格
+            deleted_styles = []
+            for style_id, score, usage, days in style_scores[:cleanup_count]:
+                style_text = self.id_to_style.get(style_id)
+                if style_text:
+                    # 从映射中删除
+                    del self.style_to_id[style_text]
+                    del self.id_to_style[style_id]
+                    if style_id in self.id_to_situation:
+                        del self.id_to_situation[style_id]
+                    
+                    # 从统计中删除
+                    if style_id in self.learning_stats["style_counts"]:
+                        del self.learning_stats["style_counts"][style_id]
+                    if style_id in self.learning_stats["style_last_used"]:
+                        del self.learning_stats["style_last_used"][style_id]
+                    
+                    # 从expressor模型中删除
+                    self.expressor.remove_candidate(style_id)
+                    
+                    deleted_styles.append((style_text[:30], usage, f"{days:.1f}天"))
+            
+            logger.info(
+                f"风格清理完成: 删除了 {len(deleted_styles)}/{len(style_scores)} 个风格，"
+                f"剩余 {len(self.style_to_id)} 个风格"
+            )
+            
+            # 记录前5个被删除的风格（用于调试）
+            if deleted_styles:
+                logger.debug(f"被删除的风格样例(前5): {deleted_styles[:5]}")
+            
+        except Exception as e:
+            logger.error(f"清理风格失败: {e}", exc_info=True)
 
     def learn_mapping(self, up_content: str, style: str) -> bool:
         """
@@ -118,9 +204,11 @@ class StyleLearner:
             self.expressor.update_positive(up_content, style_id)
 
             # 更新统计
+            current_time = time.time()
             self.learning_stats["total_samples"] += 1
             self.learning_stats["style_counts"][style_id] += 1
-            self.learning_stats["last_update"] = time.time()
+            self.learning_stats["style_last_used"][style_id] = current_time  # 更新最后使用时间
+            self.learning_stats["last_update"] = current_time
 
             logger.debug(f"学习映射成功: {up_content[:20]}... -> {style}")
             return True
@@ -171,6 +259,10 @@ class StyleLearner:
                 else:
                     logger.warning(f"跳过无法转换的style_id: {sid}")
 
+            # 更新最后使用时间（仅针对最佳风格）
+            if best_style_id:
+                self.learning_stats["style_last_used"][best_style_id] = time.time()
+
             logger.debug(
                 f"预测成功: up_content={up_content[:30]}..., "
                 f"best_style={best_style}, top3_scores={list(style_scores.items())[:3]}"
@@ -208,6 +300,30 @@ class StyleLearner:
         """
         return list(self.style_to_id.keys())
 
+    def cleanup_old_styles(self, ratio: float | None = None) -> int:
+        """
+        手动清理旧风格
+        
+        Args:
+            ratio: 清理比例，如果为None则使用默认的cleanup_ratio
+            
+        Returns:
+            清理的风格数量
+        """
+        old_count = len(self.style_to_id)
+        if ratio is not None:
+            old_cleanup_ratio = self.cleanup_ratio
+            self.cleanup_ratio = ratio
+            self._cleanup_styles()
+            self.cleanup_ratio = old_cleanup_ratio
+        else:
+            self._cleanup_styles()
+        
+        new_count = len(self.style_to_id)
+        cleaned = old_count - new_count
+        logger.info(f"手动清理完成: chat_id={self.chat_id}, 清理了 {cleaned} 个风格")
+        return cleaned
+
     def apply_decay(self, factor: float | None = None):
         """
         应用知识衰减
@@ -241,6 +357,11 @@ class StyleLearner:
             import pickle
 
             meta_path = os.path.join(save_dir, "meta.pkl")
+            
+            # 确保 learning_stats 包含所有必要字段
+            if "style_last_used" not in self.learning_stats:
+                self.learning_stats["style_last_used"] = {}
+            
             meta_data = {
                 "style_to_id": self.style_to_id,
                 "id_to_style": self.id_to_style,
@@ -295,6 +416,10 @@ class StyleLearner:
                 self.id_to_situation = meta_data["id_to_situation"]
                 self.next_style_id = meta_data["next_style_id"]
                 self.learning_stats = meta_data["learning_stats"]
+                
+                # 确保旧数据兼容：如果没有 style_last_used 字段，添加它
+                if "style_last_used" not in self.learning_stats:
+                    self.learning_stats["style_last_used"] = {}
 
             logger.info(f"StyleLearner加载成功: {save_dir}")
             return True
@@ -397,6 +522,26 @@ class StyleLearnerManager:
 
         logger.info(f"保存所有StyleLearner {'成功' if success else '部分失败'}")
         return success
+
+    def cleanup_all_old_styles(self, ratio: float | None = None) -> dict[str, int]:
+        """
+        对所有学习器清理旧风格
+        
+        Args:
+            ratio: 清理比例
+            
+        Returns:
+            {chat_id: 清理数量}
+        """
+        cleanup_results = {}
+        for chat_id, learner in self.learners.items():
+            cleaned = learner.cleanup_old_styles(ratio)
+            if cleaned > 0:
+                cleanup_results[chat_id] = cleaned
+        
+        total_cleaned = sum(cleanup_results.values())
+        logger.info(f"清理所有StyleLearner完成: 总共清理了 {total_cleaned} 个风格")
+        return cleanup_results
 
     def apply_decay_all(self, factor: float | None = None):
         """

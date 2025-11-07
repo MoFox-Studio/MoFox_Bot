@@ -639,18 +639,20 @@ class ChatterPlanFilter:
             else:
                 keywords.append("晚上")
 
-            # 使用新的统一记忆系统检索记忆
+            # 使用记忆图系统检索记忆
             try:
-                from src.chat.memory_system import get_memory_system
+                from src.memory_graph.manager_singleton import get_memory_manager
 
-                memory_system = get_memory_system()
+                memory_manager = get_memory_manager()
+                if not memory_manager:
+                    return "记忆系统未初始化。"
+                    
                 # 将关键词转换为查询字符串
                 query = " ".join(keywords)
-                enhanced_memories = await memory_system.retrieve_relevant_memories(
-                    query_text=query,
-                    user_id="system",  # 系统查询
-                    scope_id="system",
-                    limit=5,
+                enhanced_memories = await memory_manager.search_memories(
+                    query=query,
+                    top_k=5,
+                    use_multi_query=False,  # 直接使用关键词查询
                 )
 
                 if not enhanced_memories:
@@ -658,9 +660,14 @@ class ChatterPlanFilter:
 
                 # 转换格式以兼容现有代码
                 retrieved_memories = []
-                for memory_chunk in enhanced_memories:
-                    content = memory_chunk.display or memory_chunk.text_content or ""
-                    memory_type = memory_chunk.memory_type.value if memory_chunk.memory_type else "unknown"
+                for memory in enhanced_memories:
+                    # 从记忆图的节点中提取内容
+                    content_parts = []
+                    for node in memory.nodes:
+                        if node.content:
+                            content_parts.append(node.content)
+                    content = " ".join(content_parts) if content_parts else "无内容"
+                    memory_type = memory.memory_type.value
                     retrieved_memories.append((memory_type, content))
 
                 memory_statements = [

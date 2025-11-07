@@ -1,5 +1,5 @@
 import asyncio
-import json
+import orjson
 import time
 from typing import ClassVar, Optional, Tuple
 
@@ -241,7 +241,7 @@ class NoticeHandler:
         message_base: MessageBase = MessageBase(
             message_info=message_info,
             message_segment=handled_message,
-            raw_message=json.dumps(raw_message),
+            raw_message=orjson.dumps(raw_message).decode('utf-8'),
         )
 
         if system_notice:
@@ -602,7 +602,7 @@ class NoticeHandler:
                 message_base: MessageBase = MessageBase(
                     message_info=message_info,
                     message_segment=seg_message,
-                    raw_message=json.dumps(
+                    raw_message=orjson.dumps(
                         {
                             "post_type": "notice",
                             "notice_type": "group_ban",
@@ -611,7 +611,7 @@ class NoticeHandler:
                             "user_id": user_id,
                             "operator_id": None,  # 自然解除禁言没有操作者
                         }
-                    ),
+                    ).decode('utf-8'),
                 )
 
                 await self.put_notice(message_base)

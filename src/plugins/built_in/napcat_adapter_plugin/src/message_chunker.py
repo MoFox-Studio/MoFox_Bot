@@ -5,7 +5,7 @@
 """
 
 import asyncio
-import json
+import orjson
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Union
@@ -34,7 +34,7 @@ class MessageChunker:
         """判断消息是否需要切片"""
         try:
             if isinstance(message, dict):
-                message_str = json.dumps(message, ensure_ascii=False)
+                message_str = orjson.dumps(message, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
             else:
                 message_str = message
             return len(message_str.encode("utf-8")) > self.max_chunk_size
@@ -58,7 +58,7 @@ class MessageChunker:
         try:
             # 统一转换为字符串
             if isinstance(message, dict):
-                message_str = json.dumps(message, ensure_ascii=False)
+                message_str = orjson.dumps(message, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
             else:
                 message_str = message
 
@@ -116,7 +116,7 @@ class MessageChunker:
         """判断是否是切片消息"""
         try:
             if isinstance(message, str):
-                data = json.loads(message)
+                data = orjson.loads(message)
             else:
                 data = message
 
@@ -126,7 +126,7 @@ class MessageChunker:
                 and "__mmc_chunk_data__" in data
                 and "__mmc_is_chunked__" in data
             )
-        except (json.JSONDecodeError, TypeError):
+        except (orjson.JSONDecodeError, TypeError):
             return False
 
 
@@ -187,7 +187,7 @@ class MessageReassembler:
         try:
             # 统一转换为字典
             if isinstance(message, str):
-                chunk_data = json.loads(message)
+                chunk_data = orjson.loads(message)
             else:
                 chunk_data = message
 
@@ -197,8 +197,8 @@ class MessageReassembler:
                 if "_original_message" in chunk_data:
                     # 这是一个被包装的非切片消息，解包返回
                     try:
-                        return json.loads(chunk_data["_original_message"])
-                    except json.JSONDecodeError:
+                        return orjson.loads(chunk_data["_original_message"])
+                    except orjson.JSONDecodeError:
                         return {"text_message": chunk_data["_original_message"]}
                 else:
                     return chunk_data
@@ -251,14 +251,14 @@ class MessageReassembler:
 
                 # 尝试反序列化重组后的消息
                 try:
-                    return json.loads(reassembled_message)
-                except json.JSONDecodeError:
+                    return orjson.loads(reassembled_message)
+                except orjson.JSONDecodeError:
                     # 如果不能反序列化为JSON，则作为文本消息返回
                     return {"text_message": reassembled_message}
 
             return None
 
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
+        except (orjson.JSONDecodeError, KeyError, TypeError) as e:
             logger.error(f"处理切片消息时出错: {e}")
             return None
 
