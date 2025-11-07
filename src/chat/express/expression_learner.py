@@ -132,6 +132,56 @@ class ExpressionLearner:
             self.chat_name = stream_name or self.chat_id
             self._chat_name_initialized = True
 
+    async def cleanup_expired_expressions(self, expiration_days: int | None = None) -> int:
+        """
+        清理过期的表达方式
+        
+        Args:
+            expiration_days: 过期天数，超过此天数未激活的表达方式将被删除（不指定则从配置读取）
+        
+        Returns:
+            int: 删除的表达方式数量
+        """
+        # 从配置读取过期天数
+        if expiration_days is None:
+            expiration_days = global_config.expression.expiration_days
+        
+        current_time = time.time()
+        expiration_threshold = current_time - (expiration_days * 24 * 3600)
+        
+        try:
+            deleted_count = 0
+            async with get_db_session() as session:
+                # 查询过期的表达方式（只清理当前chat_id的）
+                query = await session.execute(
+                    select(Expression).where(
+                        (Expression.chat_id == self.chat_id)
+                        & (Expression.last_active_time < expiration_threshold)
+                    )
+                )
+                expired_expressions = list(query.scalars())
+                
+                if expired_expressions:
+                    for expr in expired_expressions:
+                        await session.delete(expr)
+                        deleted_count += 1
+                    
+                    await session.commit()
+                    logger.info(f"清理了 {deleted_count} 个过期表达方式（超过 {expiration_days} 天未使用）")
+                    
+                    # 清除缓存
+                    from src.common.database.optimization.cache_manager import get_cache
+                    from src.common.database.utils.decorators import generate_cache_key
+                    cache = await get_cache()
+                    await cache.delete(generate_cache_key("chat_expressions", self.chat_id))
+                else:
+                    logger.debug(f"没有发现过期的表达方式（阈值：{expiration_days} 天）")
+            
+            return deleted_count
+        except Exception as e:
+            logger.error(f"清理过期表达方式失败: {e}")
+            return 0
+
     def can_learn_for_chat(self) -> bool:
         """
         检查指定聊天流是否允许学习表达
@@ -213,6 +263,9 @@ class ExpressionLearner:
 
         try:
             logger.info(f"为聊天流 {self.chat_name} 触发表达学习")
+
+            # 🔥 改进3：在学习前清理过期的表达方式
+            await self.cleanup_expired_expressions()
 
             # 学习语言风格
             learnt_style = await self.learn_and_store(type="style", num=25)
@@ -397,9 +450,29 @@ class ExpressionLearner:
         for chat_id, expr_list in chat_dict.items():
             async with get_db_session() as session:
                 for new_expr in expr_list:
-                    # 查找是否已存在相似表达方式
-                    # 注意: get_all_by 不支持复杂条件，这里仍需使用 session
-                    query = await session.execute(
+                    # 🔥 改进1：检查是否存在相同情景或相同表达的数据
+                    # 情况1：相同 chat_id + type + situation（相同情景，不同表达）
+                    query_same_situation = await session.execute(
+                        select(Expression).where(
+                            (Expression.chat_id == chat_id)
+                            & (Expression.type == type)
+                            & (Expression.situation == new_expr["situation"])
+                        )
+                    )
+                    same_situation_expr = query_same_situation.scalar()
+                    
+                    # 情况2：相同 chat_id + type + style（相同表达，不同情景）
+                    query_same_style = await session.execute(
+                        select(Expression).where(
+                            (Expression.chat_id == chat_id)
+                            & (Expression.type == type)
+                            & (Expression.style == new_expr["style"])
+                        )
+                    )
+                    same_style_expr = query_same_style.scalar()
+                    
+                    # 情况3：完全相同（相同情景+相同表达）
+                    query_exact_match = await session.execute(
                         select(Expression).where(
                             (Expression.chat_id == chat_id)
                             & (Expression.type == type)
@@ -407,16 +480,29 @@ class ExpressionLearner:
                             & (Expression.style == new_expr["style"])
                         )
                     )
-                    existing_expr = query.scalar()
-                    if existing_expr:
-                        expr_obj = existing_expr
-                        # 50%概率替换内容
-                        if random.random() < 0.5:
-                            expr_obj.situation = new_expr["situation"]
-                            expr_obj.style = new_expr["style"]
+                    exact_match_expr = query_exact_match.scalar()
+                    
+                    # 优先处理完全匹配的情况
+                    if exact_match_expr:
+                        # 完全相同：增加count，更新时间
+                        expr_obj = exact_match_expr
                         expr_obj.count = expr_obj.count + 1
                         expr_obj.last_active_time = current_time
+                        logger.debug(f"完全匹配：更新count {expr_obj.count}")
+                    elif same_situation_expr:
+                        # 相同情景，不同表达：覆盖旧的表达
+                        logger.info(f"相同情景覆盖：'{same_situation_expr.situation}' 的表达从 '{same_situation_expr.style}' 更新为 '{new_expr['style']}'")
+                        same_situation_expr.style = new_expr["style"]
+                        same_situation_expr.count = same_situation_expr.count + 1
+                        same_situation_expr.last_active_time = current_time
+                    elif same_style_expr:
+                        # 相同表达，不同情景：覆盖旧的情景
+                        logger.info(f"相同表达覆盖：'{same_style_expr.style}' 的情景从 '{same_style_expr.situation}' 更新为 '{new_expr['situation']}'")
+                        same_style_expr.situation = new_expr["situation"]
+                        same_style_expr.count = same_style_expr.count + 1
+                        same_style_expr.last_active_time = current_time
                     else:
+                        # 完全新的表达方式：创建新记录
                         new_expression = Expression(
                             situation=new_expr["situation"],
                             style=new_expr["style"],
@@ -427,6 +513,7 @@ class ExpressionLearner:
                             create_date=current_time,  # 手动设置创建日期
                         )
                         session.add(new_expression)
+                        logger.debug(f"新增表达方式：{new_expr['situation']} -> {new_expr['style']}")
 
                 # 限制最大数量 - 使用 get_all_by_sorted 获取排序结果
                 exprs_result = await session.execute(

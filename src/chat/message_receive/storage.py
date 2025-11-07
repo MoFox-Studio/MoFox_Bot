@@ -12,6 +12,7 @@ from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.core import get_db_session
 from src.common.database.core.models import Images, Messages
 from src.common.logger import get_logger
+from src.config.config import global_config
 
 from .chat_stream import ChatStream
 from .message import MessageSending
@@ -181,12 +182,14 @@ class MessageStorageBatcher:
                 is_command = message.is_command or False
                 is_public_notice = message.is_public_notice or False
                 notice_type = message.notice_type
-                actions = message.actions
+                # 序列化actions列表为JSON字符串
+                actions = orjson.dumps(message.actions).decode("utf-8") if message.actions else None
                 should_reply = message.should_reply
                 should_act = message.should_act
                 additional_config = message.additional_config
-                key_words = ""
-                key_words_lite = ""
+                # 确保关键词字段是字符串格式（如果不是，则序列化）
+                key_words = MessageStorage._serialize_keywords(message.key_words)
+                key_words_lite = MessageStorage._serialize_keywords(message.key_words_lite)
                 memorized_times = 0
 
                 user_platform = message.user_info.platform if message.user_info else ""
@@ -253,7 +256,8 @@ class MessageStorageBatcher:
                     is_command = message.is_command
                     is_public_notice = getattr(message, "is_public_notice", False)
                     notice_type = getattr(message, "notice_type", None)
-                    actions = getattr(message, "actions", None)
+                    # 序列化actions列表为JSON字符串
+                    actions = orjson.dumps(getattr(message, "actions", None)).decode("utf-8") if getattr(message, "actions", None) else None
                     should_reply = getattr(message, "should_reply", None)
                     should_act = getattr(message, "should_act", None)
                     additional_config = getattr(message, "additional_config", None)
@@ -275,6 +279,9 @@ class MessageStorageBatcher:
 
                 user_platform = user_info_dict.get("platform")
                 user_id = user_info_dict.get("user_id")
+                # 将机器人自己的user_id标记为"SELF"，增强对自我身份的识别
+                if user_id == global_config.bot.qq_account:
+                    user_id = "SELF"
                 user_nickname = user_info_dict.get("user_nickname")
                 user_cardname = user_info_dict.get("user_cardname")
 
@@ -576,6 +583,11 @@ class MessageStorage:
                     is_picid = False
                     is_notify = False
                     is_command = False
+                    is_public_notice = False
+                    notice_type = None
+                    actions = None
+                    should_reply = False
+                    should_act = False
                     key_words = ""
                     key_words_lite = ""
                 else:
@@ -589,6 +601,12 @@ class MessageStorage:
                     is_picid = message.is_picid
                     is_notify = message.is_notify
                     is_command = message.is_command
+                    is_public_notice = getattr(message, "is_public_notice", False)
+                    notice_type = getattr(message, "notice_type", None)
+                    # 序列化actions列表为JSON字符串
+                    actions = orjson.dumps(getattr(message, "actions", None)).decode("utf-8") if getattr(message, "actions", None) else None
+                    should_reply = getattr(message, "should_reply", False)
+                    should_act = getattr(message, "should_act", False)
                     # 序列化关键词列表为JSON字符串
                     key_words = MessageStorage._serialize_keywords(message.key_words)
                     key_words_lite = MessageStorage._serialize_keywords(message.key_words_lite)
@@ -612,6 +630,9 @@ class MessageStorage:
 
                 user_platform = user_info_dict.get("platform")
                 user_id = user_info_dict.get("user_id")
+                # 将机器人自己的user_id标记为"SELF"，增强对自我身份的识别
+                if user_id == global_config.bot.qq_account:
+                    user_id = "SELF"
                 user_nickname = user_info_dict.get("user_nickname")
                 user_cardname = user_info_dict.get("user_cardname")
 
@@ -659,6 +680,11 @@ class MessageStorage:
                 is_picid=is_picid,
                 is_notify=is_notify,
                 is_command=is_command,
+                is_public_notice=is_public_notice,
+                notice_type=notice_type,
+                actions=actions,
+                should_reply=should_reply,
+                should_act=should_act,
                 key_words=key_words,
                 key_words_lite=key_words_lite,
             )

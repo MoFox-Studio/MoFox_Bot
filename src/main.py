@@ -13,7 +13,6 @@ from maim_message import MessageServer
 from rich.traceback import install
 
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
-from src.chat.memory_system.memory_manager import memory_manager
 from src.chat.message_receive.bot import chat_bot
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
@@ -76,8 +75,6 @@ class MainSystem:
     """主系统类，负责协调所有组件"""
 
     def __init__(self) -> None:
-        # 使用增强记忆系统
-        self.memory_manager = memory_manager
         self.individuality: Individuality = get_individuality()
 
         # 使用消息API替代直接的FastAPI实例
@@ -250,12 +247,6 @@ class MainSystem:
             logger.error(f"准备停止消息重组器时出错: {e}")
 
         # 停止增强记忆系统
-        try:
-            if global_config.memory.enable_memory:
-                cleanup_tasks.append(("增强记忆系统", self.memory_manager.shutdown()))
-        except Exception as e:
-            logger.error(f"准备停止增强记忆系统时出错: {e}")
-
         # 停止统一调度器
         try:
             from src.schedule.unified_scheduler import shutdown_scheduler
@@ -468,13 +459,12 @@ MoFox_Bot(第三方修改版)
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 
-        # 初始化增强记忆系统
-        if global_config.memory.enable_memory:
-            from src.chat.memory_system.memory_system import initialize_memory_system
-            await self._safe_init("增强记忆系统", initialize_memory_system)()
-            await self._safe_init("记忆管理器", self.memory_manager.initialize)()
-        else:
-            logger.info("记忆系统已禁用，跳过初始化")
+        # 初始化记忆图系统
+        try:
+            from src.memory_graph.manager_singleton import initialize_memory_manager
+            await self._safe_init("记忆图系统", initialize_memory_manager)()
+        except Exception as e:
+            logger.error(f"记忆图系统初始化失败: {e}")
 
         # 初始化消息兴趣值计算组件
         await self._initialize_interest_calculator()

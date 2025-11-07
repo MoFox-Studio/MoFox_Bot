@@ -1,5 +1,5 @@
 import base64
-import json
+import orjson
 import time
 import uuid
 from pathlib import Path
@@ -783,11 +783,11 @@ class MessageHandler:
         # 检查JSON消息格式
         if not message_data or "data" not in message_data:
             logger.warning("JSON消息格式不正确")
-            return Seg(type="json", data=json.dumps(message_data))
+            return Seg(type="json", data=orjson.dumps(message_data).decode('utf-8'))
 
         try:
             # 尝试将json_data解析为Python对象
-            nested_data = json.loads(json_data)
+            nested_data = orjson.loads(json_data)
 
             # 检查是否是机器人自己上传文件的回声
             if self._is_file_upload_echo(nested_data):
@@ -912,7 +912,7 @@ class MessageHandler:
             # 如果没有提取到关键信息，返回None
             return None
 
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             # 如果解析失败，我们假设它不是我们关心的任何一种结构化JSON，
             # 而是普通的文本或者无法解析的格式。
             logger.debug(f"无法将data字段解析为JSON: {json_data}")
@@ -1146,13 +1146,13 @@ class MessageHandler:
             return None
         forward_message_id = forward_message_data.get("id")
         request_uuid = str(uuid.uuid4())
-        payload = json.dumps(
+        payload = orjson.dumps(
             {
                 "action": "get_forward_msg",
                 "params": {"message_id": forward_message_id},
                 "echo": request_uuid,
             }
-        )
+        ).decode('utf-8')
         try:
             connection = self.get_server_connection()
             if not connection:
@@ -1167,9 +1167,9 @@ class MessageHandler:
             logger.error(f"获取转发消息失败: {str(e)}")
             return None
         logger.debug(
-            f"转发消息原始格式：{json.dumps(response)[:80]}..."
-            if len(json.dumps(response)) > 80
-            else json.dumps(response)
+            f"转发消息原始格式：{orjson.dumps(response).decode('utf-8')[:80]}..."
+            if len(orjson.dumps(response).decode('utf-8')) > 80
+            else orjson.dumps(response).decode('utf-8')
         )
         response_data: Dict = response.get("data")
         if not response_data:

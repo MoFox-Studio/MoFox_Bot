@@ -1,4 +1,5 @@
-import json
+import orjson
+import random
 import time
 import random
 import websockets as Server
@@ -603,7 +604,7 @@ class SendHandler:
 
     async def send_message_to_napcat(self, action: str, params: dict, timeout: float = 20.0) -> dict:
         request_uuid = str(uuid.uuid4())
-        payload = json.dumps({"action": action, "params": params, "echo": request_uuid})
+        payload = orjson.dumps({"action": action, "params": params, "echo": request_uuid}).decode('utf-8')
 
         # 获取当前连接
         connection = self.get_server_connection()

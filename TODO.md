@@ -25,6 +25,14 @@
 - [ ] 修复generate_responce_for_image方法有的时候会对同一张图片生成两次描述的问题
 - [x] 主动思考的通用提示词改进
 - [x] 添加贴表情聊天流判断，过滤好友
+- [x] 记忆图系统 (Memory Graph System)
+  - [x] 基于图结构的记忆存储
+  - [x] 向量相似度检索
+  - [x] LLM工具集成 (create_memory, search_memories)
+  - [x] 自动记忆整合和遗忘
+  - [x] 提示词构建集成
+  - [x] 配置系统支持
+  - [x] 完整集成测试 (5/5通过)
 
 
 - 大工程

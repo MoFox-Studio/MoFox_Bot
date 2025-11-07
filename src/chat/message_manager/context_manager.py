@@ -69,7 +69,11 @@ class SingleStreamContextManager:
             try:
                 from .message_manager import message_manager as mm
                 message_manager = mm
-                use_cache_system = message_manager.is_running
+                # 检查配置是否启用消息缓存系统
+                cache_enabled = global_config.chat.enable_message_cache
+                use_cache_system = message_manager.is_running and cache_enabled
+                if not cache_enabled:
+                    logger.debug(f"消息缓存系统已在配置中禁用")
             except Exception as e:
                 logger.debug(f"MessageManager不可用，使用直接添加: {e}")
                 use_cache_system = False

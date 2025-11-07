@@ -3,7 +3,7 @@
 负责记录和管理已回复过的评论ID，避免重复回复
 """
 
-import json
+import orjson
 import time
 from pathlib import Path
 from typing import Any
@@ -71,7 +71,7 @@ class ReplyTrackerService:
                             self.replied_comments = {}
                             return
 
-                        data = json.loads(file_content)
+                        data = orjson.loads(file_content)
                         if self._validate_data(data):
                             self.replied_comments = data
                             logger.info(
@@ -81,7 +81,7 @@ class ReplyTrackerService:
                         else:
                             logger.error("加载的数据格式无效，将创建新的记录")
                             self.replied_comments = {}
-                except json.JSONDecodeError as e:
+                except orjson.JSONDecodeError as e:
                     logger.error(f"解析回复记录文件失败: {e}")
                     self._backup_corrupted_file()
                     self.replied_comments = {}
@@ -118,7 +118,7 @@ class ReplyTrackerService:
 
             # 先写入临时文件
             with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(self.replied_comments, f, ensure_ascii=False, indent=2)
+                orjson.dumps(self.replied_comments, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS).decode('utf-8')
 
             # 如果写入成功，重命名为正式文件
             if temp_file.stat().st_size > 0:  # 确保写入成功
