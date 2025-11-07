@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
 
 from src.common.logger import get_logger
 
@@ -24,26 +23,26 @@ logger = get_logger(__name__)
 class TimeParser:
     """
     时间解析器
-    
+
     负责将自然语言时间表达转换为标准化的绝对时间
     """
 
-    def __init__(self, reference_time: Optional[datetime] = None):
+    def __init__(self, reference_time: datetime | None = None):
         """
         初始化时间解析器
-        
+
         Args:
             reference_time: 参考时间（通常是当前时间）
         """
         self.reference_time = reference_time or datetime.now()
 
-    def parse(self, time_str: str) -> Optional[datetime]:
+    def parse(self, time_str: str) -> datetime | None:
         """
         解析时间字符串
-        
+
         Args:
             time_str: 时间字符串
-            
+
         Returns:
             标准化的datetime对象，如果解析失败则返回None
         """
@@ -81,7 +80,7 @@ class TimeParser:
         logger.warning(f"无法解析时间: '{time_str}'，使用当前时间")
         return self.reference_time
 
-    def _parse_relative_day(self, time_str: str) -> Optional[datetime]:
+    def _parse_relative_day(self, time_str: str) -> datetime | None:
         """
         解析相对日期：今天、明天、昨天、前天、后天
         """
@@ -108,7 +107,7 @@ class TimeParser:
 
         return None
 
-    def _parse_days_ago(self, time_str: str) -> Optional[datetime]:
+    def _parse_days_ago(self, time_str: str) -> datetime | None:
         """
         解析 X天前/X天后、X周前/X周后、X个月前/X个月后
         """
@@ -172,7 +171,7 @@ class TimeParser:
 
         return None
 
-    def _parse_hours_ago(self, time_str: str) -> Optional[datetime]:
+    def _parse_hours_ago(self, time_str: str) -> datetime | None:
         """
         解析 X小时前/X小时后、X分钟前/X分钟后
         """
@@ -204,7 +203,7 @@ class TimeParser:
 
         return None
 
-    def _parse_week_month_year(self, time_str: str) -> Optional[datetime]:
+    def _parse_week_month_year(self, time_str: str) -> datetime | None:
         """
         解析：上周、上个月、去年、本周、本月、今年
         """
@@ -232,7 +231,7 @@ class TimeParser:
 
         return None
 
-    def _parse_specific_date(self, time_str: str) -> Optional[datetime]:
+    def _parse_specific_date(self, time_str: str) -> datetime | None:
         """
         解析具体日期：
         - 2025-11-05
@@ -266,7 +265,7 @@ class TimeParser:
 
         return None
 
-    def _parse_time_of_day(self, time_str: str) -> Optional[datetime]:
+    def _parse_time_of_day(self, time_str: str) -> datetime | None:
         """
         解析一天中的时间：
         - 早上、上午、中午、下午、晚上、深夜
@@ -290,7 +289,7 @@ class TimeParser:
         }
 
         # 先检查是否有具体时间点：早上8点、下午3点
-        for period, default_hour in time_periods.items():
+        for period in time_periods.keys():
             pattern = rf"{period}(\d{{1,2}})点?"
             match = re.search(pattern, time_str)
             if match:
@@ -314,13 +313,13 @@ class TimeParser:
 
         return None
 
-    def _parse_combined_time(self, time_str: str) -> Optional[datetime]:
+    def _parse_combined_time(self, time_str: str) -> datetime | None:
         """
         解析组合时间表达：今天下午、昨天晚上、明天早上
         """
         # 先解析日期部分
         date_result = None
-        
+
         # 相对日期关键词
         relative_days = {
             "今天": 0, "今日": 0,
@@ -330,16 +329,16 @@ class TimeParser:
             "后天": 2, "后日": 2,
             "大前天": -3, "大后天": 3,
         }
-        
+
         for keyword, days in relative_days.items():
             if keyword in time_str:
                 date_result = self.reference_time + timedelta(days=days)
                 date_result = date_result.replace(hour=0, minute=0, second=0, microsecond=0)
                 break
-        
+
         if not date_result:
             return None
-        
+
         # 再解析时间段部分
         time_periods = {
             "早上": 8, "早晨": 8,
@@ -351,7 +350,7 @@ class TimeParser:
             "深夜": 23,
             "凌晨": 2,
         }
-        
+
         for period, hour in time_periods.items():
             if period in time_str:
                 # 检查是否有具体时间点
@@ -363,17 +362,17 @@ class TimeParser:
                     if period in ["下午", "晚上"] and hour < 12:
                         hour += 12
                 return date_result.replace(hour=hour)
-        
+
         # 如果没有时间段，返回日期（默认0点）
         return date_result
 
     def _chinese_num_to_int(self, num_str: str) -> int:
         """
         将中文数字转换为阿拉伯数字
-        
+
         Args:
             num_str: 中文数字字符串（如："一"、"十"、"3"）
-            
+
         Returns:
             整数
         """
@@ -418,11 +417,11 @@ class TimeParser:
     def format_time(self, dt: datetime, format_type: str = "iso") -> str:
         """
         格式化时间
-        
+
         Args:
             dt: datetime对象
             format_type: 格式类型 ("iso", "cn", "relative")
-            
+
         Returns:
             格式化的时间字符串
         """
@@ -461,13 +460,13 @@ class TimeParser:
 
         return str(dt)
 
-    def parse_time_range(self, time_str: str) -> Tuple[Optional[datetime], Optional[datetime]]:
+    def parse_time_range(self, time_str: str) -> tuple[datetime | None, datetime | None]:
         """
         解析时间范围：最近一周、最近3天
-        
+
         Args:
             time_str: 时间范围字符串
-            
+
         Returns:
             (start_time, end_time)
         """

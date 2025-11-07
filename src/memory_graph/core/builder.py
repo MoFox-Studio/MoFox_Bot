@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 
@@ -16,7 +16,6 @@ from src.memory_graph.models import (
     MemoryEdge,
     MemoryNode,
     MemoryStatus,
-    MemoryType,
     NodeType,
 )
 from src.memory_graph.storage.graph_store import GraphStore
@@ -28,7 +27,7 @@ logger = get_logger(__name__)
 class MemoryBuilder:
     """
     记忆构建器
-    
+
     负责：
     1. 根据提取的元素自动构造记忆子图
     2. 创建节点和边的完整结构
@@ -41,11 +40,11 @@ class MemoryBuilder:
         self,
         vector_store: VectorStore,
         graph_store: GraphStore,
-        embedding_generator: Optional[Any] = None,
+        embedding_generator: Any | None = None,
     ):
         """
         初始化记忆构建器
-        
+
         Args:
             vector_store: 向量存储
             graph_store: 图存储
@@ -55,13 +54,13 @@ class MemoryBuilder:
         self.graph_store = graph_store
         self.embedding_generator = embedding_generator
 
-    async def build_memory(self, extracted_params: Dict[str, Any]) -> Memory:
+    async def build_memory(self, extracted_params: dict[str, Any]) -> Memory:
         """
         构建完整的记忆对象
-        
+
         Args:
             extracted_params: 提取器返回的标准化参数
-            
+
         Returns:
             Memory 对象（状态为 STAGED）
         """
@@ -97,7 +96,7 @@ class MemoryBuilder:
             edges.append(memory_type_edge)
 
             # 4. 如果有客体，创建客体节点并连接
-            if "object" in extracted_params and extracted_params["object"]:
+            if extracted_params.get("object"):
                 object_node = await self._create_object_node(
                     content=extracted_params["object"], memory_id=memory_id
                 )
@@ -158,14 +157,14 @@ class MemoryBuilder:
     ) -> MemoryNode:
         """
         创建新节点或复用已存在的相似节点
-        
+
         对于主体(SUBJECT)和属性(ATTRIBUTE)，检查是否已存在相同内容的节点
-        
+
         Args:
             content: 节点内容
             node_type: 节点类型
             memory_id: 所属记忆ID
-            
+
         Returns:
             MemoryNode 对象
         """
@@ -190,11 +189,11 @@ class MemoryBuilder:
     async def _create_topic_node(self, content: str, memory_id: str) -> MemoryNode:
         """
         创建主题节点（需要生成嵌入向量）
-        
+
         Args:
             content: 节点内容
             memory_id: 所属记忆ID
-            
+
         Returns:
             MemoryNode 对象
         """
@@ -225,11 +224,11 @@ class MemoryBuilder:
     async def _create_object_node(self, content: str, memory_id: str) -> MemoryNode:
         """
         创建客体节点（需要生成嵌入向量）
-        
+
         Args:
             content: 节点内容
             memory_id: 所属记忆ID
-            
+
         Returns:
             MemoryNode 对象
         """
@@ -258,22 +257,22 @@ class MemoryBuilder:
 
     async def _process_attributes(
         self,
-        attributes: Dict[str, Any],
+        attributes: dict[str, Any],
         parent_id: str,
         memory_id: str,
         importance: float,
-    ) -> tuple[List[MemoryNode], List[MemoryEdge]]:
+    ) -> tuple[list[MemoryNode], list[MemoryEdge]]:
         """
         处理属性，构建属性子图
-        
+
         结构：TOPIC -> ATTRIBUTE -> VALUE
-        
+
         Args:
             attributes: 属性字典
             parent_id: 父节点ID（通常是TOPIC）
             memory_id: 所属记忆ID
             importance: 重要性
-            
+
         Returns:
             (属性节点列表, 属性边列表)
         """
@@ -322,10 +321,10 @@ class MemoryBuilder:
     async def _generate_embedding(self, text: str) -> np.ndarray:
         """
         生成文本的嵌入向量
-        
+
         Args:
             text: 文本内容
-            
+
         Returns:
             嵌入向量
         """
@@ -341,14 +340,14 @@ class MemoryBuilder:
 
     async def _find_existing_node(
         self, content: str, node_type: NodeType
-    ) -> Optional[MemoryNode]:
+    ) -> MemoryNode | None:
         """
         查找已存在的完全匹配节点（用于主体和属性）
-        
+
         Args:
             content: 节点内容
             node_type: 节点类型
-            
+
         Returns:
             已存在的节点，如果没有则返回 None
         """
@@ -369,14 +368,14 @@ class MemoryBuilder:
 
     async def _find_similar_topic(
         self, content: str, embedding: np.ndarray
-    ) -> Optional[MemoryNode]:
+    ) -> MemoryNode | None:
         """
         查找相似的主题节点（基于语义相似度）
-        
+
         Args:
             content: 内容
             embedding: 嵌入向量
-            
+
         Returns:
             相似节点，如果没有则返回 None
         """
@@ -414,14 +413,14 @@ class MemoryBuilder:
 
     async def _find_similar_object(
         self, content: str, embedding: np.ndarray
-    ) -> Optional[MemoryNode]:
+    ) -> MemoryNode | None:
         """
         查找相似的客体节点（基于语义相似度）
-        
+
         Args:
             content: 内容
             embedding: 嵌入向量
-            
+
         Returns:
             相似节点，如果没有则返回 None
         """
@@ -480,13 +479,13 @@ class MemoryBuilder:
     ) -> MemoryEdge:
         """
         关联两个记忆（创建因果或引用边）
-        
+
         Args:
             source_memory: 源记忆
             target_memory: 目标记忆
             relation_type: 关系类型（如 "导致", "引用"）
             importance: 重要性
-            
+
         Returns:
             创建的边
         """
@@ -525,7 +524,7 @@ class MemoryBuilder:
             logger.error(f"记忆关联失败: {e}", exc_info=True)
             raise RuntimeError(f"记忆关联失败: {e}")
 
-    def _find_topic_node(self, memory: Memory) -> Optional[MemoryNode]:
+    def _find_topic_node(self, memory: Memory) -> MemoryNode | None:
         """查找记忆中的主题节点"""
         for node in memory.nodes:
             if node.node_type == NodeType.TOPIC:

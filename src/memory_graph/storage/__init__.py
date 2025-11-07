@@ -5,4 +5,4 @@
 from src.memory_graph.storage.graph_store import GraphStore
 from src.memory_graph.storage.vector_store import VectorStore
 
-__all__ = ["VectorStore", "GraphStore"]
+__all__ = ["GraphStore", "VectorStore"]
