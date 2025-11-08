@@ -62,12 +62,15 @@ async def file_to_stream(
    }
 
    action = ""
-   if target_stream.group_info:
+   if target_stream.group_info and target_stream.group_info.group_id:
        action = "upload_group_file"
        params["group_id"] = target_stream.group_info.group_id
-   else:
+   elif target_stream.user_info and target_stream.user_info.user_id:
        action = "upload_private_file"
        params["user_id"] = target_stream.user_info.user_id
+   else:
+       logger.error(f"[SendAPI] 无法确定文件发送目标: {stream_id}")
+       return False
 
    response = await adapter_command_to_stream(
        action=action,
@@ -173,10 +176,10 @@ async def wait_adapter_response(request_id: str, timeout: float = 30.0) -> dict:
         response = await asyncio.wait_for(future, timeout=timeout)
         return response
     except asyncio.TimeoutError:
-        await _adapter_response_pool.pop(request_id, None)
+        _adapter_response_pool.pop(request_id, None)
         return {"status": "error", "message": "timeout"}
     except Exception as e:
-        await _adapter_response_pool.pop(request_id, None)
+        _adapter_response_pool.pop(request_id, None)
         return {"status": "error", "message": str(e)}
 
 
@@ -234,7 +237,7 @@ async def _send_to_target(
 
         # 构建机器人用户信息
         bot_user_info = UserInfo(
-            user_id=global_config.bot.qq_account,
+            user_id=str(global_config.bot.qq_account),
             user_nickname=global_config.bot.nickname,
             platform=target_stream.platform,
         )
@@ -499,6 +502,9 @@ async def adapter_command_to_stream(
                 logger.debug(f"[SendAPI] 创建临时虚拟聊天流: {stream_id}")
 
                 # 创建临时的用户信息和聊天流
+                if not platform:
+                    logger.error("[SendAPI] 创建临时聊天流失败: platform 未提供")
+                    return {"status": "error", "message": "platform 未提供"}
 
                 temp_user_info = UserInfo(user_id="system", user_nickname="System", platform=platform)
 
@@ -520,7 +526,7 @@ async def adapter_command_to_stream(
 
         # 构建机器人用户信息
         bot_user_info = UserInfo(
-            user_id=global_config.bot.qq_account,
+            user_id=str(global_config.bot.qq_account),
             user_nickname=global_config.bot.nickname,
             platform=target_stream.platform,
         )
