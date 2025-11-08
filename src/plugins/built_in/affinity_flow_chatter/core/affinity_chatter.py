@@ -87,7 +87,7 @@ class AffinityChatter(BaseChatter):
                 self.stats["successful_executions"] += 1
                 self.last_activity_time = time.time()
 
-                result: ClassVar = {
+                result = {
                     "success": True,
                     "stream_id": self.stream_id,
                     "plan_created": True,

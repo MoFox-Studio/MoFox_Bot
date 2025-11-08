@@ -84,14 +84,12 @@ class ChatterActionPlanner:
             return [], None
 
     async def _enhanced_plan_flow(self, context: "StreamContext | None") -> tuple[list[dict[str, Any]], Any | None]:
-        """执行增强版规划流程"""
+        """执行增强版规划流程，根据模式分发到对应的处理函数"""
         try:
-
-
-            # 1. 生成初始 Plan
+            # 1. 确定当前模式
             chat_mode = context.chat_mode if context else ChatMode.FOCUS
 
-            # 如果禁用了Normal模式，则强制将任何处于Normal模式的会话切换回Focus模式。
+            # 2. 如果禁用了Normal模式，则强制切换回Focus模式
             if not global_config.affinity_flow.enable_normal_mode and chat_mode == ChatMode.NORMAL:
                 logger.info("Normal模式已禁用，强制切换回Focus模式")
                 chat_mode = ChatMode.FOCUS
@@ -99,12 +97,29 @@ class ChatterActionPlanner:
                     context.chat_mode = ChatMode.FOCUS
                     await self._sync_chat_mode_to_stream(context)
 
-            # Normal模式下使用简化流程
+            # 3. 根据模式分发到对应的处理流程
             if chat_mode == ChatMode.NORMAL:
                 return await self._normal_mode_flow(context)
+            else:
+                return await self._focus_mode_flow(context)
 
+        except Exception as e:
+            logger.error(f"增强版规划流程出错: {e}")
+            self.planner_stats["failed_plans"] += 1
+            # 清理处理标记
+            if context:
+                context.processing_message_id = None
+            return [], None
+
+    async def _focus_mode_flow(self, context: "StreamContext | None") -> tuple[list[dict[str, Any]], Any | None]:
+        """Focus模式下的完整plan流程
+
+        执行完整的生成→筛选→执行流程，支持所有类型的动作，包括非回复动作。
+        """
+        try:
             unread_messages = context.get_unread_messages() if context else []
-            # 2. 使用新的兴趣度管理系统进行评分
+
+            # 1. 使用新的兴趣度管理系统进行评分
             max_message_interest = 0.0
             reply_not_available = True
             aggregate_should_act = False
@@ -123,7 +138,7 @@ class ChatterActionPlanner:
                         message_should_act = getattr(message, "should_act", False)
 
                         logger.debug(
-                            f"消息 {message.message_id} 预计算标志: interest={message_interest:.3f}, "
+                            f"Focus模式 - 消息 {message.message_id} 预计算标志: interest={message_interest:.3f}, "
                             f"should_reply={message_should_reply}, should_act={message_should_act}"
                         )
 
@@ -136,22 +151,22 @@ class ChatterActionPlanner:
                             aggregate_should_act = True
 
                     except Exception as e:
-                        logger.warning(f"处理消息 {message.message_id} 失败: {e}")
+                        logger.warning(f"Focus模式 - 处理消息 {message.message_id} 失败: {e}")
                         message.interest_value = 0.0
                         message.should_reply = False
                         message.should_act = False
 
-            # 检查兴趣度是否达到非回复动作阈值
+            # 2. 检查兴趣度是否达到非回复动作阈值
             non_reply_action_interest_threshold = global_config.affinity_flow.non_reply_action_interest_threshold
             if not aggregate_should_act:
-                logger.info("所有未读消息低于兴趣度阈值，不执行动作")
+                logger.info("Focus模式 - 所有未读消息低于兴趣度阈值，不执行动作")
                 # 直接返回 no_action
                 from src.common.data_models.info_data_model import ActionPlannerInfo
 
                 no_action = ActionPlannerInfo(
                     action_type="no_action",
                     reasoning=(
-                        "所有未读消息兴趣度未达阈值 "
+                        "Focus模式 - 所有未读消息兴趣度未达阈值 "
                         f"{non_reply_action_interest_threshold:.3f}"
                         f"（最高兴趣度 {max_message_interest:.3f}）"
                     ),
@@ -162,28 +177,27 @@ class ChatterActionPlanner:
                 # 更新连续不回复计数
                 await self._update_interest_calculator_state(replied=False)
 
-                initial_plan = await self.generator.generate(chat_mode)
+                initial_plan = await self.generator.generate(ChatMode.FOCUS)
                 filtered_plan = initial_plan
                 filtered_plan.decided_actions = [no_action]
             else:
-                # 在规划前，先进行动作修改
+                # 3. 在规划前，先进行动作修改
                 from src.chat.planner_actions.action_modifier import ActionModifier
                 action_modifier = ActionModifier(self.action_manager, self.chat_id)
                 await action_modifier.modify_actions()
 
-                # 在生成初始计划前，刷新缓存消息到未读列表
-                await self._flush_cached_messages_to_unread(context)
+                # 4. 生成初始计划
+                initial_plan = await self.generator.generate(ChatMode.FOCUS)
 
-                initial_plan = await self.generator.generate(chat_mode)
-
-                # 确保Plan中包含所有当前可用的动作
+                # 5. 确保Plan中包含所有当前可用的动作
                 initial_plan.available_actions = self.action_manager.get_using_actions()
-                # 4. 筛选 Plan
+
+                # 6. 筛选 Plan
                 available_actions = list(initial_plan.available_actions.keys())
                 plan_filter = ChatterPlanFilter(self.chat_id, available_actions)
                 filtered_plan = await plan_filter.filter(reply_not_available, initial_plan)
 
-            # 4.5 检查是否正在处理相同的目标消息，防止重复回复
+            # 7. 检查是否正在处理相同的目标消息，防止重复回复
             target_message_id = None
             if filtered_plan and filtered_plan.decided_actions:
                 for action in filtered_plan.decided_actions:
@@ -195,17 +209,17 @@ class ChatterActionPlanner:
                             target_message_id = action.action_message.get("message_id")
                         break
 
-            # 如果找到目标消息ID，检查是否已经在处理中
+            # 8. 如果找到目标消息ID，检查是否已经在处理中
             if target_message_id and context:
                 if context.processing_message_id == target_message_id:
                     logger.warning(
-                        f"目标消息 {target_message_id} 已经在处理中，跳过本次规划以防止重复回复"
+                        f"Focus模式 - 目标消息 {target_message_id} 已经在处理中，跳过本次规划以防止重复回复"
                     )
                     # 返回 no_action，避免重复处理
                     from src.common.data_models.info_data_model import ActionPlannerInfo
                     no_action = ActionPlannerInfo(
                         action_type="no_action",
-                        reasoning=f"目标消息 {target_message_id} 已经在处理中，跳过以防止重复回复",
+                        reasoning=f"Focus模式 - 目标消息 {target_message_id} 已经在处理中，跳过以防止重复回复",
                         action_data={},
                         action_message=None,
                     )
@@ -213,15 +227,15 @@ class ChatterActionPlanner:
                 else:
                     # 记录当前正在处理的消息ID
                     context.processing_message_id = target_message_id
-                    logger.debug(f"开始处理目标消息: {target_message_id}")
+                    logger.debug(f"Focus模式 - 开始处理目标消息: {target_message_id}")
 
-            # 5. 使用 PlanExecutor 执行 Plan
+            # 9. 使用 PlanExecutor 执行 Plan
             execution_result = await self.executor.execute(filtered_plan)
 
-            # 6. 根据执行结果更新统计信息
+            # 10. 根据执行结果更新统计信息
             self._update_stats_from_execution_result(execution_result)
 
-            # 7. 更新兴趣计算器状态
+            # 11. 更新兴趣计算器状态
             if filtered_plan.decided_actions:
                 has_reply = any(
                     action.action_type in ["reply", "proactive_reply"]
@@ -231,21 +245,20 @@ class ChatterActionPlanner:
                 has_reply = False
             await self._update_interest_calculator_state(replied=has_reply)
 
-            # 8. Focus模式下如果执行了reply动作，根据focus_energy概率切换到Normal模式
-            if chat_mode == ChatMode.FOCUS and context:
-                if has_reply and global_config.affinity_flow.enable_normal_mode:
-                    await self._check_enter_normal_mode(context)
+            # 12. Focus模式下如果执行了reply动作，根据focus_energy概率切换到Normal模式
+            if has_reply and context and global_config.affinity_flow.enable_normal_mode:
+                await self._check_enter_normal_mode(context)
 
-            # 9. 清理处理标记
+            # 13. 清理处理标记
             if context:
                 context.processing_message_id = None
-                logger.debug("已清理处理标记，完成规划流程")
+                logger.debug("Focus模式 - 已清理处理标记，完成规划流程")
 
-            # 10. 返回结果
+            # 14. 返回结果
             return self._build_return_result(filtered_plan)
 
         except Exception as e:
-            logger.error(f"增强版规划流程出错: {e}")
+            logger.error(f"Focus模式流程出错: {e}")
             self.planner_stats["failed_plans"] += 1
             # 清理处理标记
             if context:
@@ -258,32 +271,33 @@ class ChatterActionPlanner:
         只计算兴趣值并判断是否达到reply阈值，不执行完整的plan流程。
         根据focus_energy决定退出normal模式回到focus模式的概率。
         """
-        # 最后的保障措施，以防意外进入此流程
+        # 安全检查：确保Normal模式已启用
         if not global_config.affinity_flow.enable_normal_mode:
-            logger.warning("意外进入了Normal模式流程，但该模式已被禁用！将强制切换回Focus模式进行完整规划。")
+            logger.warning("Normal模式 - 意外进入了Normal模式流程，但该模式已被禁用！将强制切换回Focus模式进行完整规划。")
             if context:
                 context.chat_mode = ChatMode.FOCUS
                 await self._sync_chat_mode_to_stream(context)
             # 重新运行主规划流程，这次将正确使用Focus模式
             return await self._enhanced_plan_flow(context)
-        try:
-            # Normal模式开始时，刷新缓存消息到未读列表
-            await self._flush_cached_messages_to_unread(context)
 
+        try:
             unread_messages = context.get_unread_messages() if context else []
 
+            # 1. 检查是否有未读消息
             if not unread_messages:
-                logger.debug("Normal模式: 没有未读消息")
+                logger.debug("Normal模式 - 没有未读消息")
                 from src.common.data_models.info_data_model import ActionPlannerInfo
                 no_action = ActionPlannerInfo(
                     action_type="no_action",
-                    reasoning="Normal模式: 没有未读消息",
+                    reasoning="Normal模式 - 没有未读消息",
                     action_data={},
                     action_message=None,
                 )
+                # 检查是否需要退出Normal模式
+                await self._check_exit_normal_mode(context)
                 return [asdict(no_action)], None
 
-            # 检查是否有消息达到reply阈值
+            # 2. 检查是否有消息达到reply阈值
             should_reply = False
             target_message = None
 
@@ -292,32 +306,34 @@ class ChatterActionPlanner:
                 if message_should_reply:
                     should_reply = True
                     target_message = message
-                    logger.info(f"Normal模式: 消息 {message.message_id} 达到reply阈值")
+                    logger.info(f"Normal模式 - 消息 {message.message_id} 达到reply阈值，准备回复")
                     break
 
             if should_reply and target_message:
-                # 检查是否正在处理相同的目标消息，防止重复回复
+                # 3. 防重复检查：检查是否正在处理相同的目标消息
                 target_message_id = target_message.message_id
                 if context and context.processing_message_id == target_message_id:
                     logger.warning(
-                        f"Normal模式: 目标消息 {target_message_id} 已经在处理中，跳过本次规划以防止重复回复"
+                        f"Normal模式 - 目标消息 {target_message_id} 已经在处理中，跳过本次规划以防止重复回复"
                     )
                     # 返回 no_action，避免重复处理
                     from src.common.data_models.info_data_model import ActionPlannerInfo
                     no_action = ActionPlannerInfo(
                         action_type="no_action",
-                        reasoning=f"目标消息 {target_message_id} 已经在处理中，跳过以防止重复回复",
+                        reasoning=f"Normal模式 - 目标消息 {target_message_id} 已经在处理中，跳过以防止重复回复",
                         action_data={},
                         action_message=None,
                     )
+                    # 检查是否需要退出Normal模式
+                    await self._check_exit_normal_mode(context)
                     return [asdict(no_action)], None
 
                 # 记录当前正在处理的消息ID
                 if context:
                     context.processing_message_id = target_message_id
-                    logger.debug(f"Normal模式: 开始处理目标消息: {target_message_id}")
+                    logger.debug(f"Normal模式 - 开始处理目标消息: {target_message_id}")
 
-                # 达到reply阈值，直接进入回复流程
+                # 4. 构建回复动作（Normal模式的简化流程）
                 from src.common.data_models.info_data_model import ActionPlannerInfo, Plan
                 from src.plugin_system.base.component_types import ChatType
 
@@ -326,7 +342,7 @@ class ChatterActionPlanner:
 
                 reply_action = ActionPlannerInfo(
                     action_type="reply",
-                    reasoning="Normal模式: 兴趣度达到阈值，直接回复",
+                    reasoning="Normal模式 - 兴趣度达到阈值，直接回复（简化流程）",
                     action_data={"target_message_id": target_message.message_id},
                     action_message=target_message,
                     should_quote_reply=False,  # Normal模式默认不引用回复，保持对话流畅
@@ -341,31 +357,31 @@ class ChatterActionPlanner:
                     decided_actions=[reply_action],
                 )
 
-                # 执行reply动作
+                # 5. 执行reply动作
                 execution_result = await self.executor.execute(minimal_plan)
                 self._update_stats_from_execution_result(execution_result)
 
-                logger.info("Normal模式: 执行reply动作完成")
+                logger.info("Normal模式 - 执行reply动作完成")
 
-                # 更新兴趣计算器状态（回复成功，重置不回复计数）
+                # 6. 更新兴趣计算器状态（回复成功，重置不回复计数）
                 await self._update_interest_calculator_state(replied=True)
 
-                # 清理处理标记
+                # 7. 清理处理标记
                 if context:
                     context.processing_message_id = None
-                    logger.debug("Normal模式: 已清理处理标记")
+                    logger.debug("Normal模式 - 已清理处理标记")
 
-                # 无论是否回复，都进行退出normal模式的判定
+                # 8. 检查是否需要退出Normal模式
                 await self._check_exit_normal_mode(context)
 
                 return [asdict(reply_action)], target_message_dict
             else:
                 # 未达到reply阈值
-                logger.debug("Normal模式: 未达到reply阈值")
+                logger.debug("Normal模式 - 未达到reply阈值，不执行回复")
                 from src.common.data_models.info_data_model import ActionPlannerInfo
                 no_action = ActionPlannerInfo(
                     action_type="no_action",
-                    reasoning="Normal模式: 兴趣度未达到阈值",
+                    reasoning="Normal模式 - 兴趣度未达到阈值",
                     action_data={},
                     action_message=None,
                 )
@@ -373,13 +389,13 @@ class ChatterActionPlanner:
                 # 更新连续不回复计数
                 await self._update_interest_calculator_state(replied=False)
 
-                # 无论是否回复，都进行退出normal模式的判定
+                # 检查是否需要退出Normal模式
                 await self._check_exit_normal_mode(context)
 
                 return [asdict(no_action)], None
 
         except Exception as e:
-            logger.error(f"Normal模式流程出错: {e}")
+            logger.error(f"Normal模式 - 流程出错: {e}")
             self.planner_stats["failed_plans"] += 1
             # 清理处理标记
             if context:

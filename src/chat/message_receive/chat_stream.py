@@ -565,6 +565,14 @@ class ChatManager:
         else:
             return None
 
+    def get_all_streams(self) -> dict[str, ChatStream]:
+        """获取所有聊天流
+
+        Returns:
+            dict[str, ChatStream]: 包含所有聊天流的字典，key为stream_id，value为ChatStream对象
+        """
+        return self.streams.copy()  # 返回副本以防止外部修改
+
     @staticmethod
     def _prepare_stream_data(stream_data_dict: dict) -> dict:
         """准备聊天流保存数据"""
