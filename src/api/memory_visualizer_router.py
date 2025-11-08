@@ -102,16 +102,21 @@ def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any
             if node.get("id")
         }
 
-        edges_list = [
-            {
-                **edge,
-                "from": edge.get("source", edge.get("source_id")),
-                "to": edge.get("target", edge.get("target_id")),
-                "label": edge.get("relation", ""),
-                "arrows": "to",
-            }
-            for edge in edges
-        ]
+        edges_list = []
+        seen_edge_ids = set()
+        for edge in edges:
+            edge_id = edge.get("id")
+            if edge_id and edge_id not in seen_edge_ids:
+                edges_list.append(
+                    {
+                        **edge,
+                        "from": edge.get("source", edge.get("source_id")),
+                        "to": edge.get("target", edge.get("target_id")),
+                        "label": edge.get("relation", ""),
+                        "arrows": "to",
+                    }
+                )
+                seen_edge_ids.add(edge_id)
 
         stats = metadata.get("statistics", {})
         total_memories = stats.get("total_memories", 0)
@@ -151,7 +156,7 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
 
     all_memories = memory_manager.graph_store.get_all_memories()
     nodes_dict = {}
-    edges_list = []
+    edges_dict = {}
     memory_info = []
 
     for memory in all_memories:
@@ -173,8 +178,8 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
                     "title": f"{node.node_type.value}: {node.content}",
                 }
         for edge in memory.edges:
-            edges_list.append(  # noqa: PERF401
-                {
+            if edge.id not in edges_dict:
+                edges_dict[edge.id] = {
                     "id": edge.id,
                     "from": edge.source_id,
                     "to": edge.target_id,
@@ -182,7 +187,8 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
                     "arrows": "to",
                     "memory_id": memory.id,
                 }
-            )
+    
+    edges_list = list(edges_dict.values())
 
     stats = memory_manager.get_statistics()
     return {
