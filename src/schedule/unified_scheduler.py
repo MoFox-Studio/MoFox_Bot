@@ -487,8 +487,47 @@ class UnifiedScheduler:
         task_name: str | None = None,
         callback_args: tuple | None = None,
         callback_kwargs: dict | None = None,
+        force_overwrite: bool = False,
     ) -> str:
-        """创建调度任务（无锁设计）"""
+        """创建调度任务（无锁设计）
+
+        Args:
+            callback: 回调函数
+            trigger_type: 触发类型
+            trigger_config: 触发配置
+            is_recurring: 是否循环任务
+            task_name: 任务名称，如果指定则检查是否已存在同名任务
+            callback_args: 回调函数位置参数
+            callback_kwargs: 回调函数关键字参数
+            force_overwrite: 如果同名任务已存在，是否强制覆盖
+
+        Returns:
+            str: 创建的schedule_id
+
+        Raises:
+            ValueError: 如果同名任务已存在且未启用强制覆盖
+        """
+        # 检查任务名称是否已存在
+        if task_name is not None:
+            existing_task = None
+            existing_schedule_id = None
+
+            for sid, task in self._tasks.items():
+                if task.task_name == task_name and task.is_active:
+                    existing_task = task
+                    existing_schedule_id = sid
+                    break
+
+            if existing_task is not None:
+                if force_overwrite:
+                    logger.info(f"检测到同名活跃任务 '{task_name}'，强制覆盖模式已启用，移除现有任务")
+                    await self.remove_schedule(existing_schedule_id)
+                else:
+                    raise ValueError(
+                        f"任务名称 '{task_name}' 已存在活跃任务 (ID: {existing_schedule_id[:8]}...)。"
+                        f"如需覆盖，请设置 force_overwrite=True"
+                    )
+
         schedule_id = str(uuid.uuid4())
 
         task = ScheduleTask(
@@ -517,6 +556,34 @@ class UnifiedScheduler:
 
         logger.debug(f"创建调度任务: {task.task_name}")
         return schedule_id
+
+    async def find_schedule_by_name(self, task_name: str) -> str | None:
+        """根据任务名称查找schedule_id
+
+        Args:
+            task_name: 任务名称
+
+        Returns:
+            str | None: 找到的schedule_id，如果不存在则返回None
+        """
+        for schedule_id, task in self._tasks.items():
+            if task.task_name == task_name and task.is_active:
+                return schedule_id
+        return None
+
+    async def remove_schedule_by_name(self, task_name: str) -> bool:
+        """根据任务名称移除调度任务
+
+        Args:
+            task_name: 任务名称
+
+        Returns:
+            bool: 是否成功移除
+        """
+        schedule_id = await self.find_schedule_by_name(task_name)
+        if schedule_id:
+            return await self.remove_schedule(schedule_id)
+        return False
 
     async def remove_schedule(self, schedule_id: str) -> bool:
         """移除调度任务（无锁设计）
@@ -550,6 +617,33 @@ class UnifiedScheduler:
 
         logger.debug(f"移除调度任务: {task.task_name}")
         return True
+
+    def get_executing_task(self, schedule_id: str) -> asyncio.Task | None:
+        """获取指定schedule_id的正在执行的任务
+
+        Args:
+            schedule_id: 调度任务ID
+
+        Returns:
+            asyncio.Task | None: 正在执行的任务，如果不在执行中则返回None
+        """
+        executing_task = self._executing_tasks.get(schedule_id)
+        if executing_task and not executing_task.done():
+            return executing_task
+        return None
+
+    def get_all_executing_tasks(self) -> dict[str, asyncio.Task]:
+        """获取所有正在执行的任务
+
+        Returns:
+            dict[str, asyncio.Task]: schedule_id -> executing_task 的映射
+        """
+        # 过滤出未完成的任务
+        return {
+            schedule_id: task
+            for schedule_id, task in self._executing_tasks.items()
+            if not task.done()
+        }
 
     async def trigger_schedule(self, schedule_id: str) -> bool:
         """强制触发指定任务（无锁设计）"""
@@ -656,6 +750,17 @@ class UnifiedScheduler:
         for task in self._tasks.values():
             tasks_by_type[task.trigger_type.value] += 1
 
+        # 获取正在执行的任务详细信息
+        executing_tasks_info = []
+        for schedule_id, executing_task in self._executing_tasks.items():
+            if not executing_task.done():
+                task = self._tasks.get(schedule_id)
+                executing_tasks_info.append({
+                    "schedule_id": schedule_id[:8] + "...",
+                    "task_name": task.task_name if task else "Unknown",
+                    "task_obj_name": executing_task.get_name() if hasattr(executing_task, 'get_name') else str(executing_task),
+                })
+
         return {
             "is_running": self._running,
             "total_tasks": total_tasks,
@@ -664,6 +769,7 @@ class UnifiedScheduler:
             "recurring_tasks": recurring_tasks,
             "one_time_tasks": total_tasks - recurring_tasks,
             "executing_tasks": executing_tasks,
+            "executing_tasks_info": executing_tasks_info,
             "tasks_by_type": tasks_by_type,
             "registered_events": list(self._event_subscriptions),
         }
