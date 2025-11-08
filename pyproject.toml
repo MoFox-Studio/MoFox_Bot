@@ -19,6 +19,7 @@ dependencies = [
     "faiss-cpu>=1.11.0",
     "fastapi>=0.116.0",
     "google>=3.0.0",
+    "filetype>=1.2.0",
     "google-genai>=1.29.0",
     "httpx>=0.28.1",
     "json-repair>=0.47.6",
