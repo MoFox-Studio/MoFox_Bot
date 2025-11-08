@@ -205,9 +205,7 @@ class StreamLoopManager:
                         continue
 
                     # 2. 检查是否有消息需要处理
-                    chat_stream = await get_chat_manager().get_stream(stream_id)
-                    if chat_stream:
-                        chat_stream.context_manager.flush_cached_messages()
+                    await self._flush_cached_messages_to_unread(stream_id)
                     unread_count = self._get_unread_count(context)
                     force_dispatch = self._needs_force_dispatch_for_context(context, unread_count)
 
