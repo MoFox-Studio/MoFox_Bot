@@ -557,11 +557,11 @@ class DefaultReplyer:
                     participants = []
                     try:
                         # 尝试从聊天流中获取参与者信息
-                        if hasattr(stream, "chat_history_manager"):
-                            history_manager = stream.chat_history_manager
+                        if hasattr(stream, "context_manager"):
+                            history_manager = stream.context_manager
                             # 获取最近的参与者列表
                             recent_records = history_manager.get_memory_chat_history(
-                                user_id=getattr(stream, "user_id", ""),
+                                user_id=getattr(stream.user_info, "user_id", ""),
                                 count=10,
                                 memory_types=["chat_message", "system_message"]
                             )
@@ -1746,6 +1746,10 @@ class DefaultReplyer:
                 aggressive_pattern = re.compile(r'\[\s*回复\s*<.+?>.*?\]', re.DOTALL)
                 original_content_for_aggresive_filter = content
                 cleaned_content_by_aggresive_filter = aggressive_pattern.sub('', content).strip()
+
+                # 再次检查并移除因嵌套括号可能残留的单个 ']'
+                if cleaned_content_by_aggresive_filter.startswith(']'):
+                    cleaned_content_by_aggresive_filter = cleaned_content_by_aggresive_filter[1:].strip()
 
                 if cleaned_content_by_aggresive_filter != original_content_for_aggresive_filter:
                     logger.warning(f"检测到并清理了模型生成的不规范回复格式。原始内容: '{original_content_for_aggresive_filter}', 清理后: '{cleaned_content_by_aggresive_filter}'")
