@@ -320,10 +320,11 @@ class EventManager:
             logger.warning(f"插件 {permission_group} 没有权限触发事件 {event_name}，已拒绝触发！")
             return None
 
-        # 通知 scheduler（如果已注册）
+        # 🔧 修复：异步通知 scheduler，避免阻塞当前事件流程
         if hasattr(self, "_scheduler_callback") and self._scheduler_callback:
             try:
-                await self._scheduler_callback(event_name, params)
+                # 使用 create_task 异步执行，避免死锁
+                asyncio.create_task(self._scheduler_callback(event_name, params))
             except Exception as e:
                 logger.error(f"调用 scheduler 回调时出错: {e}", exc_info=True)
 
