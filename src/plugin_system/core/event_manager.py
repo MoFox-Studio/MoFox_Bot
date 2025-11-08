@@ -2,7 +2,7 @@
 事件管理器 - 实现Event和EventHandler的单例管理
 提供统一的事件注册、管理和触发接口
 """
-
+import asyncio
 from threading import Lock
 from typing import Any, Optional
 
