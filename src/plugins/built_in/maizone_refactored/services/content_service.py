@@ -6,7 +6,7 @@
 import asyncio
 import base64
 import datetime
-import imghdr
+import filetype
 from collections.abc import Callable
 
 import aiohttp
@@ -238,11 +238,11 @@ class ContentService:
                             continue
                         image_bytes = await resp.read()
 
-                image_format = imghdr.what(None, image_bytes)
-                if not image_format:
+                kind = filetype.guess(image_bytes)
+                if kind is None:
                     logger.error(f"无法识别图片格式: {image_url}")
                     return None
-
+                image_format = kind.extension
                 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
                 vision_model_name = self.get_config("models.vision_model", "vlm")

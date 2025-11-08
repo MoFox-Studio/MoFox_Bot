@@ -11,6 +11,7 @@ dotenv
 faiss-cpu
 fastapi
 fastmcp
+filetype
 rjieba
 jsonlines
 maim_message
