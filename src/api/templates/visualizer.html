@@ -532,17 +532,12 @@
     <script>
         let network = null;
         let availableFiles = [];
-        // 现在的数据集是动态增长的,我们需要用 vis.DataSet 来管理
-        let nodesDataSet = new vis.DataSet([])
-;
-        let edgesDataSet = new vis.DataSet([]);
-        
         let graphData = {
-            nodes: [], // 这将作为原始数据的备份
+            nodes: [],
             edges: [],
             memories: []
         };
-        let originalData = null; // 用于过滤器
+        let originalData = null;
 
         // 节点颜色配置
         const nodeColors = {
@@ -623,32 +618,26 @@
                     dragView: true
                 }
             };
-// 初始化时使用我们可动态管理的 DataSet
-const data = {
-    nodes: nodesDataSet,
-    edges: edgesDataSet
-};
 
-network = new vis.Network(container, data, options);
+            const data = {
+                nodes: new vis.DataSet([]),
+                edges: new vis.DataSet([])
+            };
+
+            network = new vis.Network(container, data, options);
 
             // 添加事件监听
             network.on('click', function(params) {
                 if (params.nodes.length > 0) {
                     const nodeId = params.nodes[0];
                     showNodeInfo(nodeId);
-                    // 单击时只高亮,不再执行复杂的BFS
+                    highlightConnectedNodes(nodeId);
                 } else {
-                    resetNodeHighlight(); // 点击空白处恢复
+                    // 点击空白处，恢复所有节点
+                    resetNodeHighlight();
                 }
             });
 
-            // 这才是我们的秘密武器: 双击扩展! 哼哼~
-            network.on('doubleClick', async function(params) {
-                if (params.nodes.length > 0) {
-                    const nodeId = params.nodes[0];
-                    await expandNode(nodeId);
-                }
-            });
             // 稳定化完成后停止物理引擎
             network.on('stabilizationIterationsDone', function() {
                 console.log('初始稳定化完成，停止物理引擎');
@@ -668,20 +657,16 @@ network = new vis.Network(container, data, options);
         async function loadGraph() {
             try {
                 document.getElementById('loading').style.display = 'block';
-                // 请求新的核心节点接口,而不是那个又笨又重的full接口
-                const response = await fetch('/visualizer/api/graph/core');
+                
+                const response = await fetch('/visualizer/api/graph/full');
                 const result = await response.json();
 
                 if (result.success) {
-                    originalData = result.data; // 保存原始数据用于过滤
-                    // 初始加载时,清空旧数据
-                    nodesDataSet.clear();
-                    edgesDataSet.clear();
-                    
-                    updateGraph(result.data, true); // true表示是初始加载
+                    originalData = result.data;
+                    updateGraph(result.data);
                     updateStats(result.data.stats);
                 } else {
-                    alert('加载核心节点失败: ' + result.error);
+                    alert('加载失败: ' + result.error);
                 }
             } catch (error) {
                 console.error('加载图形失败:', error);
@@ -690,62 +675,41 @@ network = new vis.Network(container, data, options);
                 document.getElementById('loading').style.display = 'none';
             }
         }
+
         // 更新图形显示
-        function updateGraph(data, isInitialLoad = false) {
-            if (isInitialLoad) {
-                // 如果是初始加载,则完全替换数据
-                graphData = data;
-            } else {
-                // 如果是扩展,则合并数据
-                // 使用一个Set来避免重复添加节点
-                const existingNodeIds = new Set(graphData.nodes.map(n => n.id));
-                data.nodes.forEach(newNode => {
-                    if (!existingNodeIds.has(newNode.id)) {
-                        graphData.nodes.push(newNode);
-                        existingNodeIds.add(newNode.id);
-                    }
-                });
+        function updateGraph(data) {
+            graphData = data;
 
-                // 同样避免重复添加边
-                const existingEdgeIds = new Set(graphData.edges.map(e => e.id));
-                data.edges.forEach(newEdge => {
-                    if (!existingEdgeIds.has(newEdge.id)) {
-                        graphData.edges.push(newEdge);
-                        existingEdgeIds.add(newEdge.id);
-                    }
-                });
-            }
-
-            // 处理节点数据,添加或更新到DataSet
-            const nodesToAdd = data.nodes.map(node => ({
+            // 处理节点数据
+            const nodes = data.nodes.map(node => ({
                 id: node.id,
                 label: node.label,
                 title: node.title,
                 group: node.group,
                 color: nodeColors[node.group] || '#999',
-                // 瞧,现在节点越大,就说明它越重要,是不是很酷?
-                size: 15 + Math.min((node.degree || 0) * 2, 20),
                 metadata: node.metadata
             }));
-            nodesDataSet.update(nodesToAdd);
 
-            // 处理边数据,添加到DataSet
-            const edgesToAdd = data.edges.map(edge => ({
+            // 处理边数据
+            const edges = data.edges.map(edge => ({
                 id: edge.id,
                 from: edge.from,
                 to: edge.to,
                 label: edge.label,
                 title: edge.title,
-                // 根据重要性调整边的宽度
-                width: (edge.importance || 0.5) * 2 + 1
+                width: edge.importance * 3 + 1
             }));
-            edgesDataSet.update(edgesToAdd);
 
-            // 只有在添加新节点时才需要重新稳定布局
-            if (nodesToAdd.length > 0) {
-                network.stabilize();
-            }
+            // 更新网络
+            network.setData({
+                nodes: new vis.DataSet(nodes),
+                edges: new vis.DataSet(edges)
+            });
+
+            // 注意：setData 会自动触发物理引擎重新布局
+            // stabilizationIterationsDone 事件监听器会自动停止物理引擎
         }
+
         // 更新统计信息
         function updateStats(stats) {
             document.getElementById('statNodes').textContent = stats.total_nodes;
@@ -1049,40 +1013,18 @@ network = new vis.Network(container, data, options);
                 });
             }
         }
-// 适应窗口
-function fitNetwork() {
-    if (network) {
-        network.fit({
-            animation: {
-                duration: 1000,
-                easingFunction: 'easeInOutQuad'
+
+        // 适应窗口
+        function fitNetwork() {
+            if (network) {
+                network.fit({
+                    animation: {
+                        duration: 1000,
+                        easingFunction: 'easeInOutQuad'
+                    }
+                });
             }
-        });
-    }
-}
-
-// 新增: 扩展节点的函数
-async function expandNode(nodeId) {
-    console.log(`正在扩展节点: ${nodeId}`);
-    document.getElementById('loading').style.display = 'block';
-
-    try {
-        const response = await fetch(`/visualizer/api/nodes/${nodeId}/expand`);
-        const result = await response.json();
-
-        if (result.success) {
-            console.log(`收到 ${result.data.nodes.length} 个新节点, ${result.data.edges.length} 条新边`);
-            updateGraph(result.data);
-        } else {
-            alert(`扩展节点失败: ${result.error}`);
         }
-    } catch (error) {
-        console.error('扩展节点失败:', error);
-        alert('扩展节点失败: ' + error.message);
-    } finally {
-        document.getElementById('loading').style.display = 'none';
-    }
-}
 
         // 导出图形数据
         function exportGraph() {
