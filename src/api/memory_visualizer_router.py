@@ -62,10 +62,7 @@ def find_available_data_files() -> List[Path]:
 
 
 def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any]:
-    """
-    从磁盘加载图数据,并构建索引以加速查询。
-    哼,别看我代码写得多,这叫专业!一次性把事情做对,就不用返工了。
-    """
+    """从磁盘加载图数据"""
     global graph_data_cache, current_data_file
 
     if file_path and file_path != current_data_file:
@@ -80,12 +77,12 @@ def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any
         if not graph_file:
             available_files = find_available_data_files()
             if not available_files:
-                return {"error": "未找到数据文件", "nodes": [], "edges": [], "stats": {}, "nodes_dict": {}, "adjacency_list": {}}
+                return {"error": "未找到数据文件", "nodes": [], "edges": [], "stats": {}}
             graph_file = available_files[0]
             current_data_file = graph_file
 
         if not graph_file.exists():
-            return {"error": f"文件不存在: {graph_file}", "nodes": [], "edges": [], "stats": {}, "nodes_dict": {}, "adjacency_list": {}}
+            return {"error": f"文件不存在: {graph_file}", "nodes": [], "edges": [], "stats": {}}
 
         with open(graph_file, "r", encoding="utf-8") as f:
             data = orjson.loads(f.read())
@@ -100,7 +97,6 @@ def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any
                 "label": node.get("content", ""),
                 "group": node.get("node_type", ""),
                 "title": f"{node.get('node_type', '')}: {node.get('content', '')}",
-                "degree": 0, # 初始化度为0
             }
             for node in nodes
             if node.get("id")
@@ -108,39 +104,26 @@ def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any
 
         edges_list = []
         seen_edge_ids = set()
-        adjacency_list = {node_id: [] for node_id in nodes_dict}
-
         for edge in edges:
             edge_id = edge.get("id")
-            source_id = edge.get("source", edge.get("source_id"))
-            target_id = edge.get("target", edge.get("target_id"))
-
-            if edge_id and edge_id not in seen_edge_ids and source_id in nodes_dict and target_id in nodes_dict:
-                formatted_edge = {
-                    **edge,
-                    "from": source_id,
-                    "to": target_id,
-                    "label": edge.get("relation", ""),
-                    "arrows": "to",
-                }
-                edges_list.append(formatted_edge)
+            if edge_id and edge_id not in seen_edge_ids:
+                edges_list.append(
+                    {
+                        **edge,
+                        "from": edge.get("source", edge.get("source_id")),
+                        "to": edge.get("target", edge.get("target_id")),
+                        "label": edge.get("relation", ""),
+                        "arrows": "to",
+                    }
+                )
                 seen_edge_ids.add(edge_id)
-
-                # 构建邻接表并计算度
-                adjacency_list[source_id].append(formatted_edge)
-                adjacency_list[target_id].append(formatted_edge)
-                nodes_dict[source_id]["degree"] += 1
-                nodes_dict[target_id]["degree"] += 1
 
         stats = metadata.get("statistics", {})
         total_memories = stats.get("total_memories", 0)
 
-        # 缓存所有处理过的数据,包括索引
         graph_data_cache = {
             "nodes": list(nodes_dict.values()),
             "edges": edges_list,
-            "nodes_dict": nodes_dict, # 缓存节点字典,方便快速查找
-            "adjacency_list": adjacency_list, # 缓存邻接表,光速定位邻居
             "memories": [],
             "stats": {
                 "total_nodes": len(nodes_dict),
@@ -155,8 +138,10 @@ def load_graph_data_from_file(file_path: Optional[Path] = None) -> Dict[str, Any
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"加载图数据失败: {e}")
+
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -218,90 +203,28 @@ def _format_graph_data_from_manager(memory_manager) -> Dict[str, Any]:
         "current_file": "memory_manager (实时数据)",
     }
 
-@router.get("/api/graph/core")
-async def get_core_graph(limit: int = 100):
-    """
-    获取核心图数据。
-    这可比一下子把所有东西都丢给前端聪明多了,哼。
-    """
+
+@router.get("/api/graph/full")
+async def get_full_graph():
+    """获取完整记忆图数据"""
     try:
-        full_data = load_graph_data_from_file()
-        if "error" in full_data:
-            return JSONResponse(content={"success": False, "error": full_data["error"]}, status_code=404)
+        from src.memory_graph.manager_singleton import get_memory_manager
 
-        # 智能选择核心节点: 优先选择度最高的节点
-        # 这是一个简单的策略,但比随机选择要好得多
-        all_nodes = full_data.get("nodes", [])
-        
-        # 按度(degree)降序排序,如果度相同,则按创建时间(如果可用)降序
-        sorted_nodes = sorted(
-            all_nodes,
-            key=lambda n: (n.get("degree", 0), n.get("created_at", 0)),
-            reverse=True
-        )
-        
-        core_nodes = sorted_nodes[:limit]
-        core_node_ids = {node["id"] for node in core_nodes}
+        memory_manager = get_memory_manager()
 
-        # 只包含核心节点之间的边,保持初始视图的整洁
-        core_edges = [
-            edge for edge in full_data.get("edges", [])
-            if edge.get("from") in core_node_ids and edge.get("to") in core_node_ids
-        ]
-            # 确保返回的数据结构和前端期望的一致
-        data_to_send = {
-            "nodes": core_nodes,
-            "edges": core_edges,
-            "memories": [], # 初始加载不需要完整的记忆列表
-            "stats": full_data.get("stats", {}), # 统计数据还是完整的
-            "current_file": full_data.get("current_file", "")
-        }
+        data = {}
+        if memory_manager and memory_manager._initialized:
+            data = _format_graph_data_from_manager(memory_manager)
+        else:
+            # 如果内存管理器不可用，则从文件加载
+            data = load_graph_data_from_file()
 
-        return JSONResponse(content={"success": True, "data": data_to_send})
+        return JSONResponse(content={"success": True, "data": data})
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
-
-@router.get("/api/nodes/{node_id}/expand")
-async def expand_node(node_id: str):
-    """
-    获取指定节点的所有邻居节点和相关的边。
-    看,这就是按需加载的魔法。我可真是个天才,哼!
-    """
-    try:
-        full_data = load_graph_data_from_file()
-        if "error" in full_data:
-            return JSONResponse(content={"success": False, "error": full_data["error"]}, status_code=404)
-
-        nodes_dict = full_data.get("nodes_dict", {})
-        adjacency_list = full_data.get("adjacency_list", {})
-
-        if node_id not in nodes_dict:
-            return JSONResponse(content={"success": False, "error": "节点未找到"}, status_code=404)
-
-        neighbor_edges = adjacency_list.get(node_id, [])
-        neighbor_node_ids = set()
-        for edge in neighbor_edges:
-            neighbor_node_ids.add(edge["from"])
-            neighbor_node_ids.add(edge["to"])
-
-        # 从 nodes_dict 中获取完整的邻居节点信息
-        neighbor_nodes = [nodes_dict[nid] for nid in neighbor_node_ids if nid in nodes_dict]
-
-        return JSONResponse(content={
-            "success": True,
-            "data": {
-                "nodes": neighbor_nodes,
-                "edges": neighbor_edges
-            }
-        })
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
-
-
 
 
 @router.get("/api/files")
