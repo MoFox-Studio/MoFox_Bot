@@ -46,11 +46,11 @@ batch_action_storage_enabled = true # 是否启用批量保存动作记录（开
 # 数据库缓存配置（防止内存溢出）
 enable_database_cache = true # 是否启用数据库查询缓存系统
 cache_l1_max_size = 1000 # L1缓存最大条目数（热数据，内存占用约1-5MB）
-cache_l1_ttl = 60 # L1缓存生存时间（秒）
+cache_l1_ttl = 300 # L1缓存生存时间（秒）
 cache_l2_max_size = 10000 # L2缓存最大条目数（温数据，内存占用约10-50MB）
-cache_l2_ttl = 300 # L2缓存生存时间（秒）
+cache_l2_ttl = 1800 # L2缓存生存时间（秒）
 cache_cleanup_interval = 60 # 缓存清理任务执行间隔（秒）
-cache_max_memory_mb = 500 # 缓存最大内存占用（MB），超过此值将触发强制清理
+cache_max_memory_mb = 50 # 缓存最大内存占用（MB），超过此值将触发强制清理
 cache_max_item_size_mb = 5 # 单个缓存条目最大大小（MB），超过此值将不缓存
 
 [permission] # 权限系统配置

@@ -89,7 +89,7 @@ class AdaptiveBatchScheduler:
         base_wait_time: float = 0.05,  # 50ms
         max_wait_time: float = 0.2,  # 200ms
         max_queue_size: int = 1000,
-        cache_ttl: float = 5.0,
+        cache_ttl: float = 30.0,
     ):
         """初始化调度器
 

@@ -143,7 +143,7 @@ def timeout(seconds: float):
 
 
 def cached(
-    ttl: int | None = 300,
+    ttl: int | None = 600,
     key_prefix: str | None = None,
     use_args: bool = True,
     use_kwargs: bool = True,
