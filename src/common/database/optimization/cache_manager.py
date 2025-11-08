@@ -13,7 +13,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Generic, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Set, TypeVar, Union
 
 from src.common.logger import get_logger
 from src.common.memory_utils import estimate_size_smart
@@ -96,7 +96,7 @@ class LRUCache(Generic[T]):
         self._lock = asyncio.Lock()
         self._stats = CacheStats()
 
-    async def get(self, key: str) -> T | None:
+    async def get(self, key: str) -> Optional[T]:
         """获取缓存值
 
         Args:
@@ -137,8 +137,8 @@ class LRUCache(Generic[T]):
         self,
         key: str,
         value: T,
-        size: int | None = None,
-        ttl: float | None = None,
+        size: Optional[int] = None,
+        ttl: Optional[float] = None,
     ) -> None:
         """设置缓存值
 
@@ -287,8 +287,8 @@ class MultiLevelCache:
     async def get(
         self,
         key: str,
-        loader: Callable[[], Any] | None = None,
-    ) -> Any | None:
+        loader: Optional[Callable[[], Any]] = None,
+    ) -> Optional[Any]:
         """从缓存获取数据
 
         查询顺序：L1 -> L2 -> loader
@@ -329,8 +329,8 @@ class MultiLevelCache:
         self,
         key: str,
         value: Any,
-        size: int | None = None,
-        ttl: float | None = None,
+        size: Optional[int] = None,
+        ttl: Optional[float] = None,
     ) -> None:
         """设置缓存值
 
@@ -390,7 +390,7 @@ class MultiLevelCache:
         await self.l2_cache.clear()
         logger.info("所有缓存已清空")
 
-    async def get_stats(self) -> dict[str, Any]:
+    async def get_stats(self) -> Dict[str, Any]:
         """获取所有缓存层的统计信息（修复版：避免锁嵌套，使用超时）"""
         # 🔧 修复：并行获取统计信息，避免锁嵌套
         l1_stats_task = asyncio.create_task(self._get_cache_stats_safe(self.l1_cache, "L1"))
@@ -492,7 +492,7 @@ class MultiLevelCache:
             logger.error(f"{cache_name}统计获取异常: {e}")
             return CacheStats()
 
-    async def _get_cache_keys_safe(self, cache) -> set[str]:
+    async def _get_cache_keys_safe(self, cache) -> Set[str]:
         """安全获取缓存键集合（带超时）"""
         try:
             # 快速获取键集合，使用超时避免死锁
@@ -507,12 +507,12 @@ class MultiLevelCache:
             logger.error(f"缓存键获取异常: {e}")
             return set()
 
-    async def _extract_keys_with_lock(self, cache) -> set[str]:
+    async def _extract_keys_with_lock(self, cache) -> Set[str]:
         """在锁保护下提取键集合"""
         async with cache._lock:
             return set(cache._cache.keys())
 
-    async def _calculate_memory_usage_safe(self, cache, keys: set[str]) -> int:
+    async def _calculate_memory_usage_safe(self, cache, keys: Set[str]) -> int:
         """安全计算内存使用（带超时）"""
         if not keys:
             return 0
@@ -529,7 +529,7 @@ class MultiLevelCache:
             logger.error(f"内存计算异常: {e}")
             return 0
 
-    async def _calc_memory_with_lock(self, cache, keys: set[str]) -> int:
+    async def _calc_memory_with_lock(self, cache, keys: Set[str]) -> int:
         """在锁保护下计算内存使用"""
         total_size = 0
         async with cache._lock:
@@ -749,7 +749,7 @@ class MultiLevelCache:
 
 
 # 全局缓存实例
-_global_cache: MultiLevelCache | None = None
+_global_cache: Optional[MultiLevelCache] = None
 _cache_lock = asyncio.Lock()
 
 
