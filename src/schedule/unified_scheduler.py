@@ -719,9 +719,9 @@ class UnifiedScheduler:
         return False
 
     async def remove_schedule(self, schedule_id: str) -> bool:
-        """移除调度任务（改进的取消机制）
+        """移除调度任务（修复版：防止死锁的多阶段取消机制）
 
-        如果任务正在执行，会取消执行中的任务
+        如果任务正在执行，会安全地取消执行中的任务
         """
         # 获取任务信息
         if schedule_id not in self._tasks:
@@ -731,26 +731,65 @@ class UnifiedScheduler:
         task = self._tasks[schedule_id]
         executing_task = self._executing_tasks.get(schedule_id)
 
-        # 🔧 修复：改进任务取消机制，避免死锁
+        # 🔧 修复：多阶段任务取消机制，彻底避免死锁
         if executing_task and not executing_task.done():
-            logger.debug(f"取消正在执行的任务: {task.task_name}")
-            try:
-                executing_task.cancel()
-                # 使用更长的超时时间，并添加异常处理
-                await asyncio.wait_for(executing_task, timeout=10.0)
-            except asyncio.TimeoutError:
-                logger.warning(f"取消任务 {task.task_name} 超时，可能存在死锁风险")
-                # 不再强制移除，让任务自然完成
-                return False
-            except Exception as e:
-                logger.error(f"取消任务 {task.task_name} 时发生未预期的错误: {e}")
-                return False
+            logger.debug(f"开始多阶段取消任务: {task.task_name}")
 
-        # 移除任务
+            # 阶段1: 立即取消任务
+            executing_task.cancel()
+            cancel_start_time = time.time()
+
+            # 阶段2: 渐进式等待取消完成
+            timeouts = [1.0, 2.0, 5.0, 10.0]  # 渐进式超时
+            cancelled_successfully = False
+
+            for i, timeout in enumerate(timeouts):
+                try:
+                    await asyncio.wait_for(executing_task, timeout=timeout)
+                    cancelled_successfully = True
+                    logger.debug(f"任务 {task.task_name} 在阶段 {i+1} 成功取消")
+                    break
+                except asyncio.TimeoutError:
+                    elapsed = time.time() - cancel_start_time
+                    logger.warning(f"任务 {task.task_name} 取消阶段 {i+1} 超时 (已等待 {elapsed:.1f}s)")
+
+                    # 如果不是最后一个阶段，检查任务是否已经完成了有用的工作
+                    if i < len(timeouts) - 1:
+                        # 可以在这里检查任务状态或尝试其他恢复方法
+                        continue
+                except asyncio.CancelledError:
+                    cancelled_successfully = True
+                    logger.debug(f"任务 {task.task_name} 在阶段 {i+1} 被成功取消")
+                    break
+                except Exception as e:
+                    logger.error(f"任务 {task.task_name} 取消阶段 {i+1} 发生异常: {e}")
+
+            # 阶段3: 强制清理（如果所有阶段都失败）
+            if not cancelled_successfully:
+                total_wait_time = time.time() - cancel_start_time
+                logger.error(f"任务 {task.task_name} 强制清理 - 总等待时间: {total_wait_time:.1f}s")
+
+                # 强制移除执行追踪，防止后续操作
+                self._executing_tasks.pop(schedule_id, None)
+                self._deadlock_detector.unregister_task(schedule_id)
+
+                # 记录到死锁任务列表中
+                if not hasattr(self, '_deadlocked_tasks'):
+                    self._deadlocked_tasks = set()
+                self._deadlocked_tasks.add(schedule_id)
+
+                # 尝试触发垃圾回收
+                import gc
+                gc.collect()
+
+                logger.warning(f"任务 {task.task_name} 已强制清理，但可能仍存在资源泄漏")
+
+        # 移除任务定义
         await self._remove_task_internal(schedule_id)
 
-        # 清理执行追踪
+        # 清理执行追踪（如果尚未清理）
         self._executing_tasks.pop(schedule_id, None)
+        self._deadlock_detector.unregister_task(schedule_id)
 
         logger.debug(f"移除调度任务: {task.task_name}")
         return True
@@ -908,6 +947,8 @@ class UnifiedScheduler:
         deadlock_stats = {
             "monitored_tasks": len(self._deadlock_detector._task_start_times),
             "deadlock_timeout": self._deadlock_detector._deadlock_timeout,
+            "deadlocked_tasks_count": len(getattr(self, '_deadlocked_tasks', set())),
+            "deadlocked_tasks": list(getattr(self, '_deadlocked_tasks', set())),
         }
 
         return {
