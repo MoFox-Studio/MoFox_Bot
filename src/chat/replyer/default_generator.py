@@ -317,6 +317,42 @@ class DefaultReplyer:
         Returns:
             Tuple[bool, Optional[Dict[str, Any]], Optional[str]]: (是否成功, 生成的回复, 使用的prompt)
         """
+        # 安全检测：在生成回复前检测消息
+        if reply_message:
+            from src.chat.security import get_security_manager
+
+            security_manager = get_security_manager()
+            message_text = reply_message.processed_plain_text or ""
+
+            # 执行安全检测
+            security_result = await security_manager.check_message(
+                message=message_text,
+                context={
+                    "stream_id": stream_id or self.chat_stream.stream_id,
+                    "user_id": getattr(reply_message, "user_id", ""),
+                    "platform": getattr(reply_message, "platform", ""),
+                    "message_id": getattr(reply_message, "message_id", ""),
+},
+                mode="sequential",  # 快速失败模式
+            )
+
+            # 如果检测到风险，记录并可能拒绝处理
+            if not security_result.is_safe:
+                logger.warning(
+                    f"[安全检测] 检测到风险消息 (级别: {security_result.level.value}, "
+                    f"置信度: {security_result.confidence:.2f}): {security_result.reason}"
+                )
+
+                # 根据安全动作决定是否继续
+                from src.chat.security.interfaces import SecurityAction
+
+                if security_result.action == SecurityAction.BLOCK:
+                    logger.warning("[安全检测] 消息被拦截，拒绝生成回复")
+                    return False, None, None
+
+                # SHIELD 模式：修改消息内容但继续处理
+                # MONITOR 模式：仅记录，继续正常处理
+
         # 初始化聊天信息
         await self._initialize_chat_info()
 

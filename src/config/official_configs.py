@@ -646,28 +646,6 @@ class WebSearchConfig(ValidatedConfigBase):
     search_strategy: Literal["fallback", "single", "parallel"] = Field(default="single", description="搜索策略")
 
 
-class AntiPromptInjectionConfig(ValidatedConfigBase):
-    """LLM反注入系统配置类"""
-
-    enabled: bool = Field(default=True, description="启用")
-    enabled_LLM: bool = Field(default=True, description="启用LLM")
-    enabled_rules: bool = Field(default=True, description="启用规则")
-    process_mode: str = Field(default="lenient", description="处理模式")
-    whitelist: list[list[str]] = Field(default_factory=list, description="白名单")
-    llm_detection_enabled: bool = Field(default=True, description="启用LLM检测")
-    llm_model_name: str = Field(default="anti_injection", description="LLM模型名称")
-    llm_detection_threshold: float = Field(default=0.7, description="LLM检测阈值")
-    cache_enabled: bool = Field(default=True, description="启用缓存")
-    cache_ttl: int = Field(default=3600, description="缓存TTL")
-    max_message_length: int = Field(default=4096, description="最大消息长度")
-    stats_enabled: bool = Field(default=True, description="启用统计信息")
-    auto_ban_enabled: bool = Field(default=True, description="启用自动禁用")
-    auto_ban_violation_threshold: int = Field(default=3, description="自动禁用违规阈值")
-    auto_ban_duration_hours: int = Field(default=2, description="自动禁用持续时间（小时）")
-    shield_prefix: str = Field(default="🛡️ ", description="保护前缀")
-    shield_suffix: str = Field(default=" 🛡️", description="保护后缀")
-
-
 class ContextGroup(ValidatedConfigBase):
     """
     上下文共享组配置
