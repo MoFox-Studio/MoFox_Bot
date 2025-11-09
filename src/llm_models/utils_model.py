@@ -802,7 +802,11 @@ class LLMRequest:
             for model in self.model_for_task.model_list
         }
         """模型使用量记录"""
-        self._lock = asyncio.Lock()
+        # 🔧 优化：移除全局锁，改用信号量控制并发度（允许多个请求并行）
+        # 默认允许50个并发请求，可通过配置调整
+        max_concurrent = getattr(model_set, "max_concurrent_requests", 50)
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._stats_lock = asyncio.Lock()  # 只保护统计数据的写入
 
         # 初始化辅助类
         self._model_selector = _ModelSelector(self.model_for_task.model_list, self.model_usage)
@@ -931,23 +935,24 @@ class LLMRequest:
         tools: list[dict[str, Any]] | None = None,
         raise_when_empty: bool = True,
     ) -> tuple[str, tuple[str, str, list[ToolCall] | None]]:
-        async with self._lock:
-            """
-            执行单次文本生成请求的内部方法。
-            这是 `generate_response_async` 的核心实现，处理单个请求的完整生命周期，
-            包括工具构建、故障转移执行和用量记录。
+        """
+        执行单次文本生成请求的内部方法。
+        这是 `generate_response_async` 的核心实现，处理单个请求的完整生命周期，
+        包括工具构建、故障转移执行和用量记录。
 
-            Args:
-                prompt (str): 用户的提示。
-                temperature (Optional[float]): 生成温度。
-                max_tokens (Optional[int]): 最大生成令牌数。
-                tools (Optional[List[Dict[str, Any]]]): 可用工具列表。
-                raise_when_empty (bool): 如果响应为空是否引发异常。
+        Args:
+            prompt (str): 用户的提示。
+            temperature (Optional[float]): 生成温度。
+            max_tokens (Optional[int]): 最大生成令牌数。
+            tools (Optional[List[Dict[str, Any]]]): 可用工具列表。
+            raise_when_empty (bool): 如果响应为空是否引发异常。
 
-            Returns:
-                Tuple[str, Tuple[str, str, Optional[List[ToolCall]]]]:
-                    (响应内容, (推理过程, 模型名称, 工具调用))
-            """
+        Returns:
+            Tuple[str, Tuple[str, str, Optional[List[ToolCall]]]]:
+                (响应内容, (推理过程, 模型名称, 工具调用))
+        """
+        # 🔧 优化：使用信号量控制并发，允许多个请求并行执行
+        async with self._semaphore:
             start_time = time.time()
             tool_options = await self._build_tool_options(tools)
 
@@ -1006,20 +1011,21 @@ class LLMRequest:
             endpoint (str): 请求的API端点 (e.g., "/chat/completions")。
         """
         if usage:
-            # 步骤1: 更新内存中的统计数据，用于负载均衡
-            stats = self.model_usage[model_info.name]
+            # 步骤1: 更新内存中的统计数据，用于负载均衡（需要加锁保护）
+            async with self._stats_lock:
+                stats = self.model_usage[model_info.name]
 
-            # 计算新的平均延迟
-            new_request_count = stats.request_count + 1
-            new_avg_latency = (stats.avg_latency * stats.request_count + time_cost) / new_request_count
+                # 计算新的平均延迟
+                new_request_count = stats.request_count + 1
+                new_avg_latency = (stats.avg_latency * stats.request_count + time_cost) / new_request_count
 
-            self.model_usage[model_info.name] = stats._replace(
-                total_tokens=stats.total_tokens + usage.total_tokens,
-                avg_latency=new_avg_latency,
-                request_count=new_request_count,
-            )
+                self.model_usage[model_info.name] = stats._replace(
+                    total_tokens=stats.total_tokens + usage.total_tokens,
+                    avg_latency=new_avg_latency,
+                    request_count=new_request_count,
+                )
 
-            # 步骤2: 创建一个后台任务，将用量数据异步写入数据库
+            # 步骤2: 创建一个后台任务，将用量数据异步写入数据库（无需等待）
             asyncio.create_task(  # noqa: RUF006
                 llm_usage_recorder.record_usage_to_database(
                     model_info=model_info,

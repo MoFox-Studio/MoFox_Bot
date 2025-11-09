@@ -433,11 +433,22 @@ class OpenaiClient(BaseClient):
             f"创建新的 AsyncOpenAI 客户端实例 (base_url={self.api_provider.base_url}, config_hash={self._config_hash}, loop_id={current_loop_id})"
         )
 
+        # 🔧 优化：增加连接池限制，支持高并发embedding请求
+        # 默认httpx限制为100，对于高频embedding场景不够用
+        import httpx
+        
+        limits = httpx.Limits(
+            max_keepalive_connections=200,  # 保持活跃连接数（原100）
+            max_connections=300,  # 最大总连接数（原100）
+            keepalive_expiry=30.0,  # 连接保活时间
+        )
+
         client = AsyncOpenAI(
             base_url=self.api_provider.base_url,
             api_key=self.api_provider.get_api_key(),
             max_retries=0,
             timeout=self.api_provider.timeout,
+            http_client=httpx.AsyncClient(limits=limits),  # 🔧 自定义连接池配置
         )
 
         # 存入全局缓存（带事件循环ID）
