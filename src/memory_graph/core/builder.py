@@ -126,6 +126,9 @@ class MemoryBuilder:
                 edges.extend(attr_edges)
 
             # 6. 构建 Memory 对象
+            # 新记忆应该有较高的初始激活度
+            initial_activation = 0.75  # 新记忆初始激活度为 0.75
+            
             memory = Memory(
                 id=memory_id,
                 subject_id=subject_node.id,
@@ -133,6 +136,7 @@ class MemoryBuilder:
                 nodes=nodes,
                 edges=edges,
                 importance=extracted_params["importance"],
+                activation=initial_activation,  # 设置较高的初始激活度
                 created_at=extracted_params["timestamp"],
                 last_accessed=extracted_params["timestamp"],
                 access_count=0,
@@ -140,6 +144,12 @@ class MemoryBuilder:
                 metadata={
                     "subject": extracted_params["subject"],
                     "topic": extracted_params["topic"],
+                    "activation": {
+                        "level": initial_activation,
+                        "last_access": extracted_params["timestamp"].isoformat(),
+                        "access_count": 0,
+                        "created_at": extracted_params["timestamp"].isoformat(),
+                    },
                 },
             )
 

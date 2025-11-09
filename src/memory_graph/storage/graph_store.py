@@ -459,12 +459,13 @@ class GraphStore:
 
         logger.info("已将图中的边同步到 Memory.edges（保证 graph 与 memory 对象一致）")
 
-    def remove_memory(self, memory_id: str) -> bool:
+    def remove_memory(self, memory_id: str, cleanup_orphans: bool = True) -> bool:
         """
         从图中删除指定记忆
 
         Args:
             memory_id: 要删除的记忆ID
+            cleanup_orphans: 是否立即清理孤立节点（默认True，批量删除时设为False）
 
         Returns:
             是否删除成功
@@ -481,16 +482,19 @@ class GraphStore:
             for node in memory.nodes:
                 if node.id in self.node_to_memories:
                     self.node_to_memories[node.id].discard(memory_id)
-                    # 如果该节点不再属于任何记忆，从图中移除节点
-                    if not self.node_to_memories[node.id]:
-                        if self.graph.has_node(node.id):
-                            self.graph.remove_node(node.id)
-                        del self.node_to_memories[node.id]
+                    
+                    # 可选：立即清理孤立节点
+                    if cleanup_orphans:
+                        # 如果该节点不再属于任何记忆，从图中移除节点
+                        if not self.node_to_memories[node.id]:
+                            if self.graph.has_node(node.id):
+                                self.graph.remove_node(node.id)
+                            del self.node_to_memories[node.id]
 
             # 3. 从记忆索引中移除
             del self.memory_index[memory_id]
 
-            logger.info(f"成功删除记忆: {memory_id}")
+            logger.debug(f"成功删除记忆: {memory_id}")
             return True
 
         except Exception as e:
