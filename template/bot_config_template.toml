@@ -383,7 +383,7 @@ console_log_level = "INFO" # 控制台日志级别，可选: DEBUG, INFO, WARNIN
 file_log_level = "DEBUG" # 文件日志级别，可选: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # 第三方库日志控制
-suppress_libraries = ["faiss","httpx", "urllib3", "asyncio", "websockets", "httpcore", "requests", "peewee", "openai","uvicorn","rjieba","maim_message"] # 完全屏蔽的库
+suppress_libraries = ["faiss","httpx", "urllib3", "asyncio", "websockets", "httpcore", "requests", "aiosqlite", "openai","uvicorn","rjieba","maim_message"] # 完全屏蔽的库
 library_log_levels = { "aiohttp" = "WARNING"} # 设置特定库的日志级别
 
 [dependency_management] # 插件Python依赖管理配置

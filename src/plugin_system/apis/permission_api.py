@@ -91,17 +91,7 @@ class PermissionAPI:
         allow_relative: bool = True,
     ) -> bool:
         self._ensure_manager()
-        if plugin_name != "__system__":
-            expected_prefix = f"plugins.{plugin_name}."
-            if allow_relative and not node_name.startswith("plugins."):
-                node_name = f"{expected_prefix}{node_name}"
-            elif not node_name.startswith(expected_prefix):
-                logger.error(
-                    "权限节点名称不符合规范，期望以 %s 开头: %s",
-                    expected_prefix,
-                    node_name,
-                )
-                return False
+        original_name = node_name
 
         node = PermissionNode(node_name, description, plugin_name, default_granted)
         if not self._permission_manager:

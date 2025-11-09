@@ -16,7 +16,7 @@ from src.plugin_system.apis.send_api import text_to_stream
 logger = get_logger(__name__)
 
 
-def require_permission(permission_node: str, deny_message: str | None = None, *, use_full_name: bool = True):
+def require_permission(permission_node: str, deny_message: str | None = None, *, use_full_name: bool = False):
     """
     权限检查装饰器
 
@@ -96,7 +96,7 @@ def require_permission(permission_node: str, deny_message: str | None = None, *,
                     return None
 
                 full_permission_node = f"plugins.{plugin_name}.{permission_node}"
-                logger.debug(f"自动构建权限节点: {permission_node} -> {full_permission_node}")
+                logger.info(f"自动构建权限节点: {permission_node} -> {full_permission_node} (插件: {plugin_name})")
 
             # 检查权限
             if not chat_stream.user_info or not chat_stream.user_info.user_id:

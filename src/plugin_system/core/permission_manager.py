@@ -131,20 +131,12 @@ class PermissionManager(IPermissionManager):
             bool: 注册是否成功
         """
         try:
-            expected_prefix = f"plugins.{node.plugin_name}."
-            if node.plugin_name != "__system__" and not node.node_name.startswith(expected_prefix):
-                logger.error(
-                    "权限节点名称不符合规范，期望以 %s 开头: %s",
-                    expected_prefix,
-                    node.node_name,
-                )
-                return False
-
             async with self.SessionLocal() as session:
-                # 检查节点是否已存在（仅支持规范化后的名称）
+                # 检查节点是否已存在
                 result = await session.execute(select(PermissionNodes).filter_by(node_name=node.node_name))
                 existing_node = result.scalar_one_or_none()
                 if existing_node:
+                    # 更新现有节点的信息
                     existing_node.description = node.description
                     existing_node.plugin_name = node.plugin_name
                     existing_node.default_granted = node.default_granted
@@ -344,12 +336,6 @@ class PermissionManager(IPermissionManager):
         """
         try:
             async with self.SessionLocal() as session:
-                # 移除未规范化的旧权限节点
-                await session.execute(
-                    delete(PermissionNodes).where(~PermissionNodes.node_name.like("plugins.%"))
-                )
-                await session.commit()
-
                 result = await session.execute(select(PermissionNodes))
                 nodes = result.scalars().all()
                 return [
@@ -381,14 +367,6 @@ class PermissionManager(IPermissionManager):
         """
         try:
             async with self.SessionLocal() as session:
-                # 返回前清理未规范化的旧节点
-                await session.execute(
-                    delete(PermissionNodes)
-                    .where(PermissionNodes.plugin_name == plugin_name)
-                    .where(~PermissionNodes.node_name.like("plugins.%"))
-                )
-                await session.commit()
-
                 result = await session.execute(select(PermissionNodes).filter_by(plugin_name=plugin_name))
                 nodes = result.scalars().all()
                 return [
