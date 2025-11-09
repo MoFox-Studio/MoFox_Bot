@@ -48,7 +48,7 @@ class QZoneService:
         content_service: ContentService,
         image_service: ImageService,
         cookie_service: CookieService,
-        reply_tracker: ReplyTrackerService = None,
+        reply_tracker: ReplyTrackerService | None = None,
     ):
         self.get_config = get_config
         self.content_service = content_service
@@ -128,7 +128,8 @@ class QZoneService:
             target_person_id = await person_api.get_person_id_by_name(target_name)
             if not target_person_id:
                 return {"success": False, "message": f"找不到名为'{target_name}'的好友"}
-            target_qq = await person_api.get_person_value(target_person_id, "user_id")
+            person_info = await person_api.get_person_info(target_person_id)
+            target_qq = person_info.get("user_id")
             if not target_qq:
                 return {"success": False, "message": f"好友'{target_name}'没有关联QQ号"}
 
@@ -155,7 +156,7 @@ class QZoneService:
                 total_liked = 0
                 total_commented = 0
                 for feed in feeds:
-                    result = await self._process_single_feed(feed, api_client, target_qq, target_name)
+                    result = await self._process_single_feed(feed, api_client, str(target_qq), target_name)
                     if result["liked"]:
                         total_liked += 1
                     if result["commented"]:
@@ -254,7 +255,7 @@ class QZoneService:
                     if not target_qq or str(target_qq) == str(qq_account):  # 确保不重复处理自己的
                         continue
 
-                    result = await self._process_single_feed(feed, api_client, target_qq, target_qq)
+                    result = await self._process_single_feed(feed, api_client, str(target_qq), str(target_qq))
                     monitor_stats["total"] += 1
                     if result.get("liked"):
                         monitor_stats["liked"] += 1
@@ -1151,28 +1152,28 @@ class QZoneService:
 
                     like_btn = soup.find("a", class_="qz_like_btn_v3")
                     is_liked = False
-                    if like_btn and isinstance(like_btn, bs4.Tag):
-                        is_liked = like_btn.get("data-islike") == "1"
+                    if isinstance(like_btn, bs4.Tag) and like_btn.get("data-islike") == "1":
+                        is_liked = True
 
                     if is_liked:
                         continue
 
                     text_div = soup.find("div", class_="f-info")
-                    text = text_div.get_text(strip=True) if text_div else ""
+                    text = text_div.get_text(strip=True) if isinstance(text_div, bs4.Tag) else ""
 
                     # --- 借鉴原版插件的精确图片提取逻辑 ---
                     image_urls = []
                     img_box = soup.find("div", class_="img-box")
-                    if img_box:
+                    if isinstance(img_box, bs4.Tag):
                         for img in img_box.find_all("img"):
-                            src = img.get("src")
-                            # 排除QQ空间的小图标和表情
-                            if src and "qzonestyle.gtimg.cn" not in src:
-                                image_urls.append(src)
+                            if isinstance(img, bs4.Tag):
+                                src = img.get("src")
+                                if src and isinstance(src, str) and "qzonestyle.gtimg.cn" not in src:
+                                    image_urls.append(src)
 
                     # 视频封面也视为图片
                     video_thumb = soup.select_one("div.video-img img")
-                    if video_thumb and "src" in video_thumb.attrs:
+                    if isinstance(video_thumb, bs4.Tag) and "src" in video_thumb.attrs:
                         image_urls.append(video_thumb["src"])
 
                     # 去重
@@ -1181,11 +1182,13 @@ class QZoneService:
                     comments = []
                     comment_divs = soup.find_all("div", class_="f-single-comment")
                     for comment_div in comment_divs:
+                        if not isinstance(comment_div, bs4.Tag):
+                            continue
                         # --- 处理主评论 ---
                         author_a = comment_div.find("a", class_="f-nick")
                         content_span = comment_div.find("span", class_="f-re-con")
 
-                        if author_a and content_span:
+                        if isinstance(author_a, bs4.Tag) and isinstance(content_span, bs4.Tag):
                             comments.append(
                                 {
                                     "qq_account": str(comment_div.get("data-uin", "")),
@@ -1199,21 +1202,23 @@ class QZoneService:
                         # --- 处理这条主评论下的所有回复 ---
                         reply_divs = comment_div.find_all("div", class_="f-single-re")
                         for reply_div in reply_divs:
+                            if not isinstance(reply_div, bs4.Tag):
+                                continue
                             reply_author_a = reply_div.find("a", class_="f-nick")
                             reply_content_span = reply_div.find("span", class_="f-re-con")
 
-                            if reply_author_a and reply_content_span:
+                            if isinstance(reply_author_a, bs4.Tag) and isinstance(reply_content_span, bs4.Tag):
                                 comments.append(
                                     {
                                         "qq_account": str(reply_div.get("data-uin", "")),
                                         "nickname": reply_author_a.get_text(strip=True),
                                         "content": reply_content_span.get_text(strip=True).lstrip(
                                             ": "
-                                        ),  # 移除回复内容前多余的冒号和空格
+                                        ),
                                         "comment_tid": reply_div.get("data-tid", ""),
                                         "parent_tid": reply_div.get(
                                             "data-parent-tid", comment_div.get("data-tid", "")
-                                        ),  # 如果没有父ID，则将父ID设为主评论ID
+                                        ),
                                     }
                                 )
 

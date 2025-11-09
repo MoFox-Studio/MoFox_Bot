@@ -65,9 +65,9 @@ class ReplyTrackerService:
         try:
             if self.reply_record_file.exists():
                 try:
-                    with open(self.reply_record_file, encoding="utf-8") as f:
-                        file_content = f.read().strip()
-                        if not file_content:  # 文件为空
+                    with open(self.reply_record_file, "rb") as f:
+                        file_content = f.read()
+                        if not file_content.strip():  # 文件为空
                             logger.warning("回复记录文件为空，将创建新的记录")
                             self.replied_comments = {}
                             return
@@ -118,8 +118,8 @@ class ReplyTrackerService:
             temp_file = self.reply_record_file.with_suffix(".tmp")
 
             # 先写入临时文件
-            with open(temp_file, "w", encoding="utf-8"):
-                orjson.dumps(self.replied_comments, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS).decode("utf-8")
+            with open(temp_file, "wb") as f:
+                f.write(orjson.dumps(self.replied_comments, option=orjson.OPT_INDENT_2 | orjson.OPT_NON_STR_KEYS))
 
             # 如果写入成功，重命名为正式文件
             if temp_file.stat().st_size > 0:  # 确保写入成功
