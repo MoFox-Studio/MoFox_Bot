@@ -5,8 +5,6 @@ from typing import Any
 
 from maim_message import UserInfo
 
-# 导入反注入系统
-from src.chat.antipromptinjector import initialize_anti_injector
 from src.chat.message_manager import message_manager
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.message_receive.storage import MessageStorage
@@ -24,7 +22,6 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..
 
 # 配置主程序日志格式
 logger = get_logger("chat")
-anti_injector_logger = get_logger("anti_injector")
 
 
 def _check_ban_words(text: str, chat: ChatStream, userinfo: UserInfo) -> bool:
@@ -73,24 +70,8 @@ class ChatBot:
         self._started = False
         self.mood_manager = mood_manager  # 获取情绪管理器单例
 
-        # 初始化反注入系统
-        self._initialize_anti_injector()
-
         # 启动消息管理器
         self._message_manager_started = False
-
-    def _initialize_anti_injector(self):
-        """初始化反注入系统"""
-        try:
-            initialize_anti_injector()
-
-            anti_injector_logger.info(
-                f"反注入系统已初始化 - 启用: {global_config.anti_prompt_injection.enabled}, "
-                f"模式: {global_config.anti_prompt_injection.process_mode}, "
-                f"规则: {global_config.anti_prompt_injection.enabled_rules}, LLM: {global_config.anti_prompt_injection.enabled_LLM}"
-            )
-        except Exception as e:
-            anti_injector_logger.error(f"反注入系统初始化失败: {e}")
 
     async def _ensure_started(self):
         """确保所有任务已启动"""

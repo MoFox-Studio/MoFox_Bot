@@ -13,7 +13,6 @@ from src.common.logger import get_logger
 from src.config.config_base import ValidatedConfigBase
 from src.config.official_configs import (
     AffinityFlowConfig,
-    AntiPromptInjectionConfig,
     BotConfig,
     ChatConfig,
     ChineseTypoConfig,
@@ -397,9 +396,6 @@ class Config(ValidatedConfigBase):
     command: CommandConfig = Field(..., description="命令系统配置")
 
     # 有默认值的字段放在后面
-    anti_prompt_injection: AntiPromptInjectionConfig = Field(
-        default_factory=lambda: AntiPromptInjectionConfig(), description="反提示注入配置"
-    )
     video_analysis: VideoAnalysisConfig = Field(
         default_factory=lambda: VideoAnalysisConfig(), description="视频分析配置"
     )

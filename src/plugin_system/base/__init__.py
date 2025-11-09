@@ -29,6 +29,7 @@ from .component_types import (
     ToolParamType,
 )
 from .config_types import ConfigField
+from .plugin_metadata import PluginMetadata
 from .plus_command import PlusCommand, create_plus_command_adapter
 
 __all__ = [
@@ -51,6 +52,7 @@ __all__ = [
     "EventType",
     "MaiMessages",
     "PluginInfo",
+    "PluginMetadata",
     # 增强命令系统
     "PlusCommand",
     "PlusCommandAdapter",
