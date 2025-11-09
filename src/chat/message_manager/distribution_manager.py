@@ -222,7 +222,7 @@ class StreamLoopManager:
                             logger.debug(f"更新流能量失败 {stream_id}: {e}")
 
                         # 4. 激活chatter处理
-                        success = await self._process_stream_messages(stream_id, context)
+                        success = await asyncio.wait_for(self._process_stream_messages(stream_id, context), global_config.chat.thinking_timeout)
 
                         # 更新统计
                         self.stats["total_process_cycles"] += 1
