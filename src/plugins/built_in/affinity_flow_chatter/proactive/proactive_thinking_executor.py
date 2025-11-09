@@ -525,6 +525,11 @@ async def execute_proactive_thinking(stream_id: str):
 
     config = global_config.proactive_thinking
 
+    # 首先检查总开关
+    if not config.enable:
+        logger.debug(f"主动思考功能已关闭，跳过执行 {stream_id}")
+        return
+
     logger.debug(f"🤔 开始主动思考 {stream_id}")
 
     try:
