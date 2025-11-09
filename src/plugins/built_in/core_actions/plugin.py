@@ -13,7 +13,6 @@ from src.common.logger import get_logger
 # 导入新插件系统
 from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
 from src.plugin_system.base.config_types import ConfigField
-from src.plugins.built_in.core_actions.anti_injector_manager import AntiInjectorStatusCommand
 
 # 导入API模块 - 标准Python包方式
 from src.plugins.built_in.core_actions.emoji import EmojiAction
@@ -55,9 +54,6 @@ class CoreActionsPlugin(BasePlugin):
         "components": {
             "enable_reply": ConfigField(type=bool, default=True, description="是否启用基本回复动作"),
             "enable_emoji": ConfigField(type=bool, default=True, description="是否启用发送表情/图片动作"),
-            "enable_anti_injector_manager": ConfigField(
-                type=bool, default=True, description="是否启用反注入系统管理命令"
-            ),
         },
     }
 
@@ -68,7 +64,5 @@ class CoreActionsPlugin(BasePlugin):
         components: ClassVar = []
         if self.get_config("components.enable_emoji", True):
             components.append((EmojiAction.get_action_info(), EmojiAction))
-        if self.get_config("components.enable_anti_injector_manager", True):
-            components.append((AntiInjectorStatusCommand.get_command_info(), AntiInjectorStatusCommand))
 
         return components
