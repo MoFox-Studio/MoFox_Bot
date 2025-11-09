@@ -16,7 +16,7 @@ from src.plugin_system.apis.send_api import text_to_stream
 logger = get_logger(__name__)
 
 
-def require_permission(permission_node: str, deny_message: str | None = None):
+def require_permission(permission_node: str, deny_message: str | None = None, *, use_full_name: bool = True):
     """
     权限检查装饰器
 
@@ -25,19 +25,29 @@ def require_permission(permission_node: str, deny_message: str | None = None):
     Args:
         permission_node: 所需的权限节点名称
         deny_message: 权限不足时的提示消息，如果为None则使用默认消息
+        use_full_name: 是否使用完整的权限节点名称（默认False）
+            - True: permission_node 必须是完整的权限节点名称，如 "plugins.plugin_name.action"
+            - False: permission_node 可以是短名称，如 "action"，装饰器会自动添加 "plugins.{plugin_name}." 前缀
 
     Example:
-        @require_permission("plugin.example.admin")
-        async def admin_command(message: Message, chat_stream: ChatStream):
-            # 只有拥有 plugin.example.admin 权限的用户才能执行
+        # 使用完整名称（传统方式）
+        @require_permission("plugins.example.admin")
+        async def admin_command(self):
+            pass
+
+        # 使用短名称（新方式，类似 PermissionNodeField）
+        @require_permission("admin", use_full_name=True)
+        async def admin_command(self):
+            # 会自动转换为 "plugins.{当前插件名}.admin"
             pass
     """
 
     def decorator(func: Callable):
         @wraps(func)
         async def async_wrapper(*args, **kwargs):
-            # 尝试从参数中提取 ChatStream 对象
+            # 尝试从参数中提取 ChatStream 对象和插件名
             chat_stream = None
+            plugin_name = None
 
             # 首先检查位置参数中的 ChatStream
             for arg in args:
@@ -45,23 +55,48 @@ def require_permission(permission_node: str, deny_message: str | None = None):
                     chat_stream = arg
                     break
 
-            # 如果在位置参数中没找到，尝试从关键字参数中查找
-            if chat_stream is None:
-                chat_stream = kwargs.get("chat_stream")
+
 
             # 如果还没找到，检查是否是 PlusCommand 方法调用
-            if chat_stream is None and args:
+            if args:
                 instance = args[0]
                 # 检查第一个参数是否有 chat_stream 属性（PlusCommand 实例）
-                if hasattr(instance, "chat_stream"):
+                if hasattr(instance, "chat_stream") and chat_stream is None:
                     chat_stream = instance.chat_stream
-                # 兼容旧的 message.chat_stream 属性
-                elif hasattr(instance, "message") and hasattr(instance.message, "chat_stream"):
-                    chat_stream = instance.message.chat_stream
+
+                # 尝试获取插件名
+                # 方法1: 从类名获取（通过组件注册表）
+                if not plugin_name and hasattr(instance, "command_name"):
+                    # 从组件注册表查找这个命令属于哪个插件
+                    try:
+                        from src.plugin_system.base.component_types import ComponentType
+                        from src.plugin_system.core.component_registry import component_registry
+
+                        component_info = component_registry.get_component_info(
+                            instance.command_name, ComponentType.PLUS_COMMAND
+                        )
+                        if component_info:
+                            plugin_name = component_info.plugin_name
+                    except Exception:
+                        pass
 
             if chat_stream is None:
                 logger.error(f"权限装饰器无法找到 ChatStream 对象，函数: {func.__name__}")
                 return None
+
+            # 构建完整的权限节点名称
+            full_permission_node = permission_node
+            if not use_full_name:
+                # 需要自动构建完整名称
+                if not plugin_name:
+                    logger.error(
+                        f"权限装饰器无法推断插件名，函数: {func.__name__}，"
+                        "请使用 use_full_name=True 或确保在插件类中调用"
+                    )
+                    return None
+
+                full_permission_node = f"plugins.{plugin_name}.{permission_node}"
+                logger.debug(f"自动构建权限节点: {permission_node} -> {full_permission_node}")
 
             # 检查权限
             if not chat_stream.user_info or not chat_stream.user_info.user_id:
@@ -71,12 +106,12 @@ def require_permission(permission_node: str, deny_message: str | None = None):
                 return None
 
             has_permission = await permission_api.check_permission(
-                chat_stream.platform, chat_stream.user_info.user_id, permission_node
+                chat_stream.platform, chat_stream.user_info.user_id, full_permission_node
             )
 
             if not has_permission:
                 # 权限不足，发送拒绝消息
-                message = deny_message or f"❌ 你没有执行此操作的权限\n需要权限: {permission_node}"
+                message = deny_message or f"❌ 你没有执行此操作的权限\n需要权限: {full_permission_node}"
                 await text_to_stream(message, chat_stream.stream_id)
                 # 对于PlusCommand的execute方法，需要返回适当的元组
                 if func.__name__ == "execute" and hasattr(args[0], "send_text"):
