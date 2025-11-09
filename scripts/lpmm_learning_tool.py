@@ -297,7 +297,9 @@ async def import_data(openie_obj: OpenIE | None = None):
                                                  默认为 None.
     """
     logger.info("--- 步骤 3: 开始数据导入 ---")
-    embed_manager, kg_manager = EmbeddingManager(), KGManager()
+    # 使用更高的并发参数以加速 embedding 生成
+    # max_workers: 并发批次数，chunk_size: 每批次处理的字符串数
+    embed_manager, kg_manager = EmbeddingManager(max_workers=20, chunk_size=30), KGManager()
 
     logger.info("正在加载现有的 Embedding 库...")
     try:
@@ -374,6 +376,23 @@ def import_from_specific_file():
 # --- 主函数 ---
 
 
+def rebuild_faiss_only():
+    """仅重建 FAISS 索引，不重新导入数据"""
+    logger.info("--- 重建 FAISS 索引 ---")
+    # 重建索引不需要并发参数（不涉及 embedding 生成）
+    embed_manager = EmbeddingManager()
+    
+    logger.info("正在加载现有的 Embedding 库...")
+    try:
+        embed_manager.load_from_file()
+        logger.info("开始重建 FAISS 索引...")
+        embed_manager.rebuild_faiss_index()
+        embed_manager.save_to_file()
+        logger.info("✅ FAISS 索引重建完成！")
+    except Exception as e:
+        logger.error(f"重建 FAISS 索引时发生错误: {e}", exc_info=True)
+
+
 def main():
     # 使用 os.path.relpath 创建相对于项目根目录的友好路径
     raw_data_relpath = os.path.relpath(RAW_DATA_PATH, os.path.join(ROOT_PATH, ".."))
@@ -386,9 +405,10 @@ def main():
     print("4. [全流程] -> 按顺序执行 1 -> 2 -> 3")
     print("5. [指定导入] -> 从特定的 openie.json 文件导入知识")
     print("6. [清理缓存] -> 删除所有已提取信息的缓存")
+    print("7. [重建索引] -> 仅重建 FAISS 索引（数据已导入时使用）")
     print("0. [退出]")
     print("-" * 30)
-    choice = input("请输入你的选择 (0-6): ").strip()
+    choice = input("请输入你的选择 (0-7): ").strip()
 
     if choice == "1":
         preprocess_raw_data()
@@ -409,6 +429,8 @@ def main():
         import_from_specific_file()
     elif choice == "6":
         clear_cache()
+    elif choice == "7":
+        rebuild_faiss_only()
     elif choice == "0":
         sys.exit(0)
     else:
