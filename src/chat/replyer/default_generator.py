@@ -1743,17 +1743,22 @@ class DefaultReplyer:
                 content = content.replace("[SPLIT]", "")
                 
 
-                aggressive_pattern = re.compile(r'\[\s*回复\s*<.+?>.*?\]', re.DOTALL)
-                original_content_for_aggresive_filter = content
-                cleaned_content_by_aggresive_filter = aggressive_pattern.sub('', content).strip()
+                original_content_for_filter = content
+                cleaned_content = content.strip()
 
-                # 再次检查并移除因嵌套括号可能残留的单个 ']'
-                if cleaned_content_by_aggresive_filter.startswith(']'):
-                    cleaned_content_by_aggresive_filter = cleaned_content_by_aggresive_filter[1:].strip()
+                # 终极过滤器：处理模型模仿的、可能存在多层嵌套的回复格式
+                # 规则：如果消息以 "[回复" 开头，则删除从开头到最后一个 "]" 的所有内容。
+                if cleaned_content.startswith("[回复"):
+                    last_bracket_index = cleaned_content.rfind("]")
+                    if last_bracket_index != -1:
+                        cleaned_content = cleaned_content[last_bracket_index + 1 :].strip()
 
-                if cleaned_content_by_aggresive_filter != original_content_for_aggresive_filter:
-                    logger.warning(f"检测到并清理了模型生成的不规范回复格式。原始内容: '{original_content_for_aggresive_filter}', 清理后: '{cleaned_content_by_aggresive_filter}'")
-                    content = cleaned_content_by_aggresive_filter
+                if cleaned_content != original_content_for_filter.strip():
+                    logger.warning(
+                        "检测到并清理了模型生成的不规范回复格式。"
+                        f"原始内容: '{original_content_for_filter}', 清理后: '{cleaned_content}'"
+                    )
+                    content = cleaned_content
 
             logger.debug(f"replyer生成内容: {content}")
         return content, reasoning_content, model_name, tool_calls
