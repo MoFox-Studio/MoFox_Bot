@@ -16,6 +16,7 @@ from src.common.logger import get_logger
 from src.plugin_system.base.base_chatter import BaseChatter
 from src.plugin_system.base.component_types import ChatType
 from src.plugins.built_in.affinity_flow_chatter.planner.planner import ChatterActionPlanner
+from src.config.config import global_config
 
 logger = get_logger("affinity_chatter")
 
@@ -73,7 +74,7 @@ class AffinityChatter(BaseChatter):
                 unread_messages = context.get_unread_messages()
 
                 # 使用增强版规划器处理消息
-                actions, target_message = await self.planner.plan(context=context)
+                actions, target_message = await asyncio.wait_for(self.planner.plan(context=context), global_config.chat.thinking_timeout)
                 self.stats["plans_created"] += 1
 
                 # 执行动作（如果规划器返回了动作）
