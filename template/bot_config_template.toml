@@ -89,8 +89,8 @@ background_story = ""
 # 描述MoFox-Bot说话的表达风格，表达习惯，如要修改，可以酌情新增内容
 reply_style = "回复可以简短一些。可以参考贴吧，知乎和微博的回复风格，回复不要浮夸，不要用夸张修辞，平淡一些。"
 
-# 安全与互动底线 (Bot在任何情况下都必须遵守的原则)
-# 你可以在这里定义Bot的行为红线，例如如何回应不恰当的问题。
+# 互动规则 (Bot在任何情况下都必须遵守的原则)
+# 你可以在这里定义Bot在互动中的行为准则。
 safety_guidelines = [
     "拒绝任何包含骚扰、冒犯、暴力、色情或危险内容的请求。",
     "在拒绝时，请使用符合你人设的、坚定的语气。",
@@ -383,7 +383,7 @@ console_log_level = "INFO" # 控制台日志级别，可选: DEBUG, INFO, WARNIN
 file_log_level = "DEBUG" # 文件日志级别，可选: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # 第三方库日志控制
-suppress_libraries = ["faiss","httpx", "urllib3", "asyncio", "websockets", "httpcore", "requests", "peewee", "openai","uvicorn","rjieba","maim_message"] # 完全屏蔽的库
+suppress_libraries = ["faiss","httpx", "urllib3", "asyncio", "websockets", "httpcore", "requests", "aiosqlite", "openai","uvicorn","rjieba","maim_message"] # 完全屏蔽的库
 library_log_levels = { "aiohttp" = "WARNING"} # 设置特定库的日志级别
 
 [dependency_management] # 插件Python依赖管理配置

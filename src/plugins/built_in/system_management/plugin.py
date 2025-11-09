@@ -41,7 +41,7 @@ class SystemCommand(PlusCommand):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    @require_permission("system.access", "❌ 你没有权限使用此命令")
+    @require_permission("access", deny_message="❌ 你没有权限使用此命令")
     async def execute(self, args: CommandArgs) -> tuple[bool, str | None, bool]:
         """执行系统管理命令"""
         if args.is_empty:
@@ -172,7 +172,7 @@ class SystemCommand(PlusCommand):
         else:
             await self.send_text("❌ 定时任务管理命令不合法\n使用 /system schedule help 查看帮助")
 
-    @require_permission("system.schedule.view", "❌ 你没有查看定时任务的权限")
+    @require_permission("schedule.view", deny_message="❌ 你没有查看定时任务的权限")
     async def _list_schedules(self, trigger_type_str: str | None):
         """列出定时任务"""
         trigger_type = None
@@ -198,7 +198,7 @@ class SystemCommand(PlusCommand):
             )
         await self.send_text("\n".join(response_parts))
 
-    @require_permission("system.schedule.view", "❌ 你没有查看定时任务详情的权限")
+    @require_permission("schedule.view", deny_message="❌ 你没有查看定时任务详情的权限")
     async def _get_schedule_info(self, schedule_id: str):
         """获取任务详情"""
         task_info = await unified_scheduler.get_task_info(schedule_id)
@@ -211,7 +211,7 @@ class SystemCommand(PlusCommand):
             info_str += f"  • {key}: `{value}`\n"
         await self.send_text(info_str)
 
-    @require_permission("system.schedule.manage", "❌ 你没有管理定时任务的权限")
+    @require_permission("schedule.manage", deny_message="❌ 你没有管理定时任务的权限")
     async def _pause_schedule(self, schedule_id: str):
         """暂停任务"""
         success = await unified_scheduler.pause_schedule(schedule_id)
@@ -220,7 +220,7 @@ class SystemCommand(PlusCommand):
         else:
             await self.send_text(f"❌ 暂停任务失败: `{schedule_id}`")
 
-    @require_permission("system.schedule.manage", "❌ 你没有管理定时任务的权限")
+    @require_permission("schedule.manage", deny_message="❌ 你没有管理定时任务的权限")
     async def _resume_schedule(self, schedule_id: str):
         """恢复任务"""
         success = await unified_scheduler.resume_schedule(schedule_id)
@@ -300,20 +300,20 @@ class SystemCommand(PlusCommand):
 
         action = args[0].lower()
         remaining_args = args[1:]
-        chat_stream = self.message.chat_info.stream_id
+        chat_info = self.message.chat_info
 
         if action in ["grant", "授权", "give"]:
-            await self._grant_permission(chat_stream, remaining_args)
+            await self._grant_permission(chat_info, remaining_args)
         elif action in ["revoke", "撤销", "remove"]:
-            await self._revoke_permission(chat_stream, remaining_args)
+            await self._revoke_permission(chat_info, remaining_args)
         elif action in ["list", "列表", "ls"]:
-            await self._list_permissions(chat_stream, remaining_args)
+            await self._list_permissions(chat_info, remaining_args)
         elif action in ["check", "检查"]:
-            await self._check_permission(chat_stream, remaining_args)
+            await self._check_permission(chat_info, remaining_args)
         elif action in ["nodes", "节点"]:
-            await self._list_nodes(chat_stream, remaining_args)
+            await self._list_nodes(chat_info, remaining_args)
         elif action in ["allnodes", "全部节点", "all"]:
-            await self._list_all_nodes_with_description(chat_stream)
+            await self._list_all_nodes_with_description(chat_info)
         else:
             await self.send_text(f"❌ 未知的权限子命令: {action}")
 
@@ -327,8 +327,8 @@ class SystemCommand(PlusCommand):
             return mention
         return None
 
-    @require_permission("system.permission.manage", "❌ 你没有权限管理的权限")
-    async def _grant_permission(self, chat_stream, args: list[str]):
+    @require_permission("permission.manage", deny_message="❌ 你没有权限管理的权限")
+    async def _grant_permission(self, chat_info, args: list[str]):
         """授权用户权限"""
         if len(args) < 2:
             await self.send_text("❌ 用法: /system permission grant <@用户|QQ号> <权限节点>")
@@ -340,14 +340,14 @@ class SystemCommand(PlusCommand):
             return
 
         permission_node = args[1]
-        success = await permission_api.grant_permission(chat_stream.platform, user_id, permission_node)
+        success = await permission_api.grant_permission(chat_info.platform, user_id, permission_node)
         if success:
             await self.send_text(f"✅ 已授权用户 {user_id} 权限节点 `{permission_node}`")
         else:
             await self.send_text("❌ 授权失败")
 
-    @require_permission("system.permission.manage", "❌ 你没有权限管理的权限")
-    async def _revoke_permission(self, chat_stream, args: list[str]):
+    @require_permission("permission.manage", deny_message="❌ 你没有权限管理的权限")
+    async def _revoke_permission(self, chat_info, args: list[str]):
         """撤销用户权限"""
         if len(args) < 2:
             await self.send_text("❌ 用法: /system permission revoke <@用户|QQ号> <权限节点>")
@@ -359,14 +359,14 @@ class SystemCommand(PlusCommand):
             return
 
         permission_node = args[1]
-        success = await permission_api.revoke_permission(chat_stream.platform, user_id, permission_node)
+        success = await permission_api.revoke_permission(chat_info.platform, user_id, permission_node)
         if success:
             await self.send_text(f"✅ 已撤销用户 {user_id} 权限节点 `{permission_node}`")
         else:
             await self.send_text("❌ 撤销失败")
 
-    @require_permission("system.permission.view", "❌ 你没有查看权限的权限")
-    async def _list_permissions(self, chat_stream, args: list[str]):
+    @require_permission("permission.view", deny_message="❌ 你没有查看权限的权限")
+    async def _list_permissions(self, chat_info, args: list[str]):
         """列出用户权限"""
         target_user_id = None
         if args:
@@ -375,10 +375,10 @@ class SystemCommand(PlusCommand):
                 await self.send_text("❌ 无效的用户格式")
                 return
         else:
-            target_user_id = chat_stream.user_info.user_id
+            target_user_id = chat_info.user_info.user_id
 
-        is_master = await permission_api.is_master(chat_stream.platform, target_user_id)
-        permissions = await permission_api.get_user_permissions(chat_stream.platform, target_user_id)
+        is_master = await permission_api.is_master(chat_info.platform, target_user_id)
+        permissions = await permission_api.get_user_permissions(chat_info.platform, target_user_id)
 
         if is_master:
             response = f"👑 用户 `{target_user_id}` 是Master用户，拥有所有权限"
@@ -390,8 +390,8 @@ class SystemCommand(PlusCommand):
                 response = f"📋 用户 `{target_user_id}` 没有任何权限"
         await self.send_text(response)
 
-    @require_permission("system.permission.view", "❌ 你没有查看权限的权限")
-    async def _check_permission(self, chat_stream, args: list[str]):
+    @require_permission("permission.view", deny_message="❌ 你没有查看权限的权限")
+    async def _check_permission(self, chat_info, args: list[str]):
         """检查用户权限"""
         if len(args) < 2:
             await self.send_text("❌ 用法: /system permission check <@用户|QQ号> <权限节点>")
@@ -403,8 +403,8 @@ class SystemCommand(PlusCommand):
             return
 
         permission_node = args[1]
-        has_permission = await permission_api.check_permission(chat_stream.platform, user_id, permission_node)
-        is_master = await permission_api.is_master(chat_stream.platform, user_id)
+        has_permission = await permission_api.check_permission(chat_info.platform, user_id, permission_node)
+        is_master = await permission_api.is_master(chat_info.platform, user_id)
 
         if has_permission:
             response = f"✅ 用户 `{user_id}` 拥有权限 `{permission_node}`"
@@ -414,8 +414,8 @@ class SystemCommand(PlusCommand):
             response = f"❌ 用户 `{user_id}` 没有权限 `{permission_node}`"
         await self.send_text(response)
 
-    @require_permission("system.permission.view", "❌ 你没有查看权限的权限")
-    async def _list_nodes(self, chat_stream, args: list[str]):
+    @require_permission("permission.view", deny_message="❌ 你没有查看权限的权限")
+    async def _list_nodes(self, chat_info, args: list[str]):
         """列出权限节点"""
         plugin_name = args[0] if args else None
         if plugin_name:
@@ -439,7 +439,7 @@ class SystemCommand(PlusCommand):
             response = title + "\n" + "\n".join(node_list)
         await self.send_text(response)
 
-    @require_permission("system.permission.view", "❌ 你没有查看权限的权限")
+    @require_permission("permission.view", deny_message="❌ 你没有查看权限的权限")
     async def _list_all_nodes_with_description(self, chat_stream):
         """列出所有插件的权限节点（带详细描述）"""
         all_nodes = await permission_api.get_all_permission_nodes()
@@ -510,8 +510,8 @@ class SystemManagementPlugin(BasePlugin):
 
     permission_nodes: ClassVar[list[PermissionNodeField]] = [
         PermissionNodeField(
-            node_name="system.access",
-            description="权限管理：授权和撤销权限",
+            node_name="access",
+            description="系统访问：可以使用系统管理命令",
         ),
         PermissionNodeField(
             node_name="permission.manage",

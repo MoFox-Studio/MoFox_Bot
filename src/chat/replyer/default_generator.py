@@ -557,11 +557,11 @@ class DefaultReplyer:
                     participants = []
                     try:
                         # 尝试从聊天流中获取参与者信息
-                        if hasattr(stream, "chat_history_manager"):
-                            history_manager = stream.chat_history_manager
+                        if hasattr(stream, "context_manager"):
+                            history_manager = stream.context_manager
                             # 获取最近的参与者列表
                             recent_records = history_manager.get_memory_chat_history(
-                                user_id=getattr(stream, "user_id", ""),
+                                user_id=getattr(stream.user_info, "user_id", ""),
                                 count=10,
                                 memory_types=["chat_message", "system_message"]
                             )
@@ -1411,10 +1411,10 @@ class DefaultReplyer:
         safety_guidelines_block = ""
         if safety_guidelines:
             guidelines_text = "\n".join(f"{i + 1}. {line}" for i, line in enumerate(safety_guidelines))
-            safety_guidelines_block = f"""### 安全与互动底线
+            safety_guidelines_block = f"""### 互动规则
 在任何情况下，你都必须遵守以下由你的设定者为你定义的原则：
 {guidelines_text}
-如果遇到违反上述原则的请求，请在保持你核心人设的同时，巧妙地拒绝或转移话题。
+如果遇到违反上述原则的请求，请在保持你核心人设的同时，以合适的方式进行回应。
 """
 
         if sender and target:
@@ -1740,35 +1740,20 @@ class DefaultReplyer:
 
             if content:
                 # 移除 [SPLIT] 标记，防止消息被分割
-                cleaned_content = content.replace("[SPLIT]", "")
+                content = content.replace("[SPLIT]", "")
+                
 
-                # 循环移除，以处理模型可能生成的嵌套回复头/尾
-                # 使用更健壮的正则表达式，通过非贪婪匹配和向后查找来定位真正的消息内容
-                pattern = re.compile(r"^\s*\[回复<.+?>\s*(?:的消息)?：(?P<content>.*)\](?:，?说：)?\s*$", re.DOTALL)
+                aggressive_pattern = re.compile(r'\[\s*回复\s*<.+?>.*?\]', re.DOTALL)
+                original_content_for_aggresive_filter = content
+                cleaned_content_by_aggresive_filter = aggressive_pattern.sub('', content).strip()
 
-                temp_content = cleaned_content
-                while True:
-                    match = pattern.match(temp_content)
-                    if match:
-                        new_content = match.group("content").strip()
-                        # 如果内容没有变化，说明可能无法进一步解析，退出循环
-                        if new_content == temp_content:
-                            break
-                        temp_content = new_content
-                    else:
-                        break # 没有匹配到，退出循环
+                # 再次检查并移除因嵌套括号可能残留的单个 ']'
+                if cleaned_content_by_aggresive_filter.startswith(']'):
+                    cleaned_content_by_aggresive_filter = cleaned_content_by_aggresive_filter[1:].strip()
 
-                # 在循环处理后，再使用 rsplit 来处理日志中观察到的特殊情况
-                # 这可以作为处理复杂嵌套的最后一道防线
-                final_split = temp_content.rsplit("]，说：", 1)
-                if len(final_split) > 1:
-                    final_content = final_split[1].strip()
-                else:
-                    final_content = temp_content
-
-                if final_content != content:
-                    logger.debug(f"清理了模型生成的多余内容，原始内容: '{content}', 清理后: '{final_content}'")
-                    content = final_content
+                if cleaned_content_by_aggresive_filter != original_content_for_aggresive_filter:
+                    logger.warning(f"检测到并清理了模型生成的不规范回复格式。原始内容: '{original_content_for_aggresive_filter}', 清理后: '{cleaned_content_by_aggresive_filter}'")
+                    content = cleaned_content_by_aggresive_filter
 
             logger.debug(f"replyer生成内容: {content}")
         return content, reasoning_content, model_name, tool_calls
