@@ -190,7 +190,9 @@ class SystemCommand(PlusCommand):
 
         response_parts = [f"📅 定时任务列表 (共 {len(tasks)} 个):"]
         for task in tasks:
-            status = "▶️" if task["is_active"] else "⏸️"
+            # 使用新的 status 字段，兼容旧版本
+            is_active = task.get("status") == "PENDING" if "status" in task else task.get("is_active", False)
+            status = "▶️" if is_active else "⏸️"
             recurring = "🔁" if task["is_recurring"] else "➡️"
             response_parts.append(
                 f"{status} `{task['task_name']}` ({task['trigger_type']}) {recurring}\n"
