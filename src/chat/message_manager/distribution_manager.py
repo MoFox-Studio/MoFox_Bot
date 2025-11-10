@@ -340,6 +340,14 @@ class StreamLoopManager:
 
             # 注意：缓存消息刷新已移至planner开始时执行（动作修改器之后），此处不再刷新
 
+            # 检查未读消息，如果为空则直接返回（优化：避免无效的 chatter 调用）
+            unread_messages = context.get_unread_messages()
+            if not unread_messages:
+                logger.debug(f"流 {stream_id} 未读消息为空，跳过 chatter 处理")
+                return True  # 返回 True 表示处理完成（虽然没有实际处理）
+
+            logger.debug(f"流 {stream_id} 有 {len(unread_messages)} 条未读消息，开始处理")
+
             # 设置触发用户ID，以实现回复保护
             last_message = context.get_last_message()
             if last_message:
