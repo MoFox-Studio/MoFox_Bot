@@ -306,27 +306,30 @@ class ChatterActionManager:
                 if action_name == "respond" and should_quote_reply is None:
                     should_quote_reply = False
 
-                # 发送并存储回复
-                loop_info, reply_text, cycle_timers_reply = await self._send_and_store_reply(
-                    chat_stream,
-                    response_set,
-                    asyncio.get_event_loop().time(),
-                    target_message,
-                    {},  # cycle_timers
-                    thinking_id,
-                    [],  # actions
-                    should_quote_reply,  # 传递should_quote_reply参数
-                )
+                async def _after_reply():              
+                    # 发送并存储回复
+                    loop_info, reply_text, cycle_timers_reply = await self._send_and_store_reply(
+                        chat_stream,
+                        response_set,
+                        asyncio.get_event_loop().time(),
+                        target_message,
+                        {},  # cycle_timers
+                        thinking_id,
+                        [],  # actions
+                        should_quote_reply,  # 传递should_quote_reply参数
+                    )
 
-                # 记录回复动作到目标消息（改为同步等待）
-                await self._record_action_to_message(chat_stream, action_name, target_message, action_data)
+                    # 记录回复动作到目标消息
+                    await self._record_action_to_message(chat_stream, action_name, target_message, action_data)
 
-                if clear_unread_messages:
-                    await self._clear_all_unread_messages(chat_stream.stream_id, action_name)
+                    if clear_unread_messages:
+                        await self._clear_all_unread_messages(chat_stream.stream_id, action_name)
 
-                # 回复成功，重置打断计数（改为同步等待）
-                await self._reset_interruption_count_after_action(chat_stream.stream_id)
+                    # 回复成功，重置打断计数（改为同步等待）
+                    await self._reset_interruption_count_after_action(chat_stream.stream_id)
 
+                    return loop_info, reply_text, cycle_timers_reply
+                loop_info, reply_text, cycle_timers_reply = await asyncio.create_task(_after_reply())
                 return {"action_type": action_name, "success": True, "reply_text": reply_text, "loop_info": loop_info}
 
         except Exception as e:
