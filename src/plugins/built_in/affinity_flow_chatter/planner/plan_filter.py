@@ -363,9 +363,6 @@ class ChatterPlanFilter:
 
             stream_context = chat_stream.context_manager
             
-            # 🔥 确保历史消息已从数据库加载
-            await stream_context.ensure_history_initialized()
-
             # 获取真正的已读和未读消息
             read_messages = stream_context.context.history_messages  # 已读消息存储在history_messages中
             if not read_messages:

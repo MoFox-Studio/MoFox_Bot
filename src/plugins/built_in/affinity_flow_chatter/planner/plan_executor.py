@@ -78,8 +78,9 @@ class ChatterPlanExecutor:
         other_actions = []
 
         # 分类动作：回复动作和其他动作
+        # 回复类动作包括：reply, proactive_reply, respond
         for action_info in plan.decided_actions:
-            if action_info.action_type in ["reply", "proactive_reply"]:
+            if action_info.action_type in ["reply", "proactive_reply", "respond"]:
                 reply_actions.append(action_info)
             else:
                 other_actions.append(action_info)
