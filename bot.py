@@ -602,11 +602,6 @@ class MaiBotMain:
         # 初始化主系统
         await main_system.initialize()
 
-        # 初始化知识库
-        from src.chat.knowledge.knowledge_lib import initialize_lpmm_knowledge
-
-        initialize_lpmm_knowledge()
-
         # 显示彩蛋
         EasterEgg.show()
 

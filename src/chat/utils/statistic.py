@@ -213,7 +213,7 @@ class StatisticOutputTask(AsyncTask):
             logger.info("正在收集统计数据(异步)...")
             stats = await asyncio.create_task(self._collect_all_statistics(now))
             logger.info("统计数据收集完成")
-            self._statistic_console_output(stats, n ow)
+            self._statistic_console_output(stats, now)
             await asyncio.create_task(self._generate_html_report(stats, now))
             logger.info("统计数据输出完成")
         except Exception as e:
