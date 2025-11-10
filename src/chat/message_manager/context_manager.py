@@ -198,11 +198,6 @@ class SingleStreamContextManager:
                     failed_ids.append(str(message_id)[:8])
                     logger.warning(f"标记消息已读失败 {message_id}: {e}")
 
-            if marked_count > 0:
-                logger.info(f"✅ [批量标记] stream={self.stream_id[:8]}, 成功标记 {marked_count}/{len(message_ids)} 条消息为已读")
-            if failed_ids:
-                logger.warning(f"⚠️ [批量标记] stream={self.stream_id[:8]}, {len(failed_ids)} 条消息标记失败: {failed_ids[:5]}")
-            
             return marked_count > 0
 
         except Exception as e:

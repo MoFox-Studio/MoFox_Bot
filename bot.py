@@ -555,11 +555,6 @@ class MaiBotMain:
         except Exception as e:
             logger.warning(f"时区设置失败: {e}")
 
-    async def initialize_database(self):
-        """初始化数据库连接"""
-        async with DatabaseManager():
-            pass
-
     async def initialize_database_async(self):
         """异步初始化数据库表结构"""
         logger.info("正在初始化数据库表结构...")
@@ -593,9 +588,7 @@ class MaiBotMain:
 
     async def run_async_init(self, main_system):
         """执行异步初始化步骤"""
-        # 初始化数据库连接
-        await self.initialize_database()
-
+        
         # 初始化数据库表结构
         await self.initialize_database_async()
 
