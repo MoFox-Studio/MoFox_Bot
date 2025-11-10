@@ -211,10 +211,10 @@ class StatisticOutputTask(AsyncTask):
         try:
             now = datetime.now()
             logger.info("正在收集统计数据(异步)...")
-            stats = await self._collect_all_statistics(now)
+            stats = await asyncio.create_task(self._collect_all_statistics(now))
             logger.info("统计数据收集完成")
-            self._statistic_console_output(stats, now)
-            await self._generate_html_report(stats, now)
+            self._statistic_console_output(stats, n ow)
+            await asyncio.create_task(self._generate_html_report(stats, now))
             logger.info("统计数据输出完成")
         except Exception as e:
             logger.exception(f"输出统计数据过程中发生异常，错误信息：{e}")

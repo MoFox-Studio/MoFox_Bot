@@ -91,7 +91,6 @@ class MessageManager:
 
     async def add_message(self, stream_id: str, message: DatabaseMessages):
         """添加消息到指定聊天流"""
-
         try:
             # 检查是否为notice消息
             if self._is_notice_message(message):

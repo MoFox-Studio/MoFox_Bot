@@ -98,10 +98,7 @@ class StreamContext(BaseDataModel):
                 break
 
     def mark_message_as_read(self, message_id: str):
-        """标记消息为已读"""
-        from src.common.logger import get_logger
-        logger = get_logger("StreamContext")
-        
+        """标记消息为已读"""  
         # 先找到要标记的消息（处理 int/str 类型不匹配问题）
         message_to_mark = None
         for msg in self.unread_messages:
@@ -115,11 +112,6 @@ class StreamContext(BaseDataModel):
             message_to_mark.is_read = True
             self.history_messages.append(message_to_mark)
             self.unread_messages.remove(message_to_mark)
-            msg_id_str = str(message_id)[:8] if message_id else "unknown"
-            logger.info(f"📌 [标记已读] 消息 {msg_id_str} 已移至历史, 当前历史数: {len(self.history_messages)}, 未读数: {len(self.unread_messages)}")
-        else:
-            msg_id_str = str(message_id)[:8] if message_id else "unknown"
-            logger.warning(f"⚠️ [标记已读] 未找到消息 {msg_id_str} 在未读列表中, 当前未读消息ID列表: {[str(m.message_id)[:8] for m in self.unread_messages[:5]]}")
 
     def get_unread_messages(self) -> list["DatabaseMessages"]:
         """获取未读消息"""

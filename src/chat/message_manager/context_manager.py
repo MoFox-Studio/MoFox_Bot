@@ -83,11 +83,6 @@ class SingleStreamContextManager:
                 self.total_messages += 1
                 self.last_access_time = time.time()
                 
-                # 记录消息添加日志
-                msg_preview = message.processed_plain_text[:30] if message.processed_plain_text else "(无内容)"
-                msg_id_str = str(message.message_id)[:8] if message.message_id else "unknown"
-                logger.info(f"➕ [添加消息] {msg_id_str}: {msg_preview}..., 当前未读数: {len(self.context.unread_messages)}, 历史数: {len(self.context.history_messages)}")
-
                 # 如果使用了缓存系统，输出调试信息
                 if cache_enabled and self.context.is_cache_enabled:
                     if self.context.is_chatter_processing:
