@@ -923,3 +923,69 @@ def assign_message_ids_flexible(
 # # 增强版本 - 使用时间戳
 # result3 = assign_message_ids_flexible(messages, prefix="ts", use_timestamp=True)
 # # 结果: [{'id': 'ts123a1b', 'message': 'Hello'}, {'id': 'ts123c2d', 'message': 'World'}, {'id': 'ts123e3f', 'message': 'Test message'}]
+
+
+def filter_system_format_content(content: str | None) -> str:
+    """
+    过滤系统格式化内容，移除回复、@、图片、表情包等系统生成的格式文本
+
+    此方法过滤以下类型的系统格式化内容：
+    1. 回复格式：[回复xxx]，说：xxx
+    2. 表情包格式：[表情包：xxx]
+    3. 图片格式：[图片:xxx]
+    4. @格式：@<xxx>
+    5. 错误格式：[表情包(...)]、[图片(...)]
+    6. [回复开头的格式
+
+    Args:
+        content: 原始内容
+
+    Returns:
+        过滤后的纯文本内容
+    """
+    if not content:
+        return ""
+
+    original_content = content
+    cleaned_content = content.strip()
+
+    # 1. 移除回复格式：[回复xxx]，说：xxx（各种变体）
+    # 匹配所有包含"]，说："格式的回复
+    cleaned_content = re.sub(r"\[回复[^\]]*\]，说：\s*", "", cleaned_content)
+    # 匹配 [回复<xxx:数字>]，说：xxx 格式
+    cleaned_content = re.sub(r"\[回复<[^>]*>\]，说：\s*", "", cleaned_content)
+
+    # 2. 处理原有的[回复开头格式（保持向后兼容）
+    # 注意：这步要在上面处理完成后再执行，避免冲突
+    if cleaned_content.startswith("[回复"):
+        last_bracket_index = cleaned_content.rfind("]")
+        if last_bracket_index != -1:
+            cleaned_content = cleaned_content[last_bracket_index + 1 :].strip()
+
+    # 3. 移除表情包格式：[表情包：xxx]
+    cleaned_content = re.sub(r"\[表情包：[^\]]*\]", "", cleaned_content)
+
+    # 4. 移除图片格式：[图片:xxx]
+    cleaned_content = re.sub(r"\[图片:[^\]]*\]", "", cleaned_content)
+
+    # 5. 移除@格式：@<xxx>
+    cleaned_content = re.sub(r"@<[^>]*>", "", cleaned_content)
+
+    # 6. 移除其他可能的系统格式
+    # [表情包(描述生成失败)] 等错误格式
+    cleaned_content = re.sub(r"\[表情包\([^)]*\)\]", "", cleaned_content)
+    # [图片(描述生成失败)] 等错误格式
+    cleaned_content = re.sub(r"\[图片\([^)]*\)\]", "", cleaned_content)
+
+    # 清理多余空格
+    cleaned_content = re.sub(r"\s+", " ", cleaned_content).strip()
+
+    # 记录过滤操作
+    if cleaned_content != original_content.strip():
+        logger.info(
+            f"[系统格式过滤器] 检测到并清理了系统格式化文本。"
+            f"原始内容: '{original_content}', "
+            f"清理后: '{cleaned_content}'"
+        )
+
+    return cleaned_content

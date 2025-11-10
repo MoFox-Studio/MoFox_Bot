@@ -412,7 +412,15 @@ class ProactiveThinkingPlanner:
                 return None
 
             logger.info(f"生成回复成功: {response[:50]}...")
-            return response.strip()
+
+            # 应用格式过滤器，确保回复内容不包含系统格式化文本
+            from src.chat.utils.utils import filter_system_format_content
+            filtered_response = filter_system_format_content(response.strip())
+
+            if filtered_response != response.strip():
+                logger.debug(f"主动思考回复已过滤系统格式: '{response.strip()}' -> '{filtered_response}'")
+
+            return filtered_response
 
         except Exception as e:
             logger.error(f"生成回复失败: {e}", exc_info=True)
