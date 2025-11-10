@@ -16,6 +16,7 @@ from src.plugin_system.base.config_types import ConfigField
 
 # 导入API模块 - 标准Python包方式
 from src.plugins.built_in.core_actions.emoji import EmojiAction
+from src.plugins.built_in.core_actions.reply import ReplyAction, RespondAction
 
 logger = get_logger("core_actions")
 
@@ -52,7 +53,8 @@ class CoreActionsPlugin(BasePlugin):
             "config_version": ConfigField(type=str, default="0.6.0", description="配置文件版本"),
         },
         "components": {
-            "enable_reply": ConfigField(type=bool, default=True, description="是否启用基本回复动作"),
+            "enable_reply": ConfigField(type=bool, default=True, description="是否启用 reply 动作（s4u模板）"),
+            "enable_respond": ConfigField(type=bool, default=True, description="是否启用 respond 动作（normal模板）"),
             "enable_emoji": ConfigField(type=bool, default=True, description="是否启用发送表情/图片动作"),
         },
     }
@@ -62,6 +64,16 @@ class CoreActionsPlugin(BasePlugin):
 
         # --- 根据配置注册组件 ---
         components: ClassVar = []
+        
+        # 注册 reply 动作
+        if self.get_config("components.enable_reply", True):
+            components.append((ReplyAction.get_action_info(), ReplyAction))
+        
+        # 注册 respond 动作
+        if self.get_config("components.enable_respond", True):
+            components.append((RespondAction.get_action_info(), RespondAction))
+        
+        # 注册 emoji 动作
         if self.get_config("components.enable_emoji", True):
             components.append((EmojiAction.get_action_info(), EmojiAction))
 

@@ -128,6 +128,18 @@ async def generate_reply(
         if not extra_info and action_data:
             extra_info = action_data.get("extra_info", "")
 
+        # 从action_data中提取prompt_mode
+        prompt_mode = "s4u"  # 默认使用s4u模式
+        if action_data and "prompt_mode" in action_data:
+            prompt_mode = action_data.get("prompt_mode", "s4u")
+        
+        # 将prompt_mode添加到available_actions中（作为特殊键）
+        # 注意：这里我们需要暂时使用类型忽略，因为available_actions的类型定义不支持非ActionInfo值
+        if available_actions is None:
+            available_actions = {}
+        available_actions = available_actions.copy()  # 避免修改原字典
+        available_actions["_prompt_mode"] = prompt_mode  # type: ignore  # 特殊键，用于传递prompt_mode
+
         # 如果action_data中有thinking，添加到extra_info中
         if action_data and (thinking := action_data.get("thinking")):
             if extra_info:

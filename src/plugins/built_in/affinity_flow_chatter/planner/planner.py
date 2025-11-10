@@ -333,16 +333,17 @@ class ChatterActionPlanner:
                     context.processing_message_id = target_message_id
                     logger.debug(f"Normal模式 - 开始处理目标消息: {target_message_id}")
 
-                # 4. 构建回复动作（Normal模式的简化流程）
+                # 4. 构建回复动作（Normal模式使用respond动作）
                 from src.common.data_models.info_data_model import ActionPlannerInfo, Plan
                 from src.plugin_system.base.component_types import ChatType
 
                 # 构建目标消息字典 - 使用 flatten() 方法获取扁平化的字典
                 target_message_dict = target_message.flatten()
 
-                reply_action = ActionPlannerInfo(
-                    action_type="reply",
-                    reasoning="Normal模式 - 兴趣度达到阈值，直接回复（简化流程）",
+                # Normal模式使用respond动作，表示统一回应未读消息
+                respond_action = ActionPlannerInfo(
+                    action_type="respond",
+                    reasoning="Normal模式 - 兴趣度达到阈值，使用respond动作统一回应未读消息",
                     action_data={"target_message_id": target_message.message_id},
                     action_message=target_message,
                     should_quote_reply=False,  # Normal模式默认不引用回复，保持对话流畅
@@ -354,14 +355,14 @@ class ChatterActionPlanner:
                     chat_id=self.chat_id,
                     chat_type=ChatType.PRIVATE if not context else context.chat_type,
                     mode=ChatMode.NORMAL,
-                    decided_actions=[reply_action],
+                    decided_actions=[respond_action],
                 )
 
-                # 5. 执行reply动作
+                # 5. 执行respond动作
                 execution_result = await self.executor.execute(minimal_plan)
                 self._update_stats_from_execution_result(execution_result)
 
-                logger.info("Normal模式 - 执行reply动作完成")
+                logger.info("Normal模式 - 执行respond动作完成")
 
                 # 6. 更新兴趣计算器状态（回复成功，重置不回复计数）
                 await self._update_interest_calculator_state(replied=True)
@@ -374,7 +375,7 @@ class ChatterActionPlanner:
                 # 8. 检查是否需要退出Normal模式
                 await self._check_exit_normal_mode(context)
 
-                return [asdict(reply_action)], target_message_dict
+                return [asdict(respond_action)], target_message_dict
             else:
                 # 未达到reply阈值
                 logger.debug("Normal模式 - 未达到reply阈值，不执行回复")

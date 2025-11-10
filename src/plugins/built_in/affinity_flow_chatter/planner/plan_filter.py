@@ -75,16 +75,29 @@ class ChatterPlanFilter:
 
                 if "reply" in plan.available_actions and reply_not_available:
                     # 如果reply动作不可用，但llm返回的仍然有reply，则改为no_reply
-                    if (
-                        isinstance(parsed_json, dict)
-                        and parsed_json.get("actions", {}).get("action_type", "") == "reply"
-                    ):
-                        parsed_json["actions"]["action_type"] = "no_reply"
+                    if isinstance(parsed_json, dict):
+                        actions_obj = parsed_json.get("actions", {})
+                        # actions 可能是字典或列表
+                        if isinstance(actions_obj, dict) and actions_obj.get("action_type", "") == "reply":
+                            parsed_json["actions"]["action_type"] = "no_reply"
+                        elif isinstance(actions_obj, list):
+                            for action_item in actions_obj:
+                                if isinstance(action_item, dict) and action_item.get("action_type", "") == "reply":
+                                    action_item["action_type"] = "no_reply"
+                                    if "reason" in action_item:
+                                        action_item["reason"] += " (但由于兴趣度不足，reply动作不可用，已改为no_reply)"
                     elif isinstance(parsed_json, list):
                         for item in parsed_json:
-                            if isinstance(item, dict) and item.get("actions", {}).get("action_type", "") == "reply":
-                                item["actions"]["action_type"] = "no_reply"
-                                item["actions"]["reason"] += " (但由于兴趣度不足，reply动作不可用，已改为no_reply)"
+                            if isinstance(item, dict):
+                                actions_obj = item.get("actions", {})
+                                if isinstance(actions_obj, dict) and actions_obj.get("action_type", "") == "reply":
+                                    item["actions"]["action_type"] = "no_reply"
+                                elif isinstance(actions_obj, list):
+                                    for action_item in actions_obj:
+                                        if isinstance(action_item, dict) and action_item.get("action_type", "") == "reply":
+                                            action_item["action_type"] = "no_reply"
+                                            if "reason" in action_item:
+                                                action_item["reason"] += " (但由于兴趣度不足，reply动作不可用，已改为no_reply)"
 
                 if isinstance(parsed_json, dict):
                     parsed_json = [parsed_json]
