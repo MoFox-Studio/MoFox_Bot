@@ -498,6 +498,9 @@ class ChatterPlanFilter:
                 if thinking and thinking != "未提供思考过程":
                     action_data["thinking"] = thinking
 
+                # 根据动作定义过滤多余参数
+                action_data = self._filter_action_parameters(action, action_data, plan)
+
                 target_message_obj = None
                 if action not in ["no_action", "no_reply", "do_nothing", "proactive_reply"]:
                     original_target_id = action_data.get("target_message_id")
@@ -632,6 +635,48 @@ class ChatterPlanFilter:
                 )
             )
         return parsed_actions
+
+    def _filter_action_parameters(self, action_name: str, action_data: dict, plan: Plan) -> dict:
+        """根据动作定义过滤多余的参数
+        
+        Args:
+            action_name: 动作名称
+            action_data: LLM返回的动作参数
+            plan: Plan对象，用于获取可用动作信息
+            
+        Returns:
+            过滤后的参数字典
+        """
+        # 获取该动作的定义
+        action_info = plan.available_actions.get(action_name)
+        if not action_info:
+            logger.debug(f"动作 {action_name} 不在可用动作列表中，保留所有参数")
+            return action_data
+        
+        # 获取该动作定义的合法参数
+        defined_params = set(action_info.action_parameters.keys())
+        
+        # 合法参数集合
+        valid_params = defined_params
+        
+        # 过滤参数
+        filtered_data = {}
+        removed_params = []
+        
+        for key, value in action_data.items():
+            if key in valid_params:
+                filtered_data[key] = value
+            else:
+                removed_params.append(key)
+        
+        # 记录被移除的参数
+        if removed_params:
+            logger.info(
+                f"🧹 [参数过滤] 动作 '{action_name}' 移除了多余参数: {removed_params}. "
+                f"合法参数: {sorted(valid_params)}"
+            )
+        
+        return filtered_data
 
     def _filter_no_actions(self, action_list: list[ActionPlannerInfo]) -> list[ActionPlannerInfo]:
         non_no_actions = [a for a in action_list if a.action_type not in ["no_action", "no_reply"]]
