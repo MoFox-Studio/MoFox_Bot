@@ -436,7 +436,11 @@ class MessageManager:
             logger.error(f"清除未读消息时发生错误: {e}")
 
     async def clear_stream_unread_messages(self, stream_id: str):
-        """清除指定聊天流的所有未读消息"""
+        """清除指定聊天流的所有未读消息
+        
+        此方法会标记剩余的未读消息为已读（移到历史），作为兜底保护。
+        正常情况下，action_manager 应该已经标记了所有消息，这里只是确保没有遗漏。
+        """
         try:
             chat_manager = get_chat_manager()
             chat_stream = await chat_manager.get_stream(stream_id)
@@ -446,10 +450,25 @@ class MessageManager:
 
             context = chat_stream.context_manager.context
             if hasattr(context, "unread_messages") and context.unread_messages:
-                logger.debug(f"正在为流 {stream_id} 清除 {len(context.unread_messages)} 条未读消息")
-                context.unread_messages.clear()
+                unread_count = len(context.unread_messages)
+                
+                # 如果还有未读消息，说明 action_manager 可能遗漏了，标记它们
+                if unread_count > 0:
+                    logger.debug(f"🧹 [兜底清理] stream={stream_id[:8]}, 发现 {unread_count} 条剩余未读消息，标记为已读")
+                    
+                    # 获取所有未读消息的 ID
+                    message_ids = [msg.message_id for msg in context.unread_messages]
+                    
+                    # 标记为已读（会移到历史消息）
+                    success = chat_stream.context_manager.mark_messages_as_read(message_ids)
+                    
+                    if success:
+                        logger.debug(f"✅ [兜底清理] stream={stream_id[:8]}, 成功标记 {unread_count} 条消息为已读")
+                    else:
+                        logger.warning(f"⚠️ [兜底清理] stream={stream_id[:8]}, 标记失败，直接清空")
+                        context.unread_messages.clear()
             else:
-                logger.debug(f"流 {stream_id} 没有需要清除的未读消息")
+                logger.debug(f"流 {stream_id[:8]} 没有剩余未读消息，无需清理")
 
         except Exception as e:
             logger.error(f"清除流 {stream_id} 的未读消息时发生错误: {e}")
