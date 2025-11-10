@@ -1241,8 +1241,9 @@ class DefaultReplyer:
                     # 构建基础决策信息
                     action_descriptions = f"## 决策信息\n\n你已经决定要执行 **{action_name}** 动作（{action_desc}）。\n\n"
                     
-                    # 如果有目标消息信息，添加目标消息详情
-                    if target_msg_info and isinstance(target_msg_info, dict):
+                    # 只有需要目标消息的动作才显示目标消息详情
+                    # respond 动作是统一回应所有未读消息，不应该显示特定目标消息
+                    if action_name not in ["respond"] and target_msg_info and isinstance(target_msg_info, dict):
                         import time as time_module
                         sender = target_msg_info.get("sender", "未知用户")
                         content = target_msg_info.get("content", "")

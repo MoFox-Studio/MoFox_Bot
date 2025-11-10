@@ -337,15 +337,13 @@ class ChatterActionPlanner:
                 from src.common.data_models.info_data_model import ActionPlannerInfo, Plan
                 from src.plugin_system.base.component_types import ChatType
 
-                # 构建目标消息字典 - 使用 flatten() 方法获取扁平化的字典
-                target_message_dict = target_message.flatten()
-
                 # Normal模式使用respond动作，表示统一回应未读消息
+                # respond动作不需要target_message_id和action_message，因为它是统一回应所有未读消息
                 respond_action = ActionPlannerInfo(
                     action_type="respond",
                     reasoning="Normal模式 - 兴趣度达到阈值，使用respond动作统一回应未读消息",
-                    action_data={"target_message_id": target_message.message_id},
-                    action_message=target_message,
+                    action_data={},  # respond动作不需要参数
+                    action_message=None,  # respond动作不针对特定消息
                     should_quote_reply=False,  # Normal模式默认不引用回复，保持对话流畅
                 )
 
@@ -375,7 +373,8 @@ class ChatterActionPlanner:
                 # 8. 检查是否需要退出Normal模式
                 await self._check_exit_normal_mode(context)
 
-                return [asdict(respond_action)], target_message_dict
+                # respond动作不返回目标消息，因为它是统一回应所有未读消息
+                return [asdict(respond_action)], None
             else:
                 # 未达到reply阈值
                 logger.debug("Normal模式 - 未达到reply阈值，不执行回复")
