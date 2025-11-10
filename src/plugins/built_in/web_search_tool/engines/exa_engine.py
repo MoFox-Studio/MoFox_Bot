@@ -39,7 +39,7 @@ class ExaSearchEngine(BaseSearchEngine):
         return self.api_manager.is_available()
 
     async def search(self, args: dict[str, Any]) -> list[dict[str, Any]]:
-        """执行优化的Exa搜索（使用answer模式）"""
+        """执行优化的Exa搜索（使用新的search API）"""
         if not self.is_available():
             return []
 
@@ -47,12 +47,13 @@ class ExaSearchEngine(BaseSearchEngine):
         num_results = min(args.get("num_results", 5), 5)  # 默认5个结果，但限制最多5个
         time_range = args.get("time_range", "any")
 
-        # 优化的搜索参数 - 更注重答案质量
+        # 使用新的搜索参数格式
         exa_args = {
             "num_results": num_results,
-            "text": True,
-            "highlights": True,
-            "summary": True,  # 启用自动摘要
+            "contents": {
+                "text": True,
+                "summary": True,  # 启用自动摘要
+            },
         }
 
         # 时间范围过滤
@@ -69,23 +70,20 @@ class ExaSearchEngine(BaseSearchEngine):
                 return []
 
             loop = asyncio.get_running_loop()
-            # 使用search_and_contents获取完整内容，优化为answer模式
-            func = functools.partial(exa_client.search_and_contents, query, **exa_args)
+            # 使用新的search方法
+            func = functools.partial(exa_client.search, query, **exa_args)
             search_response = await loop.run_in_executor(None, func)
 
             # 优化结果处理 - 更注重答案质量
             results = []
             for res in search_response.results:
                 # 获取最佳内容片段
-                highlights = getattr(res, "highlights", [])
                 summary = getattr(res, "summary", "")
                 text = getattr(res, "text", "")
 
-                # 智能内容选择：摘要 > 高亮 > 文本开头
+                # 智能内容选择：摘要 > 文本开头
                 if summary and len(summary) > 50:
                     snippet = summary.strip()
-                elif highlights:
-                    snippet = " ".join(highlights).strip()
                 elif text:
                     snippet = text[:300] + "..." if len(text) > 300 else text
                 else:
@@ -105,7 +103,7 @@ class ExaSearchEngine(BaseSearchEngine):
 
             return results
         except Exception as e:
-            logger.error(f"Exa answer模式搜索失败: {e}")
+            logger.error(f"Exa搜索失败: {e}")
             return []
 
     async def answer_search(self, args: dict[str, Any]) -> list[dict[str, Any]]:
@@ -119,9 +117,10 @@ class ExaSearchEngine(BaseSearchEngine):
         # 精简的搜索参数 - 专注快速答案
         exa_args = {
             "num_results": num_results,
-            "text": False,  # 不需要全文
-            "highlights": True,  # 只要关键高亮
-            "summary": True,  # 优先摘要
+            "contents": {
+                "text": False,  # 不需要全文
+                "summary": True,  # 优先摘要
+            },
         }
 
         try:
@@ -130,17 +129,16 @@ class ExaSearchEngine(BaseSearchEngine):
                 return []
 
             loop = asyncio.get_running_loop()
-            func = functools.partial(exa_client.search_and_contents, query, **exa_args)
+            func = functools.partial(exa_client.search, query, **exa_args)
             search_response = await loop.run_in_executor(None, func)
 
             # 极简结果处理 - 只保留最核心信息
             results = []
             for res in search_response.results:
                 summary = getattr(res, "summary", "")
-                highlights = getattr(res, "highlights", [])
 
-                # 优先使用摘要，否则使用高亮
-                answer_text = summary.strip() if summary and len(summary) > 30 else " ".join(highlights).strip()
+                # 使用摘要作为答案
+                answer_text = summary.strip() if summary else ""
 
                 if answer_text and len(answer_text) > 20:
                     results.append({

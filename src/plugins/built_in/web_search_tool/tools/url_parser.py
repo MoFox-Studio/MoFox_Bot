@@ -179,7 +179,7 @@ class URLParserTool(BaseTool):
                     logger.error("无法获取Exa客户端")
                 else:
                     loop = asyncio.get_running_loop()
-                    exa_params = {"text": True, "summary": True, "highlights": True}
+                    exa_params = {"text": True, "summary": True}
                     func = functools.partial(exa_client.get_contents, urls, **exa_params)
                     contents_response = await loop.run_in_executor(None, func)
             except Exception as e:
@@ -197,9 +197,8 @@ class URLParserTool(BaseTool):
                         res = results_map.get(status.id)
                         if res:
                             summary = getattr(res, "summary", "")
-                            highlights = " ".join(getattr(res, "highlights", []))
                             text_snippet = (getattr(res, "text", "")[:300] + "...") if getattr(res, "text", "") else ""
-                            snippet = summary or highlights or text_snippet or "无摘要"
+                            snippet = summary or text_snippet or "无摘要"
 
                             successful_results.append(
                                 {
