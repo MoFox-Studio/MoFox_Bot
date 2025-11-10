@@ -245,14 +245,15 @@ class ContentService:
                 image_format = kind.extension
                 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-                vision_model_name = self.get_config("models.vision_model", "vlm")
+                # 优先从全局配置读取视觉模型，如果未配置，则使用默认的 "vlm"
+                vision_model_name = config_api.get_global_config("model.vision.default_model", "vlm")
 
-                # 使用 llm_api 获取模型配置，支持自动fallback到备选模型
+                # 使用 llm_api 获取模型配置
                 models = llm_api.get_available_models()
                 vision_model_config = models.get(vision_model_name)
 
                 if not vision_model_config:
-                    logger.error(f"未找到视觉模型配置: {vision_model_name}")
+                    logger.error(f"未在 model_config.toml 中找到视觉模型配置: {vision_model_name}")
                     return None
 
                 vision_model_config.temperature = 0.3
