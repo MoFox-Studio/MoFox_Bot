@@ -3,6 +3,7 @@
 当定时任务触发时，负责搜集信息、调用LLM决策、并根据决策生成回复
 """
 
+import asyncio
 from datetime import datetime
 from typing import Any, Literal
 
@@ -484,6 +485,9 @@ _planner = ProactiveThinkingPlanner()
 # 统计数据
 _statistics: dict[str, dict[str, Any]] = {}
 
+# 全局执行锁字典：防止同一聊天流的主动思考被并发执行
+_execution_locks: dict[str, asyncio.Lock] = {}
+
 
 def _update_statistics(stream_id: str, action: str):
     """更新统计数据
@@ -538,144 +542,168 @@ async def execute_proactive_thinking(stream_id: str):
         logger.debug(f"主动思考功能已关闭，跳过执行 {stream_id}")
         return
 
-    logger.debug(f"🤔 开始主动思考 {stream_id}")
+    # 获取或创建该聊天流的执行锁
+    if stream_id not in _execution_locks:
+        _execution_locks[stream_id] = asyncio.Lock()
+    
+    lock = _execution_locks[stream_id]
+    
+    # 尝试获取锁，如果已被占用则跳过本次执行（防止重复）
+    if lock.locked():
+        logger.warning(f"⚠️ 主动思考跳过：聊天流 {stream_id} 已有正在执行的主动思考任务")
+        return
+    
+    async with lock:
+        logger.debug(f"🤔 开始主动思考 {stream_id}")
 
-    try:
-        # 0. 前置检查
-        # 0.1 检查白名单/黑名单
-        # 从 stream_id 获取 stream_config 字符串进行验证
         try:
-            from src.chat.message_receive.chat_stream import get_chat_manager
-            chat_manager = get_chat_manager()
-            chat_stream = await chat_manager.get_stream(stream_id)
-
-            if chat_stream:
-                # 使用 ChatStream 的 get_raw_id() 方法获取配置字符串
-                stream_config = chat_stream.get_raw_id()
-
-                # 执行白名单/黑名单检查
-                if not proactive_thinking_scheduler._check_whitelist_blacklist(stream_config):
-                    logger.debug(f"聊天流 {stream_id} ({stream_config}) 未通过白名单/黑名单检查，跳过主动思考")
+            # 0. 前置检查
+            # 0.0 检查聊天流是否正在处理消息（双重保护）
+            try:
+                from src.chat.message_receive.chat_stream import get_chat_manager
+                chat_manager = get_chat_manager()
+                chat_stream = await chat_manager.get_stream(stream_id)
+                
+                if chat_stream and chat_stream.context_manager.context.is_chatter_processing:
+                    logger.warning(f"⚠️ 主动思考跳过：聊天流 {stream_id} 的 chatter 正在处理消息")
                     return
-            else:
-                logger.warning(f"无法获取聊天流 {stream_id} 的信息，跳过白名单检查")
-        except Exception as e:
-            logger.warning(f"白名单检查时出错: {e}，继续执行")
+            except Exception as e:
+                logger.warning(f"检查 chatter 处理状态时出错: {e}，继续执行")
+            
+            # 0.1 检查白名单/黑名单
+            # 从 stream_id 获取 stream_config 字符串进行验证
+            try:
+                from src.chat.message_receive.chat_stream import get_chat_manager
+                chat_manager = get_chat_manager()
+                chat_stream = await chat_manager.get_stream(stream_id)
 
-        # 0.2 检查安静时段
-        if proactive_thinking_scheduler._is_in_quiet_hours():
-            logger.debug("安静时段，跳过")
-            return
+                if chat_stream:
+                    # 使用 ChatStream 的 get_raw_id() 方法获取配置字符串
+                    stream_config = chat_stream.get_raw_id()
 
-        # 0.3 检查每日限制
-        if not proactive_thinking_scheduler._check_daily_limit(stream_id):
-            logger.debug("今日发言达上限")
-            return
+                    # 执行白名单/黑名单检查
+                    if not proactive_thinking_scheduler._check_whitelist_blacklist(stream_config):
+                        logger.debug(f"聊天流 {stream_id} ({stream_config}) 未通过白名单/黑名单检查，跳过主动思考")
+                        return
+                else:
+                    logger.warning(f"无法获取聊天流 {stream_id} 的信息，跳过白名单检查")
+            except Exception as e:
+                logger.warning(f"白名单检查时出错: {e}，继续执行")
 
-        # 1. 搜集信息
-        logger.debug("步骤1: 搜集上下文")
-        context = await _planner.gather_context(stream_id)
-        if not context:
-            logger.warning("无法搜集上下文，跳过")
-            return
+            # 0.2 检查安静时段
+            if proactive_thinking_scheduler._is_in_quiet_hours():
+                logger.debug("安静时段，跳过")
+                return
 
-        # 检查兴趣分数阈值
-        interest_score = context.get("interest_score", 0.5)
-        if not proactive_thinking_scheduler._check_interest_score_threshold(interest_score):
-            logger.debug("兴趣分数不在阈值范围内")
-            return
+            # 0.3 检查每日限制
+            if not proactive_thinking_scheduler._check_daily_limit(stream_id):
+                logger.debug("今日发言达上限")
+                return
 
-        # 2. 进行决策
-        logger.debug("步骤2: LLM决策")
-        decision = await _planner.make_decision(context)
-        if not decision:
-            logger.warning("决策失败，跳过")
-            return
+            # 1. 搜集信息
+            logger.debug("步骤1: 搜集上下文")
+            context = await _planner.gather_context(stream_id)
+            if not context:
+                logger.warning("无法搜集上下文，跳过")
+                return
 
-        action = decision.get("action", "do_nothing")
-        reasoning = decision.get("reasoning", "无")
+            # 检查兴趣分数阈值
+            interest_score = context.get("interest_score", 0.5)
+            if not proactive_thinking_scheduler._check_interest_score_threshold(interest_score):
+                logger.debug("兴趣分数不在阈值范围内")
+                return
 
-        # 记录决策日志
-        if config.log_decisions:
-            logger.debug(f"决策: action={action}, reasoning={reasoning}")
+            # 2. 进行决策
+            logger.debug("步骤2: LLM决策")
+            decision = await _planner.make_decision(context)
+            if not decision:
+                logger.warning("决策失败，跳过")
+                return
 
-        # 3. 根据决策执行相应动作
-        if action == "do_nothing":
-            logger.debug(f"决策：什么都不做。理由：{reasoning}")
-            proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
-            return
+            action = decision.get("action", "do_nothing")
+            reasoning = decision.get("reasoning", "无")
 
-        elif action == "simple_bubble":
-            logger.info(f"💬 决策：冒个泡。理由：{reasoning}")
+            # 记录决策日志
+            if config.log_decisions:
+                logger.debug(f"决策: action={action}, reasoning={reasoning}")
 
-            proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
+            # 3. 根据决策执行相应动作
+            if action == "do_nothing":
+                logger.debug(f"决策：什么都不做。理由：{reasoning}")
+                proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
+                return
 
-            # 生成简单的消息
-            logger.debug("步骤3: 生成冒泡回复")
-            reply = await _planner.generate_reply(context, "simple_bubble")
-            if reply:
-                await send_api.text_to_stream(
-                    stream_id=stream_id,
-                    text=reply,
-                )
-                logger.info("✅ 已发送冒泡消息")
+            elif action == "simple_bubble":
+                logger.info(f"💬 决策：冒个泡。理由：{reasoning}")
 
-                # 增加每日计数
-                proactive_thinking_scheduler._increment_daily_count(stream_id)
+                proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, None)
 
-                # 更新统计
-                if config.enable_statistics:
-                    _update_statistics(stream_id, action)
-
-                # 冒泡后暂停主动思考，等待用户回复
-                # 使用与 topic_throw 相同的冷却时间配置
-                if config.topic_throw_cooldown > 0:
-                    logger.info("[主动思考] 步骤5：暂停任务")
-                    await proactive_thinking_scheduler.pause_proactive_thinking(stream_id, reason="已冒泡")
-                    logger.info(f"[主动思考] 已暂停聊天流 {stream_id} 的主动思考，等待用户回复")
-
-            logger.info("[主动思考] simple_bubble 执行完成")
-
-        elif action == "throw_topic":
-            topic = decision.get("topic", "")
-            logger.info(f"[主动思考] 决策：抛出话题。理由：{reasoning}，话题：{topic}")
-
-            # 记录决策
-            proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, topic)
-
-            if not topic:
-                logger.warning("[主动思考] 选择了抛出话题但未提供话题内容，降级为冒泡")
-                logger.info("[主动思考] 步骤3：生成降级冒泡回复")
+                # 生成简单的消息
+                logger.debug("步骤3: 生成冒泡回复")
                 reply = await _planner.generate_reply(context, "simple_bubble")
-            else:
-                # 生成基于话题的消息
-                logger.info("[主动思考] 步骤3：生成话题回复")
-                reply = await _planner.generate_reply(context, "throw_topic", topic)
+                if reply:
+                    await send_api.text_to_stream(
+                        stream_id=stream_id,
+                        text=reply,
+                    )
+                    logger.info("✅ 已发送冒泡消息")
 
-            if reply:
-                logger.info("[主动思考] 步骤4：发送消息")
-                await send_api.text_to_stream(
-                    stream_id=stream_id,
-                    text=reply,
-                )
-                logger.info(f"[主动思考] 已发送话题消息到 {stream_id}")
+                    # 增加每日计数
+                    proactive_thinking_scheduler._increment_daily_count(stream_id)
 
-                # 增加每日计数
-                proactive_thinking_scheduler._increment_daily_count(stream_id)
+                    # 更新统计
+                    if config.enable_statistics:
+                        _update_statistics(stream_id, action)
 
-                # 更新统计
-                if config.enable_statistics:
-                    _update_statistics(stream_id, action)
+                    # 冒泡后暂停主动思考，等待用户回复
+                    # 使用与 topic_throw 相同的冷却时间配置
+                    if config.topic_throw_cooldown > 0:
+                        logger.info("[主动思考] 步骤5：暂停任务")
+                        await proactive_thinking_scheduler.pause_proactive_thinking(stream_id, reason="已冒泡")
+                        logger.info(f"[主动思考] 已暂停聊天流 {stream_id} 的主动思考，等待用户回复")
 
-                # 抛出话题后暂停主动思考（如果配置了冷却时间）
-                if config.topic_throw_cooldown > 0:
-                    logger.info("[主动思考] 步骤5：暂停任务")
-                    await proactive_thinking_scheduler.pause_proactive_thinking(stream_id, reason="已抛出话题")
-                    logger.info(f"[主动思考] 已暂停聊天流 {stream_id} 的主动思考，等待用户回复")
+                logger.info("[主动思考] simple_bubble 执行完成")
 
-            logger.info("[主动思考] throw_topic 执行完成")
+            elif action == "throw_topic":
+                topic = decision.get("topic", "")
+                logger.info(f"[主动思考] 决策：抛出话题。理由：{reasoning}，话题：{topic}")
 
-        logger.info(f"[主动思考] 聊天流 {stream_id} 的主动思考执行完成")
+                # 记录决策
+                proactive_thinking_scheduler.record_decision(stream_id, action, reasoning, topic)
 
-    except Exception as e:
-        logger.error(f"[主动思考] 执行主动思考失败: {e}", exc_info=True)
+                if not topic:
+                    logger.warning("[主动思考] 选择了抛出话题但未提供话题内容，降级为冒泡")
+                    logger.info("[主动思考] 步骤3：生成降级冒泡回复")
+                    reply = await _planner.generate_reply(context, "simple_bubble")
+                else:
+                    # 生成基于话题的消息
+                    logger.info("[主动思考] 步骤3：生成话题回复")
+                    reply = await _planner.generate_reply(context, "throw_topic", topic)
+
+                if reply:
+                    logger.info("[主动思考] 步骤4：发送消息")
+                    await send_api.text_to_stream(
+                        stream_id=stream_id,
+                        text=reply,
+                    )
+                    logger.info(f"[主动思考] 已发送话题消息到 {stream_id}")
+
+                    # 增加每日计数
+                    proactive_thinking_scheduler._increment_daily_count(stream_id)
+
+                    # 更新统计
+                    if config.enable_statistics:
+                        _update_statistics(stream_id, action)
+
+                    # 抛出话题后暂停主动思考（如果配置了冷却时间）
+                    if config.topic_throw_cooldown > 0:
+                        logger.info("[主动思考] 步骤5：暂停任务")
+                        await proactive_thinking_scheduler.pause_proactive_thinking(stream_id, reason="已抛出话题")
+                        logger.info(f"[主动思考] 已暂停聊天流 {stream_id} 的主动思考，等待用户回复")
+
+                logger.info("[主动思考] throw_topic 执行完成")
+
+            logger.info(f"[主动思考] 聊天流 {stream_id} 的主动思考执行完成")
+
+        except Exception as e:
+            logger.error(f"[主动思考] 执行主动思考失败: {e}", exc_info=True)

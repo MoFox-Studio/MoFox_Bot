@@ -48,6 +48,9 @@ class StreamLoopManager:
         # 每个流的上一次间隔值（用于日志去重）
         self._last_intervals: dict[str, float] = {}
 
+        # 流循环启动锁：防止并发启动同一个流的多个循环任务
+        self._stream_start_locks: dict[str, asyncio.Lock] = {}
+
         logger.info(f"流循环管理器初始化完成 (最大并发流数: {self.max_concurrent_streams})")
 
     async def start(self) -> None:
@@ -105,47 +108,55 @@ class StreamLoopManager:
         Returns:
             bool: 是否成功启动
         """
-        # 获取流上下文
-        context = await self._get_stream_context(stream_id)
-        if not context:
-            logger.warning(f"无法获取流上下文: {stream_id}")
-            return False
+        # 获取或创建该流的启动锁
+        if stream_id not in self._stream_start_locks:
+            self._stream_start_locks[stream_id] = asyncio.Lock()
+        
+        lock = self._stream_start_locks[stream_id]
+        
+        # 使用锁防止并发启动同一个流的多个循环任务
+        async with lock:
+            # 获取流上下文
+            context = await self._get_stream_context(stream_id)
+            if not context:
+                logger.warning(f"无法获取流上下文: {stream_id}")
+                return False
 
-        # 快速路径：如果流已存在且不是强制启动，无需处理
-        if not force and context.stream_loop_task and not context.stream_loop_task.done():
-            logger.debug(f"流 {stream_id} 循环已在运行")
-            return True
+            # 快速路径：如果流已存在且不是强制启动，无需处理
+            if not force and context.stream_loop_task and not context.stream_loop_task.done():
+                logger.debug(f"流 {stream_id} 循环已在运行")
+                return True
 
-        # 如果是强制启动且任务仍在运行，先取消旧任务
-        if force and context.stream_loop_task and not context.stream_loop_task.done():
-            logger.debug(f"强制启动模式：先取消现有流循环任务: {stream_id}")
-            old_task = context.stream_loop_task
-            old_task.cancel()
+            # 如果是强制启动且任务仍在运行，先取消旧任务
+            if force and context.stream_loop_task and not context.stream_loop_task.done():
+                logger.debug(f"强制启动模式：先取消现有流循环任务: {stream_id}")
+                old_task = context.stream_loop_task
+                old_task.cancel()
+                try:
+                    await asyncio.wait_for(old_task, timeout=2.0)
+                    logger.debug(f"旧流循环任务已结束: {stream_id}")
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    logger.debug(f"旧流循环任务已取消或超时: {stream_id}")
+                except Exception as e:
+                    logger.warning(f"等待旧任务结束时出错: {e}")
+
+            # 创建流循环任务
             try:
-                await asyncio.wait_for(old_task, timeout=2.0)
-                logger.debug(f"旧流循环任务已结束: {stream_id}")
-            except (asyncio.TimeoutError, asyncio.CancelledError):
-                logger.debug(f"旧流循环任务已取消或超时: {stream_id}")
+                loop_task = asyncio.create_task(self._stream_loop_worker(stream_id), name=f"stream_loop_{stream_id}")
+
+                # 将任务记录到 StreamContext 中
+                context.stream_loop_task = loop_task
+
+                # 更新统计信息
+                self.stats["active_streams"] += 1
+                self.stats["total_loops"] += 1
+
+                logger.debug(f"启动流循环任务: {stream_id}")
+                return True
+
             except Exception as e:
-                logger.warning(f"等待旧任务结束时出错: {e}")
-
-        # 创建流循环任务
-        try:
-            loop_task = asyncio.create_task(self._stream_loop_worker(stream_id), name=f"stream_loop_{stream_id}")
-
-            # 将任务记录到 StreamContext 中
-            context.stream_loop_task = loop_task
-
-            # 更新统计信息
-            self.stats["active_streams"] += 1
-            self.stats["total_loops"] += 1
-
-            logger.debug(f"启动流循环任务: {stream_id}")
-            return True
-
-        except Exception as e:
-            logger.error(f"启动流循环任务失败 {stream_id}: {e}")
-            return False
+                logger.error(f"启动流循环任务失败 {stream_id}: {e}")
+                return False
 
     async def stop_stream_loop(self, stream_id: str) -> bool:
         """停止指定流的循环任务
