@@ -1162,24 +1162,59 @@ class DefaultReplyer:
             # 兼容旧的reply_to
             sender, target = self._parse_reply_target(reply_to)
         else:
-            # 获取 platform，如果不存在则从 chat_stream 获取，如果还是 None 则使用默认值
+            # 对于 respond 动作，reply_message 可能为 None（统一回应未读消息）
+            # 对于 reply 动作，reply_message 必须存在（针对特定消息回复）
             if reply_message is None:
-                logger.warning("reply_message 为 None，无法构建prompt")
-                return ""
-
-            # 统一处理 DatabaseMessages 对象和字典
-            if isinstance(reply_message, DatabaseMessages):
-                platform = reply_message.chat_info.platform
-                user_id = reply_message.user_info.user_id
-                user_nickname = reply_message.user_info.user_nickname
-                user_cardname = reply_message.user_info.user_cardname
-                processed_plain_text = reply_message.processed_plain_text
+                # respond 模式：没有特定目标消息，使用通用的 sender 和 target
+                if prompt_mode == "normal":
+                    # 从未读消息中获取最新的消息作为参考
+                    from src.plugin_system.apis.chat_api import get_chat_manager
+                    chat_manager = get_chat_manager()
+                    chat_stream_obj = await chat_manager.get_stream(chat_id)
+                    
+                    if chat_stream_obj:
+                        unread_messages = chat_stream_obj.context_manager.get_unread_messages()
+                        if unread_messages:
+                            # 使用最后一条未读消息作为参考
+                            last_msg = unread_messages[-1]
+                            platform = last_msg.chat_info.platform if hasattr(last_msg, 'chat_info') else chat_stream.platform
+                            user_id = last_msg.user_info.user_id if hasattr(last_msg, 'user_info') else ""
+                            user_nickname = last_msg.user_info.user_nickname if hasattr(last_msg, 'user_info') else ""
+                            user_cardname = last_msg.user_info.user_cardname if hasattr(last_msg, 'user_info') else ""
+                            processed_plain_text = last_msg.processed_plain_text or ""
+                        else:
+                            # 没有未读消息，使用默认值
+                            platform = chat_stream.platform
+                            user_id = ""
+                            user_nickname = ""
+                            user_cardname = ""
+                            processed_plain_text = ""
+                    else:
+                        # 无法获取 chat_stream，使用默认值
+                        platform = chat_stream.platform
+                        user_id = ""
+                        user_nickname = ""
+                        user_cardname = ""
+                        processed_plain_text = ""
+                else:
+                    # reply 模式下 reply_message 为 None 是错误的
+                    logger.warning("reply_message 为 None，但处于 reply 模式，无法构建prompt")
+                    return ""
             else:
-                platform = reply_message.get("chat_info_platform")
-                user_id = reply_message.get("user_id")
-                user_nickname = reply_message.get("user_nickname")
-                user_cardname = reply_message.get("user_cardname")
-                processed_plain_text = reply_message.get("processed_plain_text")
+                # 有 reply_message，正常处理
+                # 统一处理 DatabaseMessages 对象和字典
+                if isinstance(reply_message, DatabaseMessages):
+                    platform = reply_message.chat_info.platform
+                    user_id = reply_message.user_info.user_id
+                    user_nickname = reply_message.user_info.user_nickname
+                    user_cardname = reply_message.user_info.user_cardname
+                    processed_plain_text = reply_message.processed_plain_text
+                else:
+                    platform = reply_message.get("chat_info_platform")
+                    user_id = reply_message.get("user_id")
+                    user_nickname = reply_message.get("user_nickname")
+                    user_cardname = reply_message.get("user_cardname")
+                    processed_plain_text = reply_message.get("processed_plain_text")
 
             person_id = person_info_manager.get_person_id(
                 platform,  # type: ignore

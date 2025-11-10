@@ -78,9 +78,19 @@ class ChatterActionPlanner:
 
             return await self._enhanced_plan_flow(context)
 
+        except asyncio.CancelledError:
+            logger.info(f"规划流程被取消: {self.chat_id}")
+            self.planner_stats["failed_plans"] += 1
+            # 确保清理 processing_message_id
+            if context:
+                context.processing_message_id = None
+            raise
         except Exception as e:
             logger.error(f"规划流程出错: {e}")
             self.planner_stats["failed_plans"] += 1
+            # 确保清理 processing_message_id
+            if context:
+                context.processing_message_id = None
             return [], None
 
     async def _enhanced_plan_flow(self, context: "StreamContext | None") -> tuple[list[dict[str, Any]], Any | None]:
@@ -257,6 +267,13 @@ class ChatterActionPlanner:
             # 14. 返回结果
             return self._build_return_result(filtered_plan)
 
+        except asyncio.CancelledError:
+            logger.info(f"Focus模式流程被取消: {self.chat_id}")
+            self.planner_stats["failed_plans"] += 1
+            # 清理处理标记
+            if context:
+                context.processing_message_id = None
+            raise
         except Exception as e:
             logger.error(f"Focus模式流程出错: {e}")
             self.planner_stats["failed_plans"] += 1
@@ -394,6 +411,13 @@ class ChatterActionPlanner:
 
                 return [asdict(no_action)], None
 
+        except asyncio.CancelledError:
+            logger.info(f"Normal模式流程被取消: {self.chat_id}")
+            self.planner_stats["failed_plans"] += 1
+            # 清理处理标记
+            if context:
+                context.processing_message_id = None
+            raise
         except Exception as e:
             logger.error(f"Normal模式 - 流程出错: {e}")
             self.planner_stats["failed_plans"] += 1

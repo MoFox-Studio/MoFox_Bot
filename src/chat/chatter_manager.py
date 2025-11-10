@@ -145,13 +145,17 @@ class ChatterManager:
             return result
         except asyncio.CancelledError:
             self.stats["failed_executions"] += 1
-            logger.info(f"流 {stream_id} 处理被取消，不清空未读消息")
+            logger.info(f"流 {stream_id} 处理被取消")
             context.triggering_user_id = None  # 清除触发用户ID
+            # 确保清理 processing_message_id 以防止重复回复检测失效
+            context.processing_message_id = None
             raise
         except Exception as e:
             self.stats["failed_executions"] += 1
             logger.error(f"处理流 {stream_id} 时发生错误: {e}")
             context.triggering_user_id = None  # 清除触发用户ID
+            # 确保清理 processing_message_id
+            context.processing_message_id = None
             raise
         finally:
             # 清除触发用户ID（所有情况下都需要）
