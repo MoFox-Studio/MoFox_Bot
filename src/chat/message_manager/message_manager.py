@@ -414,9 +414,13 @@ class MessageManager:
             # 获取未读消息
             unread_messages = chat_stream.context_manager.get_unread_messages()
             if not unread_messages:
+                logger.info(f"🧹 [清除未读] stream={stream_id[:8]}, 无未读消息需要清除")
                 return
 
-            logger.warning(f"正在清除 {len(unread_messages)} 条未读消息")
+            # 记录详细信息
+            msg_previews = [f"{str(msg.message_id)[:8] if msg.message_id else 'unknown'}:{msg.processed_plain_text[:20] if msg.processed_plain_text else '(空)'}" 
+                          for msg in unread_messages[:3]]  # 只显示前3条
+            logger.info(f"🧹 [清除未读] stream={stream_id[:8]}, 开始清除 {len(unread_messages)} 条未读消息, 示例: {msg_previews}")
 
             # 将所有未读消息标记为已读
             message_ids = [msg.message_id for msg in unread_messages]
@@ -424,9 +428,9 @@ class MessageManager:
 
             if success:
                 self.stats.total_processed_messages += len(unread_messages)
-                logger.debug(f"强制清除 {len(unread_messages)} 条消息，标记为已读")
+                logger.info(f"✅ [清除未读] stream={stream_id[:8]}, 成功清除并标记 {len(unread_messages)} 条消息为已读")
             else:
-                logger.error("标记未读消息为已读失败")
+                logger.error(f"❌ [清除未读] stream={stream_id[:8]}, 标记未读消息为已读失败")
 
         except Exception as e:
             logger.error(f"清除未读消息时发生错误: {e}")

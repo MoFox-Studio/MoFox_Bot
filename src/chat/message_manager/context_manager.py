@@ -82,6 +82,11 @@ class SingleStreamContextManager:
 
                 self.total_messages += 1
                 self.last_access_time = time.time()
+                
+                # 记录消息添加日志
+                msg_preview = message.processed_plain_text[:30] if message.processed_plain_text else "(无内容)"
+                msg_id_str = str(message.message_id)[:8] if message.message_id else "unknown"
+                logger.info(f"➕ [添加消息] {msg_id_str}: {msg_preview}..., 当前未读数: {len(self.context.unread_messages)}, 历史数: {len(self.context.history_messages)}")
 
                 # 如果使用了缓存系统，输出调试信息
                 if cache_enabled and self.context.is_cache_enabled:
@@ -112,9 +117,9 @@ class SingleStreamContextManager:
             bool: 是否成功更新
         """
         try:
-            # 直接在未读消息中查找并更新
+            # 直接在未读消息中查找并更新（统一转字符串比较）
             for message in self.context.unread_messages:
-                if message.message_id == message_id:
+                if str(message.message_id) == str(message_id):
                     if "interest_value" in updates:
                         message.interest_value = updates["interest_value"]
                     if "actions" in updates:
@@ -123,9 +128,9 @@ class SingleStreamContextManager:
                         message.should_reply = updates["should_reply"]
                     break
 
-            # 在历史消息中查找并更新
+            # 在历史消息中查找并更新（统一转字符串比较）
             for message in self.context.history_messages:
-                if message.message_id == message_id:
+                if str(message.message_id) == str(message_id):
                     if "interest_value" in updates:
                         message.interest_value = updates["interest_value"]
                     if "actions" in updates:
@@ -189,14 +194,20 @@ class SingleStreamContextManager:
                 return False
 
             marked_count = 0
+            failed_ids = []
             for message_id in message_ids:
                 try:
                     self.context.mark_message_as_read(message_id)
                     marked_count += 1
                 except Exception as e:
+                    failed_ids.append(str(message_id)[:8])
                     logger.warning(f"标记消息已读失败 {message_id}: {e}")
 
-            logger.debug(f"标记消息为已读: {self.stream_id} ({marked_count}/{len(message_ids)}条)")
+            if marked_count > 0:
+                logger.info(f"✅ [批量标记] stream={self.stream_id[:8]}, 成功标记 {marked_count}/{len(message_ids)} 条消息为已读")
+            if failed_ids:
+                logger.warning(f"⚠️ [批量标记] stream={self.stream_id[:8]}, {len(failed_ids)} 条消息标记失败: {failed_ids[:5]}")
+            
             return marked_count > 0
 
         except Exception as e:
@@ -321,11 +332,11 @@ class SingleStreamContextManager:
     async def _initialize_history_from_db(self):
         """从数据库初始化历史消息到context中"""
         if self._history_initialized:
-            logger.debug(f"历史消息已初始化，跳过: {self.stream_id}")
+            logger.debug(f"历史消息已初始化，跳过: {self.stream_id}, 当前历史消息数: {len(self.context.history_messages)}")
             return
 
         # 立即设置标志，防止并发重复加载
-        logger.debug(f"设置历史初始化标志: {self.stream_id}")
+        logger.info(f"🔄 [历史加载] 开始从数据库加载历史消息: {self.stream_id}")
         self._history_initialized = True
 
         try:
@@ -341,7 +352,9 @@ class SingleStreamContextManager:
             )
 
             if db_messages:
+                logger.info(f"📥 [历史加载] 从数据库获取到 {len(db_messages)} 条消息")
                 # 将数据库消息转换为 DatabaseMessages 对象并添加到历史
+                loaded_count = 0
                 for msg_dict in db_messages:
                     try:
                         # 使用 ** 解包字典作为关键字参数
@@ -352,12 +365,13 @@ class SingleStreamContextManager:
 
                         # 添加到历史消息
                         self.context.history_messages.append(db_msg)
+                        loaded_count += 1
 
                     except Exception as e:
                         logger.warning(f"转换历史消息失败 (message_id={msg_dict.get('message_id', 'unknown')}): {e}")
                         continue
 
-                logger.debug(f"成功从数据库加载 {len(self.context.history_messages)} 条历史消息到内存: {self.stream_id}")
+                logger.info(f"✅ [历史加载] 成功加载 {loaded_count} 条历史消息到内存: {self.stream_id}")
             else:
                 logger.debug(f"没有历史消息需要加载: {self.stream_id}")
 
