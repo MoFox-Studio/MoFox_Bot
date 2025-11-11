@@ -685,6 +685,7 @@ async def execute_proactive_thinking(stream_id: str):
                     await send_api.text_to_stream(
                         stream_id=stream_id,
                         text=reply,
+                        storage_message=True
                     )
                     logger.info(f"[主动思考] 已发送话题消息到 {stream_id}")
 
