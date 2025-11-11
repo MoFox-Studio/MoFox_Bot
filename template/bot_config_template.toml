@@ -1,5 +1,5 @@
 [inner]
-version = "7.6.6"
+version = "7.6.7"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -268,6 +268,20 @@ search_vector_weight = 0.4 # 向量相似度权重
 search_graph_distance_weight = 0.2 # 图距离权重
 search_importance_weight = 0.2 # 重要性权重
 search_recency_weight = 0.2 # 时效性权重
+
+# === 路径评分扩展算法配置（实验性功能）===
+# 这是一种全新的图检索算法，通过路径传播和分数聚合来发现相关记忆
+# 优势：更精确的图结构利用、路径合并机制、动态剪枝优化
+# 注意：这是实验性功能，可能需要调整参数以获得最佳效果
+enable_path_expansion = false # 是否启用路径评分扩展算法（默认false，使用传统图扩展）
+path_expansion_max_hops = 2 # 路径扩展最大跳数（建议1-3）
+path_expansion_damping_factor = 0.85 # 路径分数衰减因子（PageRank风格，0.85推荐）
+path_expansion_max_branches = 10 # 每节点最大分叉数（控制探索广度）
+path_expansion_merge_strategy = "weighted_geometric" # 路径合并策略: weighted_geometric(几何平均), max_bonus(最大值加成)
+path_expansion_pruning_threshold = 0.9 # 路径剪枝阈值（新路径分数需达到已有路径的90%）
+path_expansion_path_score_weight = 0.50 # 路径分数在最终评分中的权重
+path_expansion_importance_weight = 0.30 # 重要性在最终评分中的权重
+path_expansion_recency_weight = 0.20 # 时效性在最终评分中的权重
 
 # === 性能配置 ===
 max_memory_nodes_per_memory = 10 # 每条记忆最多包含的节点数

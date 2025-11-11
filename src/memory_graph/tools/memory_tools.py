@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.common.logger import get_logger
+from src.config.config import global_config
 from src.memory_graph.core.builder import MemoryBuilder
 from src.memory_graph.core.extractor import MemoryExtractor
 from src.memory_graph.models import Memory
@@ -15,6 +16,7 @@ from src.memory_graph.storage.persistence import PersistenceManager
 from src.memory_graph.storage.vector_store import VectorStore
 from src.memory_graph.utils.embeddings import EmbeddingGenerator
 from src.memory_graph.utils.graph_expansion import expand_memories_with_semantic_filter
+from src.memory_graph.utils.path_expansion import PathExpansionConfig, PathScoreExpansion
 
 logger = get_logger(__name__)
 
@@ -95,6 +97,9 @@ class MemoryTools:
             graph_store=graph_store,
             embedding_generator=embedding_generator,
         )
+        
+        # 初始化路径扩展器（延迟初始化，仅在启用时创建）
+        self.path_expander: PathScoreExpansion | None = None
 
     async def _ensure_initialized(self):
         """确保向量存储已初始化"""
@@ -564,17 +569,91 @@ class MemoryTools:
                 logger.warning(f"⚠️ 初始召回记忆数量较少({len(initial_memory_ids)}条)，可能影响结果质量")
 
             # 3. 图扩展（如果启用且有expand_depth）
+            # 检查是否启用路径扩展算法
+            use_path_expansion = getattr(global_config.memory, "enable_path_expansion", False) and expand_depth > 0
             expanded_memory_scores = {}
+            
             if expand_depth > 0 and initial_memory_ids:
-                logger.info(f"开始图扩展: 初始记忆{len(initial_memory_ids)}个, 深度={expand_depth}")
-
-                # 获取查询的embedding用于语义过滤
+                # 获取查询的embedding
+                query_embedding = None
                 if self.builder.embedding_generator:
                     try:
                         query_embedding = await self.builder.embedding_generator.generate(query)
-
-                        # 只有在嵌入生成成功时才进行语义扩展
-                        if query_embedding is not None:
+                    except Exception as e:
+                        logger.warning(f"生成查询embedding失败: {e}")
+                
+                if query_embedding is not None:
+                    if use_path_expansion:
+                        # 🆕 使用路径评分扩展算法
+                        logger.info(f"🔬 使用路径评分扩展算法: 初始{len(similar_nodes)}个节点, 深度={expand_depth}")
+                        
+                        # 延迟初始化路径扩展器
+                        if self.path_expander is None:
+                            path_config = PathExpansionConfig(
+                                max_hops=getattr(global_config.memory, "path_expansion_max_hops", 2),
+                                damping_factor=getattr(global_config.memory, "path_expansion_damping_factor", 0.85),
+                                max_branches_per_node=getattr(global_config.memory, "path_expansion_max_branches", 10),
+                                path_merge_strategy=getattr(global_config.memory, "path_expansion_merge_strategy", "weighted_geometric"),
+                                pruning_threshold=getattr(global_config.memory, "path_expansion_pruning_threshold", 0.9),
+                                final_scoring_weights={
+                                    "path_score": getattr(global_config.memory, "path_expansion_path_score_weight", 0.50),
+                                    "importance": getattr(global_config.memory, "path_expansion_importance_weight", 0.30),
+                                    "recency": getattr(global_config.memory, "path_expansion_recency_weight", 0.20),
+                                }
+                            )
+                            self.path_expander = PathScoreExpansion(
+                                graph_store=self.graph_store,
+                                vector_store=self.vector_store,
+                                config=path_config
+                            )
+                        
+                        try:
+                            # 执行路径扩展（传递偏好类型）
+                            path_results = await self.path_expander.expand_with_path_scoring(
+                                initial_nodes=similar_nodes,
+                                query_embedding=query_embedding,
+                                top_k=top_k,
+                                prefer_node_types=all_prefer_types  # 🆕 传递偏好类型
+                            )
+                            
+                            # 路径扩展返回的是 [(Memory, final_score, paths), ...]
+                            # 我们需要直接返回这些记忆，跳过后续的传统评分
+                            logger.info(f"✅ 路径扩展返回 {len(path_results)} 条记忆")
+                            
+                            # 直接构建返回结果
+                            path_memories = []
+                            for memory, score, paths in path_results:
+                                # 应用阈值过滤
+                                if memory.importance >= self.search_min_importance:
+                                    path_memories.append({
+                                        "memory_id": memory.id,  # 使用 .id 而不是 .memory_id
+                                        "score": score,
+                                        "metadata": {
+                                            "expansion_method": "path_scoring",
+                                            "num_paths": len(paths),
+                                            "max_path_depth": max(p.depth for p in paths) if paths else 0
+                                        }
+                                    })
+                            
+                            logger.info(f"🎯 路径扩展最终返回: {len(path_memories)} 条记忆")
+                            
+                            return {
+                                "success": True,
+                                "results": path_memories,
+                                "total": len(path_memories),
+                                "expansion_method": "path_scoring"
+                            }
+                            
+                        except Exception as e:
+                            logger.error(f"路径扩展失败: {e}", exc_info=True)
+                            logger.info("回退到传统图扩展算法")
+                            # 继续执行下面的传统图扩展
+                    
+                    # 传统图扩展（仅在未启用路径扩展或路径扩展失败时执行）
+                    if not use_path_expansion or expanded_memory_scores == {}:
+                        logger.info(f"开始传统图扩展: 初始记忆{len(initial_memory_ids)}个, 深度={expand_depth}")
+                        
+                        try:
                             # 使用共享的图扩展工具函数
                             expanded_results = await expand_memories_with_semantic_filter(
                                 graph_store=self.graph_store,
@@ -582,17 +661,17 @@ class MemoryTools:
                                 initial_memory_ids=list(initial_memory_ids),
                                 query_embedding=query_embedding,
                                 max_depth=expand_depth,
-                                semantic_threshold=self.expand_semantic_threshold,  # 使用配置的阈值
+                                semantic_threshold=self.expand_semantic_threshold,
                                 max_expanded=top_k * 2
                             )
 
                             # 合并扩展结果
                             expanded_memory_scores.update(dict(expanded_results))
 
-                            logger.info(f"图扩展完成: 新增{len(expanded_memory_scores)}个相关记忆")
+                            logger.info(f"传统图扩展完成: 新增{len(expanded_memory_scores)}个相关记忆")
 
-                    except Exception as e:
-                        logger.warning(f"图扩展失败: {e}")
+                        except Exception as e:
+                            logger.warning(f"传统图扩展失败: {e}")
 
             # 4. 合并初始记忆和扩展记忆
             all_memory_ids = set(initial_memory_ids) | set(expanded_memory_scores.keys())

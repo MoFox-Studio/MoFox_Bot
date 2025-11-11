@@ -128,7 +128,8 @@ class HeartFCSender:
             from src.common.data_models.database_data_model import DatabaseMessages
 
             # 构建用户信息 - Send API发送的消息，bot是发送者
-            bot_user_info = message.bot_user_info
+            # bot_user_info 存储在 message_info.user_info 中，而不是单独的 bot_user_info 属性
+            bot_user_info = message.message_info.user_info
 
             # 构建聊天信息
             chat_info = message.message_info
@@ -143,7 +144,7 @@ class HeartFCSender:
 
             # 创建DatabaseMessages对象
             db_message = DatabaseMessages(
-                message_id=message.message_id,
+                message_id=message.message_info.message_id,
                 time=chat_info.time or 0.0,
                 user_id=bot_user_info.user_id,
                 user_nickname=bot_user_info.user_nickname,

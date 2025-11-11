@@ -384,6 +384,7 @@ class MemoryManager:
         use_multi_query: bool = True,
         expand_depth: int | None = None,
         context: dict[str, Any] | None = None,
+        prefer_node_types: list[str] | None = None,  # 🆕 偏好节点类型
     ) -> list[Memory]:
         """
         搜索记忆
@@ -404,6 +405,7 @@ class MemoryManager:
             use_multi_query: 是否使用多查询策略（推荐，默认True）
             expand_depth: 图扩展深度（0=禁用, 1=推荐, 2-3=深度探索）
             context: 查询上下文（用于优化）
+            prefer_node_types: 偏好节点类型列表（如 ["ENTITY", "EVENT"]）🆕
 
         Returns:
             记忆列表
@@ -423,6 +425,7 @@ class MemoryManager:
                 "use_multi_query": use_multi_query,
                 "expand_depth": expand_depth or global_config.memory.search_max_expand_depth,  # 传递图扩展深度
                 "context": context,
+                "prefer_node_types": prefer_node_types or [],  # 🆕 传递偏好节点类型
             }
 
             if memory_types:

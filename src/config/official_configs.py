@@ -418,6 +418,21 @@ class MemoryConfig(ValidatedConfigBase):
     search_max_expand_depth: int = Field(default=2, description="检索时图扩展深度（0-3）")
     search_expand_semantic_threshold: float = Field(default=0.3, description="图扩展时语义相似度阈值（建议0.3-0.5，过低可能引入无关记忆，过高无法扩展）")
     enable_query_optimization: bool = Field(default=True, description="启用查询优化")
+    
+    # 路径扩展配置 (新算法)
+    enable_path_expansion: bool = Field(default=False, description="启用路径评分扩展算法（实验性功能）")
+    path_expansion_max_hops: int = Field(default=2, description="路径扩展最大跳数")
+    path_expansion_damping_factor: float = Field(default=0.85, description="路径分数衰减因子")
+    path_expansion_max_branches: int = Field(default=10, description="每节点最大分叉数")
+    path_expansion_merge_strategy: str = Field(default="weighted_geometric", description="路径合并策略: weighted_geometric, max_bonus")
+    path_expansion_pruning_threshold: float = Field(default=0.9, description="路径剪枝阈值")
+    path_expansion_path_score_weight: float = Field(default=0.50, description="路径分数在最终评分中的权重")
+    path_expansion_importance_weight: float = Field(default=0.30, description="重要性在最终评分中的权重")
+    path_expansion_recency_weight: float = Field(default=0.20, description="时效性在最终评分中的权重")
+
+    # 🆕 路径扩展 - 记忆去重配置
+    enable_memory_deduplication: bool = Field(default=True, description="启用检索结果去重（合并相似记忆）")
+    memory_deduplication_threshold: float = Field(default=0.85, description="记忆相似度阈值（0.85表示85%相似即合并）")
 
     # 检索权重配置 (记忆图系统)
     search_vector_weight: float = Field(default=0.4, description="向量相似度权重")
