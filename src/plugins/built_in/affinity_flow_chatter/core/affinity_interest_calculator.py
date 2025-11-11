@@ -51,6 +51,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         # 连续不回复概率提升
         self.no_reply_count = 0
         self.max_no_reply_count = affinity_config.max_no_reply_count
+        self.reply_cooldown_reduction = affinity_config.reply_cooldown_reduction  # 回复后减少的不回复计数
         if self.max_no_reply_count > 0:
             self.probability_boost_per_no_reply = (
                 affinity_config.no_reply_threshold_adjustment / self.max_no_reply_count
@@ -73,6 +74,8 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         logger.info(f"  - 回复阈值: {self.reply_threshold}")
         logger.info(f"  - 智能匹配: {self.use_smart_matching}")
         logger.info(f"  - 回复后连续对话: {self.enable_post_reply_boost}")
+        logger.info(f"  - 回复冷却减少: {self.reply_cooldown_reduction}")
+        logger.info(f"  - 最大不回复计数: {self.max_no_reply_count}")
 
         # 检查 bot_interest_manager 状态
         try:
@@ -208,8 +211,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                     len(match_result.matched_tags) * affinity_config.match_count_bonus, affinity_config.max_match_bonus
                 )
                 final_score = match_result.overall_score * 1.15 * match_result.confidence + match_count_bonus
-                # 限制兴趣匹配分数上限为1.0，防止总分超标
-                final_score = min(final_score, 1.0)
+                # 移除兴趣匹配分数上限，允许超过1.0，最终分数会被整体限制
                 logger.debug(f"兴趣匹配最终得分: {final_score:.3f} (原始: {match_result.overall_score * 1.15 * match_result.confidence + match_count_bonus:.3f})")
                 return final_score
             else:
@@ -231,7 +233,8 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         # 优先使用内存中的关系分
         if user_id in self.user_relationships:
             relationship_value = self.user_relationships[user_id]
-            return min(relationship_value, 1.0)
+            # 移除关系分上限，允许超过1.0，最终分数会被整体限制
+            return relationship_value
 
         # 如果内存中没有，尝试从统一的评分API获取
         try:
@@ -397,8 +400,15 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             logger.debug(
                 f"[回复后机制] 激活连续对话模式，阈值将在接下来 {self.post_reply_boost_max_count} 条消息中降低"
             )
-            # 同时重置不回复计数
-            self.no_reply_count = 0
+
+        # 应用回复后减少不回复计数的功能
+        if self.reply_cooldown_reduction > 0:
+            old_count = self.no_reply_count
+            self.no_reply_count = max(0, self.no_reply_count - self.reply_cooldown_reduction)
+            logger.debug(
+                f"[回复后机制] 应用回复冷却减少: 不回复计数 {old_count} → {self.no_reply_count} "
+                f"(减少量: {self.reply_cooldown_reduction})"
+            )
 
     def on_message_processed(self, replied: bool):
         """消息处理完成后调用，更新各种计数器
