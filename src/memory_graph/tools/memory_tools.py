@@ -37,6 +37,14 @@ class MemoryTools:
         embedding_generator: EmbeddingGenerator | None = None,
         max_expand_depth: int = 1,
         expand_semantic_threshold: float = 0.3,
+        search_top_k: int = 10,
+        # 新增：搜索权重配置
+        search_vector_weight: float = 0.65,
+        search_importance_weight: float = 0.25,
+        search_recency_weight: float = 0.10,
+        # 新增：阈值过滤配置
+        search_min_importance: float = 0.3,
+        search_similarity_threshold: float = 0.5,
     ):
         """
         初始化工具集
@@ -48,15 +56,37 @@ class MemoryTools:
             embedding_generator: 嵌入生成器（可选）
             max_expand_depth: 图扩展深度的默认值（从配置读取）
             expand_semantic_threshold: 图扩展时语义相似度阈值（从配置读取）
+            search_top_k: 默认检索返回数量（从配置读取）
+            search_vector_weight: 向量相似度权重（从配置读取）
+            search_importance_weight: 重要性权重（从配置读取）
+            search_recency_weight: 时效性权重（从配置读取）
+            search_min_importance: 最小重要性阈值（从配置读取）
+            search_similarity_threshold: 向量相似度阈值（从配置读取）
         """
         self.vector_store = vector_store
         self.graph_store = graph_store
         self.persistence_manager = persistence_manager
         self._initialized = False
-        self.max_expand_depth = max_expand_depth  # 保存配置的默认值
-        self.expand_semantic_threshold = expand_semantic_threshold  # 保存配置的语义阈值
+        self.max_expand_depth = max_expand_depth
+        self.expand_semantic_threshold = expand_semantic_threshold
+        self.search_top_k = search_top_k
+        
+        # 保存权重配置
+        self.base_vector_weight = search_vector_weight
+        self.base_importance_weight = search_importance_weight
+        self.base_recency_weight = search_recency_weight
+        
+        # 保存阈值过滤配置
+        self.search_min_importance = search_min_importance
+        self.search_similarity_threshold = search_similarity_threshold
 
-        logger.info(f"MemoryTools 初始化: max_expand_depth={max_expand_depth}, expand_semantic_threshold={expand_semantic_threshold}")
+        logger.info(
+            f"MemoryTools 初始化: max_expand_depth={max_expand_depth}, "
+            f"expand_semantic_threshold={expand_semantic_threshold}, "
+            f"search_top_k={search_top_k}, "
+            f"权重配置: vector={search_vector_weight}, importance={search_importance_weight}, recency={search_recency_weight}, "
+            f"阈值过滤: min_importance={search_min_importance}, similarity_threshold={search_similarity_threshold}"
+        )
 
         # 初始化组件
         self.extractor = MemoryExtractor()
@@ -465,7 +495,7 @@ class MemoryTools:
         """
         try:
             query = params.get("query", "")
-            top_k = params.get("top_k", 10)
+            top_k = params.get("top_k", self.search_top_k)  # 使用配置的默认值
             expand_depth = params.get("expand_depth", self.max_expand_depth)
             use_multi_query = params.get("use_multi_query", True)
             prefer_node_types = params.get("prefer_node_types", [])  # 🆕 优先节点类型
@@ -610,7 +640,7 @@ class MemoryTools:
                     if activation_score == 0.0 and memory.activation > 0.0:
                         activation_score = memory.activation
 
-                    # 🆕 动态权重计算：根据记忆类型和节点类型自适应调整
+                    # 🆕 动态权重计算：使用配置的基础权重 + 根据记忆类型微调
                     memory_type = memory.memory_type.value if hasattr(memory.memory_type, 'value') else str(memory.memory_type)
                     
                     # 检测记忆的主要节点类型
@@ -621,35 +651,47 @@ class MemoryTools:
                     
                     dominant_node_type = max(node_types_count.items(), key=lambda x: x[1])[0] if node_types_count else "unknown"
                     
-                    # 根据节点类型动态调整权重
+                    # 根据记忆类型和节点类型计算调整系数（在配置权重基础上微调）
                     if dominant_node_type in ["ATTRIBUTE", "REFERENCE"] or memory_type == "FACT":
-                        # 事实性记忆（如文档地址、配置信息）：语义相似度最重要
-                        weights = {
-                            "similarity": 0.70,   # 语义相似度 70% ⬆️
-                            "importance": 0.25,   # 重要性 25% ⬆️
-                            "recency": 0.05,      # 时效性 5%（事实不随时间失效）
+                        # 事实性记忆：提升相似度权重，降低时效性权重
+                        type_adjustments = {
+                            "similarity": 1.08,    # 相似度提升 8%
+                            "importance": 1.0,     # 重要性保持
+                            "recency": 0.5,        # 时效性降低 50%（事实不随时间失效）
                         }
                     elif memory_type in ["CONVERSATION", "EPISODIC"] or dominant_node_type == "EVENT":
-                        # 对话/事件记忆：时效性更重要
-                        weights = {
-                            "similarity": 0.55,   # 语义相似度 55% ⬆️
-                            "importance": 0.20,   # 重要性 20% ⬆️
-                            "recency": 0.25,      # 时效性 25% ⬆️
+                        # 对话/事件记忆：提升时效性权重
+                        type_adjustments = {
+                            "similarity": 0.85,    # 相似度降低 15%
+                            "importance": 0.8,     # 重要性降低 20%
+                            "recency": 2.5,        # 时效性提升 150%
                         }
                     elif dominant_node_type == "ENTITY" or memory_type == "SEMANTIC":
-                        # 实体/语义记忆：平衡各项
-                        weights = {
-                            "similarity": 0.60,   # 语义相似度 60% ⬆️
-                            "importance": 0.30,   # 重要性 30% ⬆️
-                            "recency": 0.10,      # 时效性 10%
+                        # 实体/语义记忆：平衡调整
+                        type_adjustments = {
+                            "similarity": 0.92,    # 相似度微降 8%
+                            "importance": 1.2,     # 重要性提升 20%
+                            "recency": 1.0,        # 时效性保持
                         }
                     else:
-                        # 默认权重（保守策略，偏向语义）
-                        weights = {
-                            "similarity": 0.65,   # 语义相似度 65% ⬆️
-                            "importance": 0.25,   # 重要性 25% ⬆️
-                            "recency": 0.10,      # 时效性 10%
+                        # 默认不调整
+                        type_adjustments = {
+                            "similarity": 1.0,
+                            "importance": 1.0,
+                            "recency": 1.0,
                         }
+                    
+                    # 应用调整后的权重（基于配置的基础权重）
+                    weights = {
+                        "similarity": self.base_vector_weight * type_adjustments["similarity"],
+                        "importance": self.base_importance_weight * type_adjustments["importance"],
+                        "recency": self.base_recency_weight * type_adjustments["recency"],
+                    }
+                    
+                    # 归一化权重（确保总和为1.0）
+                    total_weight = sum(weights.values())
+                    if total_weight > 0:
+                        weights = {k: v / total_weight for k, v in weights.items()}
                     
                     # 综合分数计算（🔥 移除激活度影响）
                     final_score = (
@@ -657,6 +699,15 @@ class MemoryTools:
                         importance_score * weights["importance"] +
                         recency_score * weights["recency"]
                     )
+                    
+                    # 🆕 阈值过滤：基于配置的最小重要性和相似度阈值
+                    if memory.importance < self.search_min_importance:
+                        logger.debug(f"记忆 {memory.id[:8]} 重要性 {memory.importance:.2f} 低于阈值 {self.search_min_importance}，过滤")
+                        continue
+                    
+                    if similarity_score < self.search_similarity_threshold:
+                        logger.debug(f"记忆 {memory.id[:8]} 相似度 {similarity_score:.2f} 低于阈值 {self.search_similarity_threshold}，过滤")
+                        continue
                     
                     # 🆕 节点类型加权：对REFERENCE/ATTRIBUTE节点额外加分（促进事实性信息召回）
                     if "REFERENCE" in node_types_count or "ATTRIBUTE" in node_types_count:

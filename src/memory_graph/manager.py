@@ -141,7 +141,29 @@ class MemoryManager:
             # 检查配置值
             expand_depth = self.config.search_max_expand_depth
             expand_semantic_threshold = self.config.search_expand_semantic_threshold
-            logger.info(f"📊 配置检查: search_max_expand_depth={expand_depth}, search_expand_semantic_threshold={expand_semantic_threshold}")
+            search_top_k = self.config.search_top_k
+            # 读取权重配置
+            search_vector_weight = self.config.search_vector_weight
+            search_importance_weight = self.config.search_importance_weight
+            search_recency_weight = self.config.search_recency_weight
+            # 读取阈值过滤配置
+            search_min_importance = self.config.search_min_importance
+            search_similarity_threshold = self.config.search_similarity_threshold
+            
+            logger.info(
+                f"📊 配置检查: search_max_expand_depth={expand_depth}, "
+                f"search_expand_semantic_threshold={expand_semantic_threshold}, "
+                f"search_top_k={search_top_k}"
+            )
+            logger.info(
+                f"📊 权重配置: vector={search_vector_weight}, "
+                f"importance={search_importance_weight}, "
+                f"recency={search_recency_weight}"
+            )
+            logger.info(
+                f"📊 阈值过滤: min_importance={search_min_importance}, "
+                f"similarity_threshold={search_similarity_threshold}"
+            )
 
             self.tools = MemoryTools(
                 vector_store=self.vector_store,
@@ -150,6 +172,12 @@ class MemoryManager:
                 embedding_generator=self.embedding_generator,
                 max_expand_depth=expand_depth,  # 从配置读取图扩展深度
                 expand_semantic_threshold=expand_semantic_threshold,  # 从配置读取图扩展语义阈值
+                search_top_k=search_top_k,  # 从配置读取默认 top_k
+                search_vector_weight=search_vector_weight,  # 从配置读取向量权重
+                search_importance_weight=search_importance_weight,  # 从配置读取重要性权重
+                search_recency_weight=search_recency_weight,  # 从配置读取时效性权重
+                search_min_importance=search_min_importance,  # 从配置读取最小重要性阈值
+                search_similarity_threshold=search_similarity_threshold,  # 从配置读取相似度阈值
             )
 
             self._initialized = True
@@ -348,7 +376,7 @@ class MemoryManager:
     async def search_memories(
         self,
         query: str,
-        top_k: int = 10,
+        top_k: int | None = None,
         memory_types: list[str] | None = None,
         time_range: tuple[datetime, datetime] | None = None,
         min_importance: float = 0.0,
@@ -384,6 +412,10 @@ class MemoryManager:
             await self.initialize()
 
         try:
+            # 使用配置的默认值
+            if top_k is None:
+                top_k = getattr(self.config, "search_top_k", 10)
+            
             # 准备搜索参数
             params = {
                 "query": query,
