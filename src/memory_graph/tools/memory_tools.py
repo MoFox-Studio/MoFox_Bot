@@ -325,13 +325,13 @@ class MemoryTools:
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 50,
-                        "description": "返回结果数量（1-50，默认10）。根据需求调整：\n- 快速查找：3-5条\n- 一般搜索：10条\n- 全面了解：20-30条",
+                        "description": "返回结果数量（1-50，不指定则使用系统配置）。根据需求调整：\n- 快速查找：3-5条\n- 一般搜索：10-15条\n- 全面了解：20-30条\n- 深度探索：40-50条\n建议：除非有特殊需求，否则不指定此参数，让系统自动决定。",
                     },
                     "expand_depth": {
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 3,
-                        "description": "图扩展深度（0-3，默认1）：\n- 0: 仅返回直接匹配的记忆\n- 1: 包含一度相关的记忆（推荐）\n- 2-3: 包含更多间接相关的记忆（用于深度探索）",
+                        "description": "图扩展深度（0-3，不指定则使用系统配置，通常为2）：\n- 0: 仅返回直接匹配的记忆\n- 1: 包含一度相关的记忆\n- 2: 包含二度相关的记忆（推荐）\n- 3: 包含三度相关的记忆（深度探索）\n建议：通常不需要指定，系统会自动选择合适的深度。",
                     },
                     "prefer_node_types": {
                         "type": "array",
@@ -607,21 +607,39 @@ class MemoryTools:
                     # 扩展记忆：使用图扩展分数（稍微降权）
                     final_scores[mem_id] = expanded_memory_scores[mem_id] * 0.8
 
-            # 按分数排序
+            # 按分数排序（先粗排，稍后会用详细评分重新排序）
             sorted_memory_ids = sorted(
                 final_scores.keys(),
                 key=lambda x: final_scores[x],
                 reverse=True
-            )[:top_k * 2]  # 取2倍数量用于后续过滤
+            )  # 🔥 不再提前截断，让所有候选参与详细评分
+            
+            # 🔍 统计初始记忆的相似度分布（用于诊断）
+            if memory_scores:
+                similarities = list(memory_scores.values())
+                logger.info(
+                    f"📊 向量相似度分布: 最高={max(similarities):.3f}, "
+                    f"最低={min(similarities):.3f}, "
+                    f"平均={sum(similarities)/len(similarities):.3f}, "
+                    f">0.3: {len([s for s in similarities if s > 0.3])}/{len(similarities)}, "
+                    f">0.2: {len([s for s in similarities if s > 0.2])}/{len(similarities)}"
+                )
 
             # 5. 获取完整记忆并进行最终排序（优化后的动态权重系统）
             memories_with_scores = []
-            for memory_id in sorted_memory_ids:
+            filter_stats = {"importance": 0, "similarity": 0, "total_checked": 0}  # 过滤统计
+            
+            for memory_id in sorted_memory_ids:  # 遍历所有候选
                 memory = self.graph_store.get_memory_by_id(memory_id)
                 if memory:
+                    filter_stats["total_checked"] += 1
                     # 基础分数
                     similarity_score = final_scores[memory_id]
                     importance_score = memory.importance
+                    
+                    # 🆕 区分记忆来源（用于过滤）
+                    is_initial_memory = memory_id in memory_scores  # 是否来自初始向量搜索
+                    true_similarity = memory_scores.get(memory_id, 0.0) if is_initial_memory else None
 
                     # 计算时效性分数（最近的记忆得分更高）
                     from datetime import datetime, timezone
@@ -700,14 +718,32 @@ class MemoryTools:
                         recency_score * weights["recency"]
                     )
                     
-                    # 🆕 阈值过滤：基于配置的最小重要性和相似度阈值
+                    # 🆕 阈值过滤策略：
+                    # 1. 重要性过滤：应用于所有记忆（过滤极低质量）
                     if memory.importance < self.search_min_importance:
-                        logger.debug(f"记忆 {memory.id[:8]} 重要性 {memory.importance:.2f} 低于阈值 {self.search_min_importance}，过滤")
+                        filter_stats["importance"] += 1
+                        logger.debug(f"❌ 过滤 {memory.id[:8]}: 重要性 {memory.importance:.2f} < 阈值 {self.search_min_importance}")
                         continue
                     
-                    if similarity_score < self.search_similarity_threshold:
-                        logger.debug(f"记忆 {memory.id[:8]} 相似度 {similarity_score:.2f} 低于阈值 {self.search_similarity_threshold}，过滤")
-                        continue
+                    # 2. 相似度过滤：不再对初始向量搜索结果过滤（信任向量搜索的排序）
+                    # 理由：向量搜索已经按相似度排序，返回的都是最相关结果
+                    # 如果再用阈值过滤，会导致"最相关的也不够相关"的矛盾
+                    # 
+                    # 注意：如果未来需要对扩展记忆过滤，可以在这里添加逻辑
+                    # if not is_initial_memory and some_score < threshold:
+                    #     continue
+                    
+                    # 记录通过过滤的记忆（用于调试）
+                    if is_initial_memory:
+                        logger.debug(
+                            f"✅ 保留 {memory.id[:8]} [初始]: 相似度={true_similarity:.3f}, "
+                            f"重要性={memory.importance:.2f}, 综合分数={final_score:.4f}"
+                        )
+                    else:
+                        logger.debug(
+                            f"✅ 保留 {memory.id[:8]} [扩展]: 重要性={memory.importance:.2f}, "
+                            f"综合分数={final_score:.4f}"
+                        )
                     
                     # 🆕 节点类型加权：对REFERENCE/ATTRIBUTE节点额外加分（促进事实性信息召回）
                     if "REFERENCE" in node_types_count or "ATTRIBUTE" in node_types_count:
@@ -727,6 +763,10 @@ class MemoryTools:
             memories_with_scores.sort(key=lambda x: x[1], reverse=True)
             memories = [mem for mem, _, _ in memories_with_scores[:top_k]]
 
+            # 统计过滤情况
+            total_candidates = len(all_memory_ids)
+            filtered_count = total_candidates - len(memories_with_scores)
+            
             # 6. 格式化结果（包含调试信息）
             results = []
             for memory, score, node_type in memories_with_scores[:top_k]:
@@ -743,9 +783,20 @@ class MemoryTools:
             logger.info(
                 f"搜索完成: 初始{len(initial_memory_ids)}个 → "
                 f"扩展{len(expanded_memory_scores)}个 → "
-                f"最终返回{len(results)}条记忆 "
-                f"(节点类型分布: {', '.join(f'{nt}:{ct}' for nt, ct in sorted(set((r['dominant_node_type'], 1) for r in results))[:3])})"
+                f"候选{total_candidates}个 → "
+                f"过滤{filtered_count}个 (重要性过滤) → "
+                f"最终返回{len(results)}条记忆"
             )
+            
+            # 如果过滤率过高，发出警告
+            if total_candidates > 0:
+                filter_rate = filtered_count / total_candidates
+                if filter_rate > 0.5:  # 降低警告阈值到50%
+                    logger.warning(
+                        f"⚠️ 过滤率较高 ({filter_rate*100:.1f}%)！"
+                        f"原因：{filter_stats['importance']}个记忆重要性 < {self.search_min_importance}。"
+                        f"建议：1) 降低 min_importance 阈值，或 2) 检查记忆质量评分"
+                    )
 
             return {
                 "success": True,

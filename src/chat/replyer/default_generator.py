@@ -638,8 +638,8 @@ class DefaultReplyer:
                     # 使用记忆管理器的智能检索（多查询策略）
                     memories = await manager.search_memories(
                         query=target,
-                        top_k=10,
-                        min_importance=0.3,
+                        top_k=global_config.memory.search_top_k,
+                        min_importance=global_config.memory.search_min_importance,
                         include_forgotten=False,
                         use_multi_query=True,
                         context=query_context,

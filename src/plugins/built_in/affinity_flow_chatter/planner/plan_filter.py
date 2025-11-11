@@ -707,7 +707,7 @@ class ChatterPlanFilter:
                 query = " ".join(keywords)
                 enhanced_memories = await memory_manager.search_memories(
                     query=query,
-                    top_k=5,
+                    top_k=5,  # AFC 场景使用较少记忆，避免干扰规划
                     use_multi_query=False,  # 直接使用关键词查询
                 )
 
