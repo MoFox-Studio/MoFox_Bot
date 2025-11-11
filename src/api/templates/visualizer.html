@@ -205,6 +205,59 @@
             cursor: pointer;
         }
 
+        .performance-mode {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 10px;
+            background: #fff3cd;
+            border-radius: 6px;
+            border: 1px solid #ffc107;
+        }
+
+        .performance-mode h3 {
+            font-size: 13px;
+            color: #856404;
+            margin: 0;
+        }
+
+        .performance-options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .performance-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .performance-item input[type="radio"] {
+            cursor: pointer;
+        }
+
+        .performance-item label {
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .performance-tips {
+            margin-top: 8px;
+            padding: 8px;
+            background: #e8f5e9;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #2e7d32;
+            line-height: 1.4;
+        }
+
+        .performance-tips strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
         .loading {
             position: absolute;
             top: 50%;
@@ -214,6 +267,17 @@
             color: #667eea;
             font-size: 18px;
             font-weight: 500;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .loading-progress {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #764ba2;
         }
 
         .loading-spinner {
@@ -482,6 +546,39 @@
                 </div>
             </div>
 
+            <!-- 性能模式 -->
+            <div>
+                <h2>⚡ 性能模式</h2>
+                <div class="performance-mode">
+                    <h3>数据加载模式</h3>
+                    <div class="performance-options">
+                        <div class="performance-item">
+                            <input type="radio" id="modeAuto" name="loadMode" value="auto" checked onchange="changeLoadMode()">
+                            <label for="modeAuto">自动选择（推荐）</label>
+                        </div>
+                        <div class="performance-item">
+                            <input type="radio" id="modeFull" name="loadMode" value="full" onchange="changeLoadMode()">
+                            <label for="modeFull">完整加载（&lt;500节点）</label>
+                        </div>
+                        <div class="performance-item">
+                            <input type="radio" id="modeCluster" name="loadMode" value="cluster" onchange="changeLoadMode()">
+                            <label for="modeCluster">聚类简化（300节点）</label>
+                        </div>
+                        <div class="performance-item">
+                            <input type="radio" id="modePaginated" name="loadMode" value="paginated" onchange="changeLoadMode()">
+                            <label for="modePaginated">分页加载（500/页）</label>
+                        </div>
+                    </div>
+                    <div class="performance-tips">
+                        <strong>💡 性能提示：</strong>
+                        • 节点 &gt;500: 优先使用聚类或分页模式<br>
+                        • 加载完成后点击"禁用物理"按钮<br>
+                        • 鼠标悬停可查看节点标签<br>
+                        • 点击节点高亮关联路径（完整模式1跳）
+                    </div>
+                </div>
+            </div>
+
             <!-- 选中节点信息 -->
             <div>
                 <h2>ℹ️ 节点信息</h2>
@@ -499,6 +596,12 @@
                     <button class="btn" onclick="loadGraph()">🔄 刷新图形</button>
                     <button class="btn btn-secondary" onclick="fitNetwork()">📐 适应窗口</button>
                     <button class="btn" onclick="exportGraph()">💾 导出数据</button>
+                    <button class="btn" onclick="togglePhysics()" id="physicsToggle">⚙️ 启用物理</button>
+                </div>
+                <div id="paginationControls" class="control-buttons" style="margin-top: 10px; display: none;">
+                    <button class="btn" onclick="loadPreviousPage()" id="prevPageBtn">⬅️ 上一页</button>
+                    <span style="padding: 10px; font-size: 14px; font-weight: bold;" id="pageInfo">第 1 页</span>
+                    <button class="btn" onclick="loadNextPage()" id="nextPageBtn">下一页 ➡️</button>
                 </div>
             </div>
 
@@ -538,6 +641,16 @@
             memories: []
         };
         let originalData = null;
+        let currentLoadMode = 'auto';
+        let currentPage = 1;
+        let totalPages = 1;
+        let isLoading = false;
+        let hoveredNodeId = null;  // 当前鼠标悬停的节点ID
+        let highlightedNodeIds = new Set();  // 当前高亮的节点ID集合
+        
+        // 邻接表缓存，用于高亮优化
+        let adjacencyCache = null;
+        let nodeDegreeCache = null;
 
         // 节点颜色配置
         const nodeColors = {
@@ -548,75 +661,130 @@
             'VALUE': '#98D8C8'
         };
 
+        // 切换加载模式
+        function changeLoadMode() {
+            const selected = document.querySelector('input[name="loadMode"]:checked');
+            if (selected) {
+                currentLoadMode = selected.value;
+                console.log('切换加载模式:', currentLoadMode);
+                loadGraph();
+            }
+        }
+
+        // 构建邻接表缓存
+        function buildAdjacencyCache(edges) {
+            adjacencyCache = new Map();
+            nodeDegreeCache = new Map();
+            
+            edges.forEach(edge => {
+                const from = edge.from;
+                const to = edge.to;
+                
+                if (!adjacencyCache.has(from)) {
+                    adjacencyCache.set(from, []);
+                    nodeDegreeCache.set(from, 0);
+                }
+                if (!adjacencyCache.has(to)) {
+                    adjacencyCache.set(to, []);
+                    nodeDegreeCache.set(to, 0);
+                }
+                
+                adjacencyCache.get(from).push({ nodeId: to, edgeId: edge.id });
+                adjacencyCache.get(to).push({ nodeId: from, edgeId: edge.id });
+                nodeDegreeCache.set(from, nodeDegreeCache.get(from) + 1);
+                nodeDegreeCache.set(to, nodeDegreeCache.get(to) + 1);
+            });
+            
+            console.log(`邻接表缓存构建完成: ${adjacencyCache.size} 个节点`);
+        }
+
         // 初始化图形
         function initNetwork() {
             const container = document.getElementById('memory-graph');
             
-            const options = {
-                nodes: {
-                    shape: 'dot',
-                    size: 20,
-                    font: {
-                        size: 14,
-                        color: '#333',
-                        face: 'Microsoft YaHei'
-                    },
-                    borderWidth: 2,
-                    borderWidthSelected: 4,
-                    shadow: true
-                },
-                edges: {
-                    width: 2,
-                    color: {
-                        color: '#848484',
-                        highlight: '#667eea',
-                        hover: '#764ba2'
-                    },
-                    arrows: {
-                        to: {
-                            enabled: true,
-                            scaleFactor: 0.5
+            // 动态配置：大数据集使用极简配置
+            const getNetworkOptions = (nodeCount) => {
+                const isLargeDataset = nodeCount > 500;
+                const isVeryLargeDataset = nodeCount > 2000;
+                
+                return {
+                    nodes: {
+                        shape: 'dot',
+                        size: isVeryLargeDataset ? 10 : (isLargeDataset ? 15 : 20),
+                        font: {
+                            size: isVeryLargeDataset ? 0 : (isLargeDataset ? 10 : 14),  // 超大数据集隐藏文字
+                            color: '#333',
+                            face: 'Microsoft YaHei'
+                        },
+                        borderWidth: isVeryLargeDataset ? 0 : 2,
+                        borderWidthSelected: 3,
+                        shadow: false,  // 始终禁用阴影
+                        scaling: {
+                            min: isVeryLargeDataset ? 5 : 10,
+                            max: isVeryLargeDataset ? 15 : 30
                         }
                     },
-                    smooth: {
-                        enabled: true,
-                        type: 'dynamic'
+                    edges: {
+                        width: isVeryLargeDataset ? 0.5 : (isLargeDataset ? 1 : 2),
+                        color: {
+                            color: '#848484',
+                            highlight: '#667eea',
+                            hover: '#764ba2',
+                            opacity: isVeryLargeDataset ? 0.3 : 0.7  // 超大数据集边半透明
+                        },
+                        arrows: {
+                            to: {
+                                enabled: !isVeryLargeDataset,  // 超大数据集禁用箭头
+                                scaleFactor: 0.3
+                            }
+                        },
+                        smooth: false,  // 始终禁用平滑以提升性能
+                        font: {
+                            size: 0,  // 始终隐藏边标签
+                            strokeWidth: 0
+                        },
+                        shadow: false,
+                        selectionWidth: 2
                     },
-                    font: {
-                        size: 11,
-                        color: '#666',
-                        face: 'Microsoft YaHei',
-                        align: 'middle'
+                    physics: {
+                        enabled: true,
+                        barnesHut: {
+                            gravitationalConstant: isVeryLargeDataset ? -800 : (isLargeDataset ? -2000 : -8000),
+                            centralGravity: isVeryLargeDataset ? 0.1 : 0.3,
+                            springLength: isVeryLargeDataset ? 50 : (isLargeDataset ? 95 : 150),
+                            springConstant: isVeryLargeDataset ? 0.001 : (isLargeDataset ? 0.02 : 0.04),
+                            damping: isVeryLargeDataset ? 0.3 : 0.09,
+                            avoidOverlap: 0
+                        },
+                        stabilization: {
+                            enabled: true,
+                            iterations: isVeryLargeDataset ? 50 : (isLargeDataset ? 100 : 300),
+                            updateInterval: isVeryLargeDataset ? 100 : (isLargeDataset ? 50 : 25),
+                            onlyDynamicEdges: false,
+                            fit: true
+                        },
+                        solver: 'barnesHut',
+                        timestep: isVeryLargeDataset ? 1.0 : 0.5,
+                        adaptiveTimestep: true,
+                        maxVelocity: isVeryLargeDataset ? 100 : 50,
+                        minVelocity: isVeryLargeDataset ? 5 : 0.75
+                    },
+                    interaction: {
+                        hover: true,  // 始终启用hover - 我们用自定义事件处理标签显示
+                        tooltipDelay: 300,
+                        zoomView: true,
+                        dragView: true,
+                        hideEdgesOnDrag: true,  // 始终在拖拽时隐藏边
+                        hideEdgesOnZoom: true,  // 始终在缩放时隐藏边
+                        hideNodesOnDrag: isVeryLargeDataset,  // 超大数据集拖拽时也隐藏节点
+                        navigationButtons: false,
+                        keyboard: false
+                    },
+                    layout: {
+                        improvedLayout: !isVeryLargeDataset,  // 超大数据集禁用改进布局
+                        randomSeed: 2  // 固定随机种子以获得一致的布局
                     }
-                },
-                physics: {
-                    enabled: true,
-                    barnesHut: {
-                        gravitationalConstant: -8000,
-                        centralGravity: 0.3,
-                        springLength: 150,
-                        springConstant: 0.04,
-                        damping: 0.09,
-                        avoidOverlap: 0.1
-                    },
-                    stabilization: {
-                        enabled: true,
-                        iterations: 300,
-                        updateInterval: 25,
-                        onlyDynamicEdges: false,
-                        fit: true
-                    },
-                    // 稳定后自动停止物理引擎
-                    solver: 'barnesHut',
-                    timestep: 0.5,
-                    adaptiveTimestep: true
-                },
-                interaction: {
-                    hover: true,
-                    tooltipDelay: 100,
-                    zoomView: true,
-                    dragView: true
-                }
+                };
             };
 
             const data = {
@@ -624,7 +792,13 @@
                 edges: new vis.DataSet([])
             };
 
-            network = new vis.Network(container, data, options);
+            // 初始使用中等配置
+            network = new vis.Network(container, data, getNetworkOptions(500));
+            
+            // 保存配置函数供后续使用
+            network.updateOptions = (nodeCount) => {
+                network.setOptions(getNetworkOptions(nodeCount));
+            };
 
             // 添加事件监听
             network.on('click', function(params) {
@@ -638,76 +812,395 @@
                 }
             });
 
+            // 添加鼠标悬停事件（仅在小数据集启用）
+            network.on('hoverNode', function(params) {
+                hoveredNodeId = params.node;
+                updateNodeLabel(params.node, true);  // 显示悬停节点的标签
+            });
+
+            network.on('blurNode', function(params) {
+                // 如果节点不在高亮集合中，隐藏标签
+                if (!highlightedNodeIds.has(params.node)) {
+                    updateNodeLabel(params.node, false);
+                }
+                hoveredNodeId = null;
+            });
+
             // 稳定化完成后停止物理引擎
             network.on('stabilizationIterationsDone', function() {
-                console.log('初始稳定化完成，停止物理引擎');
+                console.log('稳定化完成，停止物理引擎');
                 network.setOptions({ physics: { enabled: false } });
+                updateLoadingProgress('布局完成');
             });
 
             // 添加稳定化进度监听
             network.on('stabilizationProgress', function(params) {
                 const progress = Math.round((params.iterations / params.total) * 100);
-                if (progress % 10 === 0) { // 每10%打印一次
-                    console.log(`稳定化进度: ${progress}%`);
-                }
+                updateLoadingProgress(`布局中: ${progress}%`);
             });
         }
 
-        // 加载图形数据
-        async function loadGraph() {
-            try {
-                document.getElementById('loading').style.display = 'block';
-                
-                const response = await fetch('/visualizer/api/graph/full');
-                const result = await response.json();
+        // 更新加载进度提示
+        function updateLoadingProgress(message) {
+            const progressDiv = document.querySelector('.loading-progress');
+            if (progressDiv) {
+                progressDiv.textContent = message;
+            } else {
+                const loadingDiv = document.getElementById('loading');
+                if (loadingDiv) {
+                    const existing = loadingDiv.querySelector('.loading-progress');
+                    if (!existing) {
+                        const newDiv = document.createElement('div');
+                        newDiv.className = 'loading-progress';
+                        newDiv.textContent = message;
+                        loadingDiv.appendChild(newDiv);
+                    } else {
+                        existing.textContent = message;
+                    }
+                }
+            }
+        }
 
-                if (result.success) {
+        // 动态更新节点标签显示
+        function updateNodeLabel(nodeId, show) {
+            if (!network || !graphData) return;
+            
+            const nodes = network.body.data.nodes;
+            const node = nodes.get(nodeId);
+            if (!node) return;
+            
+            // 获取原始节点数据
+            const originalNode = graphData.nodes.find(n => n.id === nodeId);
+            if (!originalNode) return;
+            
+            // 更新节点标签
+            nodes.update({
+                id: nodeId,
+                label: show ? originalNode.label : '',
+                font: show ? { size: 14, color: '#333' } : { size: 0 }
+            });
+        }
+
+        // 批量更新边标签显示
+        function updateEdgeLabels(edgeIds, show) {
+            if (!network || !graphData || edgeIds.size === 0) return;
+            
+            const edges = network.body.data.edges;
+            const edgeUpdates = [];
+            
+            edgeIds.forEach(edgeId => {
+                const edge = edges.get(edgeId);
+                if (!edge) return;
+                
+                // 获取原始边数据
+                const originalEdge = graphData.edges.find(e => e.id === edgeId);
+                if (!originalEdge) return;
+                
+                edgeUpdates.push({
+                    id: edgeId,
+                    label: show ? (originalEdge.label || '') : '',
+                    font: show ? { size: 11, color: '#666' } : { size: 0 }
+                });
+            });
+            
+            if (edgeUpdates.length > 0) {
+                edges.update(edgeUpdates);
+            }
+        }
+
+        // 加载图形数据（智能选择模式）
+        async function loadGraph() {
+            if (isLoading) {
+                console.log('已有加载任务在进行中');
+                return;
+            }
+
+            try {
+                isLoading = true;
+                document.getElementById('loading').style.display = 'block';
+                updateLoadingProgress('获取数据摘要...');
+                
+                // 首先获取摘要信息以决定加载策略
+                const summaryResponse = await fetch('/visualizer/api/graph/summary');
+                const summaryResult = await summaryResponse.json();
+                
+                if (!summaryResult.success) {
+                    throw new Error(summaryResult.error);
+                }
+                
+                const totalNodes = summaryResult.data.stats.total_nodes;
+                console.log(`图数据节点总数: ${totalNodes}`);
+                
+                // 根据模式和数据量选择加载策略（更保守的阈值）
+                let loadMode = currentLoadMode;
+                if (loadMode === 'auto') {
+                    if (totalNodes <= 500) {
+                        loadMode = 'full';
+                    } else if (totalNodes <= 2000) {
+                        loadMode = 'cluster';
+                    } else {
+                        loadMode = 'paginated';
+                    }
+                    console.log(`自动选择加载模式: ${loadMode} (节点数: ${totalNodes})`);
+                }
+                
+                // 根据选择的模式加载数据
+                let result;
+                if (loadMode === 'full') {
+                    updateLoadingProgress('加载完整数据...');
+                    result = await loadFullGraph();
+                } else if (loadMode === 'cluster') {
+                    updateLoadingProgress('加载聚类数据...');
+                    result = await loadClusteredGraph();
+                } else if (loadMode === 'paginated') {
+                    updateLoadingProgress('加载分页数据 (第1页)...');
+                    result = await loadPaginatedGraph(1);
+                }
+                
+                if (result && result.success) {
+                    updateLoadingProgress('渲染图形...');
                     originalData = result.data;
                     updateGraph(result.data);
                     updateStats(result.data.stats);
+                    
+                    // 构建缓存以优化后续操作
+                    buildAdjacencyCache(result.data.edges || []);
+                    
+                    // 显示/隐藏分页控制
+                    const paginationControls = document.getElementById('paginationControls');
+                    if (result.data.pagination) {
+                        const p = result.data.pagination;
+                        totalPages = p.total_pages;
+                        currentPage = p.page;
+                        paginationControls.style.display = 'flex';
+                        document.getElementById('pageInfo').textContent = `第 ${p.page}/${p.total_pages} 页`;
+                        document.getElementById('prevPageBtn').disabled = !p.has_prev;
+                        document.getElementById('nextPageBtn').disabled = !p.has_next;
+                    } else {
+                        paginationControls.style.display = 'none';
+                    }
+                    
+                    // 显示加载信息
+                    if (result.data.clustered) {
+                        console.log(`✅ 聚类简化: ${result.data.stats.original_nodes} → ${result.data.stats.clustered_nodes} 节点`);
+                    } else if (result.data.pagination) {
+                        const p = result.data.pagination;
+                        console.log(`✅ 分页加载: 第 ${p.page}/${p.total_pages} 页 (共 ${p.total_nodes} 节点)`);
+                    } else {
+                        console.log(`✅ 完整加载: ${result.data.stats.total_nodes} 节点`);
+                    }
                 } else {
-                    alert('加载失败: ' + result.error);
+                    alert('加载失败: ' + (result ? result.error : '未知错误'));
                 }
             } catch (error) {
                 console.error('加载图形失败:', error);
                 alert('加载失败: ' + error.message);
             } finally {
+                isLoading = false;
                 document.getElementById('loading').style.display = 'none';
             }
         }
 
-        // 更新图形显示
+        // 加载完整图数据
+        async function loadFullGraph() {
+            const response = await fetch('/visualizer/api/graph/full');
+            return await response.json();
+        }
+
+        // 加载聚类简化数据
+        async function loadClusteredGraph(maxNodes = 300) {
+            const response = await fetch(`/visualizer/api/graph/clustered?max_nodes=${maxNodes}&cluster_threshold=10`);
+            return await response.json();
+        }
+
+        // 加载分页数据
+        async function loadPaginatedGraph(page = 1, pageSize = 500) {
+            const response = await fetch(`/visualizer/api/graph/paginated?page=${page}&page_size=${pageSize}&min_importance=0.0`);
+            return await response.json();
+        }
+
+        // 更新图形显示（优化版本 - 使用节点限制和延迟渲染）
         function updateGraph(data) {
             graphData = data;
+            const nodeCount = data.nodes.length;
+            const edgeCount = data.edges.length;
 
-            // 处理节点数据
-            const nodes = data.nodes.map(node => ({
-                id: node.id,
-                label: node.label,
-                title: node.title,
-                group: node.group,
-                color: nodeColors[node.group] || '#999',
-                metadata: node.metadata
-            }));
+            console.log(`准备更新图形: ${nodeCount} 个节点, ${edgeCount} 条边`);
 
-            // 处理边数据
-            const edges = data.edges.map(edge => ({
-                id: edge.id,
-                from: edge.from,
-                to: edge.to,
-                label: edge.label,
-                title: edge.title,
-                width: edge.importance * 3 + 1
-            }));
+            // 对于超大数据集，进一步限制
+            const MAX_RENDERABLE_NODES = 5000;
+            const MAX_RENDERABLE_EDGES = 10000;
+            
+            let nodesToRender = data.nodes;
+            let edgesToRender = data.edges;
+            let isLimited = false;
 
-            // 更新网络
-            network.setData({
-                nodes: new vis.DataSet(nodes),
-                edges: new vis.DataSet(edges)
+            // 如果超过限制，只渲染最重要的节点
+            if (nodeCount > MAX_RENDERABLE_NODES) {
+                console.warn(`节点数 ${nodeCount} 超过渲染限制 ${MAX_RENDERABLE_NODES}，将只显示最重要的节点`);
+                
+                // 计算节点重要性
+                const nodeDegrees = new Map();
+                data.edges.forEach(edge => {
+                    nodeDegrees.set(edge.from, (nodeDegrees.get(edge.from) || 0) + 1);
+                    nodeDegrees.set(edge.to, (nodeDegrees.get(edge.to) || 0) + 1);
+                });
+                
+                // 按连接度排序，保留前N个
+                nodesToRender = data.nodes
+                    .map(node => ({
+                        ...node,
+                        degree: nodeDegrees.get(node.id) || 0
+                    }))
+                    .sort((a, b) => b.degree - a.degree)
+                    .slice(0, MAX_RENDERABLE_NODES);
+                
+                const renderableNodeIds = new Set(nodesToRender.map(n => n.id));
+                edgesToRender = data.edges.filter(e => 
+                    renderableNodeIds.has(e.from) && renderableNodeIds.has(e.to)
+                );
+                
+                isLimited = true;
+                alert(`⚠️ 数据量过大\n原始: ${nodeCount} 节点\n仅渲染: ${nodesToRender.length} 个最重要节点\n建议使用"聚类简化"或"分页加载"模式`);
+            }
+
+            // 如果边数过多，也进行限制
+            if (edgesToRender.length > MAX_RENDERABLE_EDGES) {
+                console.warn(`边数 ${edgesToRender.length} 超过渲染限制 ${MAX_RENDERABLE_EDGES}`);
+                edgesToRender = edgesToRender.slice(0, MAX_RENDERABLE_EDGES);
+                isLimited = true;
+            }
+
+            // 根据节点数量动态调整网络配置
+            if (network.updateOptions) {
+                network.updateOptions(nodesToRender.length);
+            }
+
+            console.log(`实际渲染: ${nodesToRender.length} 个节点, ${edgesToRender.length} 条边`);
+
+            // 极简化节点数据 - 移除所有不必要的属性
+            const startTime = performance.now();
+            const nodes = nodesToRender.map(node => {
+                const baseNode = {
+                    id: node.id,
+                    label: '',  // 默认不显示标签，仅在悬停或高亮时显示
+                    group: node.group,
+                    color: nodeColors[node.group] || '#999'
+                };
+                
+                // 仅在小数据集中添加title（tooltip）
+                if (nodesToRender.length <= 1000) {
+                    baseNode.title = node.title || node.label;
+                }
+                
+                // 如果是聚类节点，使用不同的样式并始终显示标签
+                if (node.is_cluster) {
+                    baseNode.shape = 'star';
+                    baseNode.size = 25 + Math.min(node.cluster_size / 10, 15);
+                    baseNode.label = `${node.group} (${node.cluster_size})`;
+                    baseNode.font = { size: 14, bold: true };
+                }
+                
+                return baseNode;
             });
 
-            // 注意：setData 会自动触发物理引擎重新布局
-            // stabilizationIterationsDone 事件监听器会自动停止物理引擎
+            // 极简化边数据
+            const edges = edgesToRender.map(edge => {
+                const baseEdge = {
+                    id: edge.id,
+                    from: edge.from,
+                    to: edge.to,
+                    label: ''  // 默认不显示标签，仅在高亮时显示
+                };
+                
+                // 在小数据集中保留边宽度
+                if (edgesToRender.length <= 1000) {
+                    baseEdge.width = (edge.importance || 0.5) * 2 + 0.5;
+                }
+                
+                return baseEdge;
+            });
+
+            // 批量更新网络（使用异步渲染以避免阻塞UI）
+            const prepTime = performance.now() - startTime;
+            console.log(`数据准备耗时: ${prepTime.toFixed(2)}ms`);
+            
+            // 使用 requestAnimationFrame 异步渲染，避免阻塞UI
+            requestAnimationFrame(() => {
+                const renderStart = performance.now();
+                
+                // 先清空现有数据
+                network.setData({
+                    nodes: new vis.DataSet([]),
+                    edges: new vis.DataSet([])
+                });
+                
+                // 分批添加节点和边以提升响应性
+                const BATCH_SIZE = 500;
+                let nodeIndex = 0;
+                let edgeIndex = 0;
+                
+                const nodeDataSet = new vis.DataSet();
+                const edgeDataSet = new vis.DataSet();
+                
+                function addNodeBatch() {
+                    const batch = nodes.slice(nodeIndex, nodeIndex + BATCH_SIZE);
+                    if (batch.length > 0) {
+                        nodeDataSet.add(batch);
+                        nodeIndex += BATCH_SIZE;
+                        updateLoadingProgress(`加载节点: ${Math.min(nodeIndex, nodes.length)}/${nodes.length}`);
+                        
+                        if (nodeIndex < nodes.length) {
+                            setTimeout(addNodeBatch, 0);
+                        } else {
+                            // 节点加载完成，开始加载边
+                            setTimeout(addEdgeBatch, 0);
+                        }
+                    }
+                }
+                
+                function addEdgeBatch() {
+                    const batch = edges.slice(edgeIndex, edgeIndex + BATCH_SIZE);
+                    if (batch.length > 0) {
+                        edgeDataSet.add(batch);
+                        edgeIndex += BATCH_SIZE;
+                        updateLoadingProgress(`加载边: ${Math.min(edgeIndex, edges.length)}/${edges.length}`);
+                        
+                        if (edgeIndex < edges.length) {
+                            setTimeout(addEdgeBatch, 0);
+                        } else {
+                            // 所有数据加载完成，更新网络
+                            finishRendering();
+                        }
+                    }
+                }
+                
+                function finishRendering() {
+                    network.setData({
+                        nodes: nodeDataSet,
+                        edges: edgeDataSet
+                    });
+                    
+                    const renderTime = performance.now() - renderStart;
+                    console.log(`图形渲染总耗时: ${renderTime.toFixed(2)}ms`);
+                    updateLoadingProgress('渲染完成');
+                }
+                
+                // 对于小数据集，直接一次性加载
+                if (nodes.length <= 1000) {
+                    nodeDataSet.add(nodes);
+                    edgeDataSet.add(edges);
+                    network.setData({
+                        nodes: nodeDataSet,
+                        edges: edgeDataSet
+                    });
+                    const renderTime = performance.now() - renderStart;
+                    console.log(`图形渲染总耗时: ${renderTime.toFixed(2)}ms`);
+                } else {
+                    // 大数据集使用分批加载
+                    addNodeBatch();
+                }
+            });
         }
 
         // 更新统计信息
@@ -748,7 +1241,7 @@
             }
 
             try {
-                const response = await fetch(`/visualizer/api/search?q=${encodeURIComponent(query)}&limit=50`);
+                const response = await fetch(`api/search?q=${encodeURIComponent(query)}&limit=50`);
                 const result = await response.json();
 
                 if (result.success) {
@@ -788,31 +1281,32 @@
             }
         }
 
-        // 高亮与选中节点连接的节点（最多3跳深度）
+        // 高亮与选中节点连接的节点（优化版本，使用缓存）
         function highlightConnectedNodes(nodeId) {
-            if (!network || !graphData) return;
+            if (!network || !graphData || !adjacencyCache) return;
 
-            // 使用 BFS 探索最多3跳深度的连接节点
-            const MAX_DEPTH = 3;
+            const startTime = performance.now();
+            
+            // 根据加载模式和数据规模决定探索深度
+            // 完整加载模式：1跳
+            // 聚类/分页模式：3跳（因为数据量已经减少）
+            const nodeCount = graphData.nodes.length;
+            let MAX_DEPTH = 3;
+            
+            if (currentLoadMode === 'full' || (currentLoadMode === 'auto' && nodeCount <= 500)) {
+                MAX_DEPTH = 1;  // 完整加载模式限制为1跳
+                console.log('完整加载模式：使用1跳探索深度');
+            } else {
+                console.log('聚类/分页模式：使用3跳探索深度');
+            }
+            
+            // 使用缓存的邻接表进行 BFS
             const connectedNodeIds = new Set();
             const connectedEdgeIds = new Set();
             const visited = new Set();
             const queue = [{ nodeId: nodeId, depth: 0 }];
 
-            // 构建邻接表以提高查询效率
-            const adjacencyMap = new Map();
-            graphData.edges.forEach(edge => {
-                if (!adjacencyMap.has(edge.from)) {
-                    adjacencyMap.set(edge.from, []);
-                }
-                if (!adjacencyMap.has(edge.to)) {
-                    adjacencyMap.set(edge.to, []);
-                }
-                adjacencyMap.get(edge.from).push({ nodeId: edge.to, edgeId: edge.id });
-                adjacencyMap.get(edge.to).push({ nodeId: edge.from, edgeId: edge.id });
-            });
-
-            // BFS 遍历，限制深度为3跳
+            // BFS 遍历
             while (queue.length > 0) {
                 const { nodeId: currentNode, depth } = queue.shift();
                 
@@ -820,11 +1314,10 @@
                 visited.add(currentNode);
                 connectedNodeIds.add(currentNode);
 
-                // 如果已经达到最大深度，不再探索更深的节点
                 if (depth >= MAX_DEPTH) continue;
 
-                // 探索相邻节点
-                const neighbors = adjacencyMap.get(currentNode) || [];
+                // 使用缓存的邻接表
+                const neighbors = adjacencyCache.get(currentNode) || [];
                 neighbors.forEach(({ nodeId: neighborId, edgeId }) => {
                     connectedEdgeIds.add(edgeId);
                     if (!visited.has(neighborId)) {
@@ -833,22 +1326,30 @@
                 });
             }
 
-            console.log(`选中节点: ${nodeId}, 连接的节点数: ${connectedNodeIds.size}, 连接的边数: ${connectedEdgeIds.size} (最大深度: ${MAX_DEPTH})`);
+            const searchTime = performance.now() - startTime;
+            console.log(`BFS搜索耗时: ${searchTime.toFixed(2)}ms, 找到 ${connectedNodeIds.size} 个连接节点 (深度${MAX_DEPTH}跳)`);
 
-            // 更新所有节点的透明度
+            // 更新高亮节点集合
+            highlightedNodeIds = connectedNodeIds;
+
+            // 批量更新节点和边
             const allNodes = network.body.data.nodes;
             const allEdges = network.body.data.edges;
-            const updates = [];
+            const nodeUpdates = [];
+            const edgeUpdates = [];
 
+            // 更新节点
             allNodes.get().forEach(node => {
+                const originalNode = graphData.nodes.find(n => n.id === node.id);
+                if (!originalNode) return;
+                
                 if (connectedNodeIds.has(node.id)) {
-                    // 连接的节点保持正常，甚至可以加强显示
-                    // 被选中的节点特别突出
                     const isSelected = node.id === nodeId;
-                    updates.push({
+                    nodeUpdates.push({
                         id: node.id,
                         opacity: 1.0,
                         borderWidth: isSelected ? 5 : 3,
+                        label: originalNode.label || '',  // 显示高亮节点的标签
                         font: { 
                             color: isSelected ? '#667eea' : '#333', 
                             size: isSelected ? 16 : 14, 
@@ -856,46 +1357,52 @@
                         }
                     });
                 } else {
-                    // 无关节点变为高度透明
-                    const dimmedColor = hexToRgba(node.color, 0.08);
-                    updates.push({
+                    const originalColor = nodeColors[node.group] || '#999';
+                    const dimmedColor = hexToRgba(originalColor, 0.08);
+                    nodeUpdates.push({
                         id: node.id,
                         color: {
                             background: dimmedColor,
                             border: dimmedColor,
-                            highlight: { background: dimmedColor, border: dimmedColor }
                         },
                         opacity: 0.08,
-                        font: { color: 'rgba(51, 51, 51, 0.08)', size: 14 }
+                        label: '',  // 隐藏非高亮节点的标签
+                        font: { color: 'rgba(51, 51, 51, 0.08)', size: 0 }
                     });
                 }
             });
-            allNodes.update(updates);
 
-            // 更新所有边的透明度
-            const edgeUpdates = [];
+            // 更新边
             allEdges.get().forEach(edge => {
+                const originalEdge = graphData.edges.find(e => e.id === edge.id);
+                
                 if (connectedEdgeIds.has(edge.id)) {
-                    // 连接的边加强显示
                     edgeUpdates.push({
                         id: edge.id,
                         color: { color: '#667eea', opacity: 1.0 },
                         width: 4,
+                        label: originalEdge?.label || '',  // 显示高亮边的标签
                         font: { color: '#667eea', size: 12 }
                     });
                 } else {
-                    // 无关边变为高度透明
                     edgeUpdates.push({
                         id: edge.id,
                         color: { color: '#848484', opacity: 0.03 },
                         width: 1,
-                        font: { color: 'rgba(102, 102, 102, 0.03)', size: 11 }
+                        label: '',  // 隐藏非高亮边的标签
+                        font: { color: 'rgba(102, 102, 102, 0.03)', size: 0 }
                     });
                 }
             });
+
+            // 批量应用更新
+            allNodes.update(nodeUpdates);
             allEdges.update(edgeUpdates);
 
-            // 将视图聚焦到连接的子图
+            const totalTime = performance.now() - startTime;
+            console.log(`高亮操作总耗时: ${totalTime.toFixed(2)}ms`);
+
+            // 聚焦视图
             if (connectedNodeIds.size > 1 && connectedNodeIds.size < 100) {
                 network.fit({
                     nodes: Array.from(connectedNodeIds),
@@ -907,38 +1414,46 @@
             }
         }
 
-        // 重置节点高亮状态
+        // 重置节点高亮状态（优化版本）
         function resetNodeHighlight() {
             if (!network || !graphData) return;
 
+            const startTime = performance.now();
             const allNodes = network.body.data.nodes;
             const allEdges = network.body.data.edges;
 
-            // 恢复所有节点 - 重新应用原始颜色
-            const nodeUpdates = [];
-            allNodes.get().forEach(node => {
+            // 清空高亮节点集合
+            highlightedNodeIds.clear();
+
+            // 批量恢复所有节点（不显示标签，除非是悬停节点）
+            const nodeUpdates = allNodes.get().map(node => {
                 const originalColor = nodeColors[node.group] || '#999';
-                nodeUpdates.push({
+                const shouldShowLabel = node.id === hoveredNodeId;  // 只显示悬停节点的标签
+                const originalNode = shouldShowLabel ? graphData.nodes.find(n => n.id === node.id) : null;
+                
+                return {
                     id: node.id,
                     color: originalColor,
                     opacity: 1.0,
                     borderWidth: 2,
-                    font: { color: '#333', size: 14, bold: false }
-                });
+                    label: shouldShowLabel && originalNode ? originalNode.label : '',
+                    font: { color: '#333', size: shouldShowLabel ? 14 : 0, bold: false }
+                };
             });
             allNodes.update(nodeUpdates);
 
-            // 恢复所有边
-            const edgeUpdates = [];
-            allEdges.get().forEach(edge => {
-                edgeUpdates.push({
-                    id: edge.id,
-                    color: { color: '#848484', opacity: 1.0 },
-                    width: 2,
-                    font: { color: '#666', size: 11 }
-                });
-            });
+            // 批量恢复所有边（不显示标签）
+            const edgeUpdates = allEdges.get().map(edge => ({
+                id: edge.id,
+                color: { color: '#848484', opacity: 1.0 },
+                width: 2,
+                label: '',
+                font: { color: '#666', size: 0 }
+            }));
             allEdges.update(edgeUpdates);
+
+            const endTime = performance.now();
+            console.log(`重置高亮耗时: ${(endTime - startTime).toFixed(2)}ms`);
         }
 
         // 辅助函数：将十六进制颜色转换为 rgba
@@ -953,7 +1468,7 @@
             return `rgba(${r}, ${g}, ${b}, ${alpha})`;
         }
 
-        // 应用过滤器
+        // 应用过滤器（优化版本）
         function applyFilters() {
             if (!originalData) return;
 
@@ -991,25 +1506,27 @@
             // 重置高亮状态
             resetNodeHighlight();
 
-            // 重新启用物理引擎以重新布局，避免节点排版错乱
-            if (network) {
+            // 重建缓存
+            buildAdjacencyCache(filteredEdges);
+
+            // 重新启用物理引擎以重新布局
+            if (network && filteredNodes.length > 0) {
                 network.setOptions({ physics: { enabled: true } });
                 
-                // 设置超时保护，确保物理引擎最终会停止
+                // 超时保护
                 let stabilized = false;
-                const stabilizationTimeout = setTimeout(() => {
+                const timeout = setTimeout(() => {
                     if (!stabilized) {
                         console.log('物理引擎稳定超时，强制停止');
                         network.setOptions({ physics: { enabled: false } });
                     }
-                }, 5000); // 5秒超时
+                }, 5000);
 
-                // 等待稳定后再禁用物理引擎
                 network.once('stabilizationIterationsDone', function() {
                     stabilized = true;
-                    clearTimeout(stabilizationTimeout);
+                    clearTimeout(timeout);
                     network.setOptions({ physics: { enabled: false } });
-                    console.log('物理引擎已稳定并停止');
+                    console.log('过滤后重新布局完成');
                 });
             }
         }
@@ -1023,6 +1540,66 @@
                         easingFunction: 'easeInOutQuad'
                     }
                 });
+            }
+        }
+
+        // 切换物理引擎
+        function togglePhysics() {
+            if (!network) return;
+            
+            const currentPhysics = network.physics.options.enabled;
+            network.setOptions({ physics: { enabled: !currentPhysics } });
+            
+            const btn = document.getElementById('physicsToggle');
+            btn.textContent = currentPhysics ? '⚙️ 启用物理' : '⏸️ 禁用物理';
+            
+            console.log(`物理引擎: ${currentPhysics ? '已禁用' : '已启用'}`);
+        }
+
+        // 加载下一页
+        async function loadNextPage() {
+            if (currentPage < totalPages && !isLoading) {
+                currentPage++;
+                await loadPaginatedGraphAndUpdate();
+            }
+        }
+
+        // 加载上一页
+        async function loadPreviousPage() {
+            if (currentPage > 1 && !isLoading) {
+                currentPage--;
+                await loadPaginatedGraphAndUpdate();
+            }
+        }
+
+        // 加载分页并更新UI
+        async function loadPaginatedGraphAndUpdate() {
+            try {
+                isLoading = true;
+                document.getElementById('loading').style.display = 'block';
+                updateLoadingProgress(`加载第 ${currentPage} 页...`);
+                
+                const result = await loadPaginatedGraph(currentPage);
+                
+                if (result.success) {
+                    originalData = result.data;
+                    updateGraph(result.data);
+                    updateStats(result.data.stats);
+                    buildAdjacencyCache(result.data.edges || []);
+                    
+                    // 更新分页UI
+                    const p = result.data.pagination;
+                    totalPages = p.total_pages;
+                    document.getElementById('pageInfo').textContent = `第 ${p.page}/${p.total_pages} 页`;
+                    document.getElementById('prevPageBtn').disabled = !p.has_prev;
+                    document.getElementById('nextPageBtn').disabled = !p.has_next;
+                }
+            } catch (error) {
+                console.error('加载分页失败:', error);
+                alert('加载失败: ' + error.message);
+            } finally {
+                isLoading = false;
+                document.getElementById('loading').style.display = 'none';
             }
         }
 

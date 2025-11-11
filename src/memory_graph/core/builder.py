@@ -185,12 +185,19 @@ class MemoryBuilder:
                 logger.debug(f"复用已存在的主体节点: {existing.id}")
                 return existing
 
+        # 为主体和值节点生成嵌入向量（用于人名/实体和重要描述检索）
+        embedding = None
+        if node_type in (NodeType.SUBJECT, NodeType.VALUE):
+            # 只为有足够内容的节点生成嵌入（避免浪费）
+            if len(content.strip()) >= 2:
+                embedding = await self._generate_embedding(content)
+
         # 创建新节点
         node = MemoryNode(
             id=self._generate_node_id(),
             content=content,
             node_type=node_type,
-            embedding=None,  # 主体和属性不需要嵌入
+            embedding=embedding,  # 主体、值需要嵌入，属性不需要
             metadata={"memory_ids": [memory_id]},
         )
 

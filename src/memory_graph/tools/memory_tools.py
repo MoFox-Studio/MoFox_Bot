@@ -516,6 +516,22 @@ class MemoryTools:
                             # 记录最高分数
                             if mem_id not in memory_scores or similarity > memory_scores[mem_id]:
                                 memory_scores[mem_id] = similarity
+            
+            # 🔥 详细日志：检查初始召回情况
+            logger.info(
+                f"初始向量搜索: 返回{len(similar_nodes)}个节点 → "
+                f"提取{len(initial_memory_ids)}条记忆"
+            )
+            if len(initial_memory_ids) == 0:
+                logger.warning(
+                    f"⚠️ 向量搜索未找到任何记忆！"
+                    f"可能原因：1) 嵌入模型理解问题 2) 记忆节点未建立索引 3) 查询表达与存储内容差异过大"
+                )
+                # 输出相似节点的详细信息用于调试
+                if similar_nodes:
+                    logger.debug(f"向量搜索返回的节点元数据样例: {similar_nodes[0][2] if len(similar_nodes) > 0 else 'None'}")
+            elif len(initial_memory_ids) < 3:
+                logger.warning(f"⚠️ 初始召回记忆数量较少({len(initial_memory_ids)}条)，可能影响结果质量")
 
             # 3. 图扩展（如果启用且有expand_depth）
             expanded_memory_scores = {}
@@ -609,42 +625,37 @@ class MemoryTools:
                     if dominant_node_type in ["ATTRIBUTE", "REFERENCE"] or memory_type == "FACT":
                         # 事实性记忆（如文档地址、配置信息）：语义相似度最重要
                         weights = {
-                            "similarity": 0.65,   # 语义相似度 65% ⬆️
-                            "importance": 0.20,   # 重要性 20%
-                            "recency": 0.05,      # 时效性 5% ⬇️（事实不随时间失效）
-                            "activation": 0.10    # 激活度 10% ⬇️（避免冷门信息被压制）
+                            "similarity": 0.70,   # 语义相似度 70% ⬆️
+                            "importance": 0.25,   # 重要性 25% ⬆️
+                            "recency": 0.05,      # 时效性 5%（事实不随时间失效）
                         }
                     elif memory_type in ["CONVERSATION", "EPISODIC"] or dominant_node_type == "EVENT":
-                        # 对话/事件记忆：时效性和激活度更重要
+                        # 对话/事件记忆：时效性更重要
                         weights = {
-                            "similarity": 0.45,   # 语义相似度 45%
-                            "importance": 0.15,   # 重要性 15%
-                            "recency": 0.20,      # 时效性 20% ⬆️
-                            "activation": 0.20    # 激活度 20%
+                            "similarity": 0.55,   # 语义相似度 55% ⬆️
+                            "importance": 0.20,   # 重要性 20% ⬆️
+                            "recency": 0.25,      # 时效性 25% ⬆️
                         }
                     elif dominant_node_type == "ENTITY" or memory_type == "SEMANTIC":
                         # 实体/语义记忆：平衡各项
                         weights = {
-                            "similarity": 0.50,   # 语义相似度 50%
-                            "importance": 0.25,   # 重要性 25%
+                            "similarity": 0.60,   # 语义相似度 60% ⬆️
+                            "importance": 0.30,   # 重要性 30% ⬆️
                             "recency": 0.10,      # 时效性 10%
-                            "activation": 0.15    # 激活度 15%
                         }
                     else:
                         # 默认权重（保守策略，偏向语义）
                         weights = {
-                            "similarity": 0.55,   # 语义相似度 55%
-                            "importance": 0.20,   # 重要性 20%
+                            "similarity": 0.65,   # 语义相似度 65% ⬆️
+                            "importance": 0.25,   # 重要性 25% ⬆️
                             "recency": 0.10,      # 时效性 10%
-                            "activation": 0.15    # 激活度 15%
                         }
                     
-                    # 综合分数计算
+                    # 综合分数计算（🔥 移除激活度影响）
                     final_score = (
                         similarity_score * weights["similarity"] +
                         importance_score * weights["importance"] +
-                        recency_score * weights["recency"] +
-                        activation_score * weights["activation"]
+                        recency_score * weights["recency"]
                     )
                     
                     # 🆕 节点类型加权：对REFERENCE/ATTRIBUTE节点额外加分（促进事实性信息召回）
@@ -943,11 +954,16 @@ class MemoryTools:
             logger.warning("嵌入生成失败，跳过节点搜索")
             return []
 
-        # 向量搜索
+        # 向量搜索（增加返回数量以提高召回率）
         similar_nodes = await self.vector_store.search_similar_nodes(
             query_embedding=query_embedding,
-            limit=top_k * 2,  # 多取一些，后续过滤
+            limit=top_k * 5,  # 🔥 从2倍提升到5倍，提高初始召回率
+            min_similarity=0.0,  # 不在这里过滤，交给后续评分
         )
+        
+        logger.debug(f"单查询向量搜索: 查询='{query}', 返回节点数={len(similar_nodes)}")
+        if similar_nodes:
+            logger.debug(f"Top 3相似度: {[f'{sim:.3f}' for _, sim, _ in similar_nodes[:3]]}")
 
         return similar_nodes
 
@@ -1003,11 +1019,13 @@ class MemoryTools:
             similar_nodes = await self.vector_store.search_with_multiple_queries(
                 query_embeddings=query_embeddings,
                 query_weights=query_weights,
-                limit=top_k * 2,  # 多取一些，后续过滤
+                limit=top_k * 5,  # 🔥 从2倍提升到5倍，提高初始召回率
                 fusion_strategy="weighted_max",
             )
 
             logger.info(f"多查询检索完成: {len(similar_nodes)} 个节点 (偏好类型: {prefer_node_types})")
+            if similar_nodes:
+                logger.debug(f"Top 5融合相似度: {[f'{sim:.3f}' for _, sim, _ in similar_nodes[:5]]}")
 
             return similar_nodes, prefer_node_types
 
