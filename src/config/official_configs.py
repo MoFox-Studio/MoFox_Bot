@@ -145,6 +145,13 @@ class ChatConfig(ValidatedConfigBase):
     decision_history_length: int = Field(
         default=3, ge=1, le=10, description="决策历史记录的长度，用于增强语言模型的上下文连续性"
     )
+    # 多重回复控制配置
+    enable_multiple_replies: bool = Field(
+        default=True, description="是否允许多重回复（True=允许多个回复动作，False=只保留一个回复动作）"
+    )
+    multiple_replies_strategy: Literal["keep_first", "keep_best", "keep_last"] = Field(
+        default="keep_first", description="多重回复处理策略：keep_first(保留第一个)，keep_best(保留最佳)，keep_last(保留最后一个)"
+    )
 
 
 class MessageReceiveConfig(ValidatedConfigBase):

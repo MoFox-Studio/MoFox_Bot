@@ -123,7 +123,14 @@ class ChatterPlanExecutor:
         """串行执行所有回复动作，增加去重逻辑，避免对同一消息多次回复"""
         results = []
 
-        # --- 新增去重逻辑 ---
+        # 首先根据配置决定是否允许多重回复
+        if not global_config.chat.enable_multiple_replies and len(reply_actions) > 1:
+            # 不允许多重回复，需要过滤
+            filtered_actions = self._filter_multiple_replies(reply_actions)
+            logger.info(f"[多重回复] 配置已禁用多重回复，从 {len(reply_actions)} 个回复中过滤为 {len(filtered_actions)} 个")
+            reply_actions = filtered_actions
+
+        # --- 消息ID去重逻辑 ---
         unique_actions = []
         replied_message_ids = set()
         for action_info in reply_actions:
@@ -164,6 +171,81 @@ class ChatterPlanExecutor:
         if total_actions > 1:
             logger.info("[多重回复] 所有回复任务执行完毕。")
         return {"results": results}
+
+    def _filter_multiple_replies(self, reply_actions: list[ActionPlannerInfo]) -> list[ActionPlannerInfo]:
+        """
+        根据配置策略过滤多重回复
+
+        Args:
+            reply_actions: 原始回复动作列表
+
+        Returns:
+            过滤后的回复动作列表
+        """
+        if len(reply_actions) <= 1:
+            return reply_actions
+
+        strategy = global_config.chat.multiple_replies_strategy
+
+        if strategy == "keep_first":
+            # 保留第一个回复
+            selected = reply_actions[0]
+            logger.info(f"[多重回复] 使用策略 'keep_first'，选择第一个回复: {selected.action_type}")
+            return [selected]
+
+        elif strategy == "keep_last":
+            # 保留最后一个回复
+            selected = reply_actions[-1]
+            logger.info(f"[多重回复] 使用策略 'keep_last'，选择最后一个回复: {selected.action_type}")
+            return [selected]
+
+        elif strategy == "keep_best":
+            # 保留最佳回复（这里可以根据reasoning、action_type等来评分）
+            best_action = self._select_best_reply(reply_actions)
+            logger.info(f"[多重回复] 使用策略 'keep_best'，选择最佳回复: {best_action.action_type}")
+            return [best_action]
+
+        else:
+            # 默认保留第一个
+            logger.warning(f"[多重回复] 未知策略 '{strategy}'，默认保留第一个回复")
+            return [reply_actions[0]]
+
+    def _select_best_reply(self, reply_actions: list[ActionPlannerInfo]) -> ActionPlannerInfo:
+        """
+        从多个回复动作中选择最佳的一个
+
+        Args:
+            reply_actions: 回复动作列表
+
+        Returns:
+            选出的最佳回复动作
+        """
+        # 定义优先级映射
+        action_type_priority = {
+            "reply": 3,        # 针对特定消息的回复，优先级最高
+            "proactive_reply": 2,  # 主动回复，优先级中等
+            "respond": 1,      # 统一回应，优先级最低
+        }
+
+        # 首先按动作类型排序
+        sorted_actions = sorted(
+            reply_actions,
+            key=lambda x: action_type_priority.get(x.action_type, 0),
+            reverse=True
+        )
+
+        # 如果有相同优先级的，选择reasoning更长的（通常表示更详细的思考）
+        if len(sorted_actions) > 1:
+            same_priority = [a for a in sorted_actions
+                           if action_type_priority.get(a.action_type, 0) == action_type_priority.get(sorted_actions[0].action_type, 0)]
+
+            if len(same_priority) > 1:
+                # 选择reasoning最长的
+                best = max(same_priority, key=lambda x: len(x.reasoning or ""))
+                logger.debug(f"[多重回复] 多个相同优先级动作，选择reasoning最长的: {best.action_type}")
+                return best
+
+        return sorted_actions[0]
 
     async def _execute_single_reply_action(
         self, action_info: ActionPlannerInfo, plan: Plan, clear_unread: bool = True
