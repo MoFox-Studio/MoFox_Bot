@@ -592,35 +592,6 @@ class DefaultReplyer:
                     if user_info_obj:
                         sender_name = getattr(user_info_obj, "user_nickname", "") or getattr(user_info_obj, "user_cardname", "")
 
-                    # 获取参与者信息
-                    participants = []
-                    try:
-                        # 尝试从聊天流中获取参与者信息
-                        if hasattr(stream, "context_manager"):
-                            history_manager = stream.context_manager
-                            # 获取最近的参与者列表
-                            recent_records = history_manager.get_memory_chat_history(
-                                user_id=getattr(stream.user_info, "user_id", ""),
-                                count=10,
-                                memory_types=["chat_message", "system_message"]
-                            )
-                            # 提取唯一的参与者名称
-                            for record in recent_records[:5]:  # 最近5条记录
-                                content = record.get("content", {})
-                                participant = content.get("participant_name")
-                                if participant and participant not in participants:
-                                    participants.append(participant)
-
-                                # 如果消息包含发送者信息，也添加到参与者列表
-                                if content.get("sender_name") and content.get("sender_name") not in participants:
-                                    participants.append(content.get("sender_name"))
-                    except Exception as e:
-                        logger.debug(f"获取参与者信息失败: {e}")
-
-                    # 如果发送者不在参与者列表中，添加进去
-                    if sender_name and sender_name not in participants:
-                        participants.insert(0, sender_name)
-
                     # 格式化聊天历史为更友好的格式
                     formatted_history = ""
                     if chat_history:
@@ -632,7 +603,6 @@ class DefaultReplyer:
                     query_context = {
                         "chat_history": formatted_history,
                         "sender": sender_name,
-                        "participants": participants,
                     }
 
                     # 使用记忆管理器的智能检索（多查询策略）

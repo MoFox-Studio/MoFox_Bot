@@ -917,7 +917,6 @@ class MemoryTools:
             )
 
             # 获取上下文信息
-            participants = context.get("participants", []) if context else []
             chat_history = context.get("chat_history", "") if context else ""
             sender = context.get("sender", "") if context else ""
 
@@ -925,18 +924,17 @@ class MemoryTools:
             recent_chat = ""
             if chat_history:
                 lines = chat_history.strip().split("\n")
-                # 取最近5条消息
-                recent_lines = lines[-5:] if len(lines) > 5 else lines
+                # 取最近10条消息
+                recent_lines = lines[-10:] if len(lines) > 10 else lines
                 recent_chat = "\n".join(recent_lines)
 
+            import datetime
+            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             prompt = f"""基于聊天上下文为查询生成3-5个不同角度的搜索语句，并识别查询意图对应的记忆类型（JSON格式）。
 
-**当前查询：** {query}
-**发送者：** {sender if sender else '未知'}
-**参与者：** {', '.join(participants) if participants else '无'}
-**当前时间：** {__import__('datetime').datetime.now().__str__()}
+**当前时间：** {current_time}
 
-**最近聊天记录（最近5条）：**
+**最近聊天记录（最近10条）：**
 {recent_chat if recent_chat else '无聊天历史'}
 
 ---

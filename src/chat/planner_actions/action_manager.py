@@ -301,7 +301,7 @@ class ChatterActionManager:
 
                 async def _after_reply():
                     # 发送并存储回复
-                    loop_info, reply_text, cycle_timers_reply = await self._send_and_store_reply(
+                    reply_text, cycle_timers_reply = await self._send_and_store_reply(
                         chat_stream,
                         response_set,
                         asyncio.get_event_loop().time(),
@@ -313,14 +313,14 @@ class ChatterActionManager:
                     )
 
                     # 记录回复动作到目标消息
-                    asyncio.create_task(self._record_action_to_message(chat_stream, action_name, target_message, action_data))
+                    await self._record_action_to_message(chat_stream, action_name, target_message, action_data)
 
                     # 回复成功，重置打断计数
                     await self._reset_interruption_count_after_action(chat_stream.stream_id)
 
-                    return loop_info, reply_text, cycle_timers_reply
-                loop_info, reply_text, _ = await _after_reply()
-                return {"action_type": action_name, "success": True, "reply_text": reply_text, "loop_info": loop_info}
+                    return reply_text
+                asyncio.create_task(_after_reply())
+                return {"action_type": action_name, "success": True}
 
         except Exception as e:
             logger.error(f"{log_prefix} 执行动作时出错: {e}")
@@ -477,7 +477,7 @@ class ChatterActionManager:
         thinking_id,
         actions,
         should_quote_reply: bool | None = None,
-    ) -> tuple[dict[str, Any], str, dict[str, float]]:
+    ) -> tuple[str, dict[str, float]]:
         """
         发送并存储回复信息
 
@@ -540,20 +540,7 @@ class ChatterActionManager:
                 action_name="reply",
             )
 
-        # 构建循环信息
-        loop_info: dict[str, Any] = {
-            "loop_plan_info": {
-                "action_result": actions,
-            },
-            "loop_action_info": {
-                "action_taken": True,
-                "reply_text": reply_text,
-                "command": "",
-                "taken_time": time.time(),
-            },
-        }
-
-        return loop_info, reply_text, cycle_timers
+        return reply_text, cycle_timers
 
     async def send_response(
         self, chat_stream, reply_set, thinking_start_time, message_data, should_quote_reply: bool | None = None
