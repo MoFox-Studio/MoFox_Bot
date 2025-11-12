@@ -22,23 +22,23 @@ class ReplyAction(BaseAction):
     - 专注于理解和回应单条消息的具体内容
     - 适合 Focus 模式下的精准回复
     """
-    
+
     # 动作基本信息
     action_name = "reply"
     action_description = "针对特定消息进行精准回复。深度理解并回应单条消息的具体内容。需要指定目标消息ID。"
-    
+
     # 激活设置
     activation_type = ActionActivationType.ALWAYS  # 回复动作总是可用
     mode_enable = ChatMode.ALL  # 在所有模式下都可用
     parallel_action = False  # 回复动作不能与其他动作并行
-    
+
     # 动作参数定义
     action_parameters: ClassVar = {
         "target_message_id": "要回复的目标消息ID（必需，来自未读消息的 <m...> 标签）",
         "content": "回复的具体内容（可选，由LLM生成）",
         "should_quote_reply": "是否引用原消息（可选，true/false，默认false。群聊中回复较早消息或需要明确指向时使用true）",
     }
-    
+
     # 动作使用场景
     action_require: ClassVar = [
         "需要针对特定消息进行精准回复时使用",
@@ -48,10 +48,10 @@ class ReplyAction(BaseAction):
         "群聊中需要明确回应某个特定用户或问题时使用",
         "关注单条消息的具体内容和上下文细节",
     ]
-    
+
     # 关联类型
     associated_types: ClassVar[list[str]] = ["text"]
-    
+
     async def execute(self) -> tuple[bool, str]:
         """执行reply动作
         
@@ -70,21 +70,21 @@ class RespondAction(BaseAction):
     - 适合对于群聊消息下的宏观回应
     - 避免与单一用户深度对话而忽略其他用户的消息
     """
-    
+
     # 动作基本信息
     action_name = "respond"
     action_description = "统一回应所有未读消息。理解整体对话动态和话题走向，生成连贯的回复。无需指定目标消息。"
-    
+
     # 激活设置
     activation_type = ActionActivationType.ALWAYS  # 回应动作总是可用
     mode_enable = ChatMode.ALL  # 在所有模式下都可用
     parallel_action = False  # 回应动作不能与其他动作并行
-    
+
     # 动作参数定义
     action_parameters: ClassVar = {
         "content": "回复的具体内容（可选，由LLM生成）",
     }
-    
+
     # 动作使用场景
     action_require: ClassVar = [
         "需要统一回应多条未读消息时使用（Normal 模式专用）",
@@ -94,10 +94,10 @@ class RespondAction(BaseAction):
         "适合群聊中的自然对话流，无需精确指向特定消息",
         "可以同时回应多个话题或参与者",
     ]
-    
+
     # 关联类型
     associated_types: ClassVar[list[str]] = ["text"]
-    
+
     async def execute(self) -> tuple[bool, str]:
         """执行respond动作
         

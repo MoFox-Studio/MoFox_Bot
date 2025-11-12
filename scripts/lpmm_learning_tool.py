@@ -38,7 +38,7 @@ OPENIE_OUTPUT_DIR = os.path.join(ROOT_PATH, "data", "openie")
 TEMP_DIR = os.path.join(ROOT_PATH, "temp", "lpmm_cache")
 
 # ========== 性能配置参数 ==========
-# 
+#
 # 知识提取（步骤2：txt转json）并发控制
 # - 控制同时进行的LLM提取请求数量
 # - 推荐值: 3-10，取决于API速率限制
@@ -184,7 +184,7 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
         tuple: (doc_item或None, failed_hash或None)
     """
     temp_file_path = os.path.join(TEMP_DIR, f"{pg_hash}.json")
-    
+
     # 🔧 优化：使用异步文件检查，避免阻塞
     if os.path.exists(temp_file_path):
         try:
@@ -215,11 +215,11 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
             "extracted_entities": extracted_data.get("entities", []),
             "extracted_triples": extracted_data.get("triples", []),
         }
-        
+
         # 保存到缓存（异步写入）
         async with aiofiles.open(temp_file_path, "wb") as f:
             await f.write(orjson.dumps(doc_item))
-        
+
         return doc_item, None
     except Exception as e:
         logger.error(f"提取信息失败：{pg_hash}, 错误：{e}")
@@ -249,13 +249,13 @@ async def extract_information(paragraphs_dict, model_set):
     os.makedirs(TEMP_DIR, exist_ok=True)
 
     failed_hashes, open_ie_docs = [], []
-    
+
     # 🔧 关键修复：创建单个 LLM 请求实例，复用连接
     llm_api = LLMRequest(model_set=model_set, request_type="lpmm_extraction")
-    
+
     # 🔧 并发控制：限制最大并发数，防止速率限制
     semaphore = asyncio.Semaphore(MAX_EXTRACTION_CONCURRENCY)
-    
+
     async def extract_with_semaphore(pg_hash, paragraph):
         """带信号量控制的提取函数"""
         async with semaphore:
@@ -266,7 +266,7 @@ async def extract_information(paragraphs_dict, model_set):
         extract_with_semaphore(p_hash, paragraph)
         for p_hash, paragraph in paragraphs_dict.items()
     ]
-    
+
     total = len(tasks)
     completed = 0
 
@@ -284,7 +284,7 @@ async def extract_information(paragraphs_dict, model_set):
         TimeRemainingColumn(),
     ) as progress:
         task = progress.add_task("[cyan]正在提取信息...", total=total)
-        
+
         # 🔧 优化：使用 asyncio.gather 并发执行所有任务
         # return_exceptions=True 确保单个失败不影响其他任务
         for coro in asyncio.as_completed(tasks):
@@ -293,7 +293,7 @@ async def extract_information(paragraphs_dict, model_set):
                 failed_hashes.append(failed_hash)
             elif doc_item:
                 open_ie_docs.append(doc_item)
-            
+
             completed += 1
             progress.update(task, advance=1)
 
@@ -415,7 +415,7 @@ def rebuild_faiss_only():
     logger.info("--- 重建 FAISS 索引 ---")
     # 重建索引不需要并发参数（不涉及 embedding 生成）
     embed_manager = EmbeddingManager()
-    
+
     logger.info("正在加载现有的 Embedding 库...")
     try:
         embed_manager.load_from_file()

@@ -70,12 +70,12 @@ class MemoryTools:
         self.max_expand_depth = max_expand_depth
         self.expand_semantic_threshold = expand_semantic_threshold
         self.search_top_k = search_top_k
-        
+
         # 保存权重配置
         self.base_vector_weight = search_vector_weight
         self.base_importance_weight = search_importance_weight
         self.base_recency_weight = search_recency_weight
-        
+
         # 保存阈值过滤配置
         self.search_min_importance = search_min_importance
         self.search_similarity_threshold = search_similarity_threshold
@@ -511,14 +511,14 @@ class MemoryTools:
 
             # 1. 根据策略选择检索方式
             llm_prefer_types = []  # LLM识别的偏好节点类型
-            
+
             if use_multi_query:
                 # 多查询策略（返回节点列表 + 偏好类型）
                 similar_nodes, llm_prefer_types = await self._multi_query_search(query, top_k, context)
             else:
                 # 传统单查询策略
                 similar_nodes = await self._single_query_search(query, top_k)
-            
+
             # 合并用户指定的偏好类型和LLM识别的偏好类型
             all_prefer_types = list(set(prefer_node_types + llm_prefer_types))
             if all_prefer_types:
@@ -546,7 +546,7 @@ class MemoryTools:
                             # 记录最高分数
                             if mem_id not in memory_scores or similarity > memory_scores[mem_id]:
                                 memory_scores[mem_id] = similarity
-            
+
             # 🔥 详细日志：检查初始召回情况
             logger.info(
                 f"初始向量搜索: 返回{len(similar_nodes)}个节点 → "
@@ -554,8 +554,8 @@ class MemoryTools:
             )
             if len(initial_memory_ids) == 0:
                 logger.warning(
-                    f"⚠️ 向量搜索未找到任何记忆！"
-                    f"可能原因：1) 嵌入模型理解问题 2) 记忆节点未建立索引 3) 查询表达与存储内容差异过大"
+                    "⚠️ 向量搜索未找到任何记忆！"
+                    "可能原因：1) 嵌入模型理解问题 2) 记忆节点未建立索引 3) 查询表达与存储内容差异过大"
                 )
                 # 输出相似节点的详细信息用于调试
                 if similar_nodes:
@@ -613,7 +613,7 @@ class MemoryTools:
                 key=lambda x: final_scores[x],
                 reverse=True
             )  # 🔥 不再提前截断，让所有候选参与详细评分
-            
+
             # 🔍 统计初始记忆的相似度分布（用于诊断）
             if memory_scores:
                 similarities = list(memory_scores.values())
@@ -628,7 +628,7 @@ class MemoryTools:
             # 5. 获取完整记忆并进行最终排序（优化后的动态权重系统）
             memories_with_scores = []
             filter_stats = {"importance": 0, "similarity": 0, "total_checked": 0}  # 过滤统计
-            
+
             for memory_id in sorted_memory_ids:  # 遍历所有候选
                 memory = self.graph_store.get_memory_by_id(memory_id)
                 if memory:
@@ -636,7 +636,7 @@ class MemoryTools:
                     # 基础分数
                     similarity_score = final_scores[memory_id]
                     importance_score = memory.importance
-                    
+
                     # 🆕 区分记忆来源（用于过滤）
                     is_initial_memory = memory_id in memory_scores  # 是否来自初始向量搜索
                     true_similarity = memory_scores.get(memory_id, 0.0) if is_initial_memory else None
@@ -659,16 +659,16 @@ class MemoryTools:
                         activation_score = memory.activation
 
                     # 🆕 动态权重计算：使用配置的基础权重 + 根据记忆类型微调
-                    memory_type = memory.memory_type.value if hasattr(memory.memory_type, 'value') else str(memory.memory_type)
-                    
+                    memory_type = memory.memory_type.value if hasattr(memory.memory_type, "value") else str(memory.memory_type)
+
                     # 检测记忆的主要节点类型
                     node_types_count = {}
                     for node in memory.nodes:
-                        nt = node.node_type.value if hasattr(node.node_type, 'value') else str(node.node_type)
+                        nt = node.node_type.value if hasattr(node.node_type, "value") else str(node.node_type)
                         node_types_count[nt] = node_types_count.get(nt, 0) + 1
-                    
+
                     dominant_node_type = max(node_types_count.items(), key=lambda x: x[1])[0] if node_types_count else "unknown"
-                    
+
                     # 根据记忆类型和节点类型计算调整系数（在配置权重基础上微调）
                     if dominant_node_type in ["ATTRIBUTE", "REFERENCE"] or memory_type == "FACT":
                         # 事实性记忆：提升相似度权重，降低时效性权重
@@ -698,41 +698,41 @@ class MemoryTools:
                             "importance": 1.0,
                             "recency": 1.0,
                         }
-                    
+
                     # 应用调整后的权重（基于配置的基础权重）
                     weights = {
                         "similarity": self.base_vector_weight * type_adjustments["similarity"],
                         "importance": self.base_importance_weight * type_adjustments["importance"],
                         "recency": self.base_recency_weight * type_adjustments["recency"],
                     }
-                    
+
                     # 归一化权重（确保总和为1.0）
                     total_weight = sum(weights.values())
                     if total_weight > 0:
                         weights = {k: v / total_weight for k, v in weights.items()}
-                    
+
                     # 综合分数计算（🔥 移除激活度影响）
                     final_score = (
                         similarity_score * weights["similarity"] +
                         importance_score * weights["importance"] +
                         recency_score * weights["recency"]
                     )
-                    
+
                     # 🆕 阈值过滤策略：
                     # 1. 重要性过滤：应用于所有记忆（过滤极低质量）
                     if memory.importance < self.search_min_importance:
                         filter_stats["importance"] += 1
                         logger.debug(f"❌ 过滤 {memory.id[:8]}: 重要性 {memory.importance:.2f} < 阈值 {self.search_min_importance}")
                         continue
-                    
+
                     # 2. 相似度过滤：不再对初始向量搜索结果过滤（信任向量搜索的排序）
                     # 理由：向量搜索已经按相似度排序，返回的都是最相关结果
                     # 如果再用阈值过滤，会导致"最相关的也不够相关"的矛盾
-                    # 
+                    #
                     # 注意：如果未来需要对扩展记忆过滤，可以在这里添加逻辑
                     # if not is_initial_memory and some_score < threshold:
                     #     continue
-                    
+
                     # 记录通过过滤的记忆（用于调试）
                     if is_initial_memory:
                         logger.debug(
@@ -744,11 +744,11 @@ class MemoryTools:
                             f"✅ 保留 {memory.id[:8]} [扩展]: 重要性={memory.importance:.2f}, "
                             f"综合分数={final_score:.4f}"
                         )
-                    
+
                     # 🆕 节点类型加权：对REFERENCE/ATTRIBUTE节点额外加分（促进事实性信息召回）
                     if "REFERENCE" in node_types_count or "ATTRIBUTE" in node_types_count:
                         final_score *= 1.1  # 10% 加成
-                    
+
                     # 🆕 用户指定的优先节点类型额外加权
                     if prefer_node_types:
                         for prefer_type in prefer_node_types:
@@ -756,7 +756,7 @@ class MemoryTools:
                                 final_score *= 1.15  # 15% 额外加成
                                 logger.debug(f"记忆 {memory.id[:8]} 包含优先节点类型 {prefer_type}，加权后分数: {final_score:.4f}")
                                 break
-                    
+
                     memories_with_scores.append((memory, final_score, dominant_node_type))
 
             # 按综合分数排序
@@ -766,7 +766,7 @@ class MemoryTools:
             # 统计过滤情况
             total_candidates = len(all_memory_ids)
             filtered_count = total_candidates - len(memories_with_scores)
-            
+
             # 6. 格式化结果（包含调试信息）
             results = []
             for memory, score, node_type in memories_with_scores[:top_k]:
@@ -787,7 +787,7 @@ class MemoryTools:
                 f"过滤{filtered_count}个 (重要性过滤) → "
                 f"最终返回{len(results)}条记忆"
             )
-            
+
             # 如果过滤率过高，发出警告
             if total_candidates > 0:
                 filter_rate = filtered_count / total_candidates
@@ -1000,20 +1000,21 @@ class MemoryTools:
             response, _ = await llm.generate_response_async(prompt, temperature=0.3, max_tokens=300)
 
             import re
+
             import orjson
-            
+
             # 清理Markdown代码块
             response = re.sub(r"```json\s*", "", response)
             response = re.sub(r"```\s*$", "", response).strip()
 
             # 解析JSON
             data = orjson.loads(response)
-            
+
             # 提取查询列表
             queries = data.get("queries", [])
             result_queries = [(item.get("text", "").strip(), float(item.get("weight", 0.5)))
                              for item in queries if item.get("text", "").strip()]
-            
+
             # 提取偏好节点类型
             prefer_node_types = data.get("prefer_node_types", [])
             # 确保类型正确且有效
@@ -1062,7 +1063,7 @@ class MemoryTools:
             limit=top_k * 5,  # 🔥 从2倍提升到5倍，提高初始召回率
             min_similarity=0.0,  # 不在这里过滤，交给后续评分
         )
-        
+
         logger.debug(f"单查询向量搜索: 查询='{query}', 返回节点数={len(similar_nodes)}")
         if similar_nodes:
             logger.debug(f"Top 3相似度: {[f'{sim:.3f}' for _, sim, _ in similar_nodes[:3]]}")

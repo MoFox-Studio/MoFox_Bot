@@ -417,7 +417,7 @@ class MessageManager:
                 return
 
             # 记录详细信息
-            msg_previews = [f"{str(msg.message_id)[:8] if msg.message_id else 'unknown'}:{msg.processed_plain_text[:20] if msg.processed_plain_text else '(空)'}" 
+            msg_previews = [f"{str(msg.message_id)[:8] if msg.message_id else 'unknown'}:{msg.processed_plain_text[:20] if msg.processed_plain_text else '(空)'}"
                           for msg in unread_messages[:3]]  # 只显示前3条
             logger.info(f"🧹 [清除未读] stream={stream_id[:8]}, 开始清除 {len(unread_messages)} 条未读消息, 示例: {msg_previews}")
 
@@ -446,15 +446,15 @@ class MessageManager:
             context = chat_stream.context_manager.context
             if hasattr(context, "unread_messages") and context.unread_messages:
                 unread_count = len(context.unread_messages)
-                
+
                 # 如果还有未读消息，说明 action_manager 可能遗漏了，标记它们
-                if unread_count > 0:   
+                if unread_count > 0:
                     # 获取所有未读消息的 ID
                     message_ids = [msg.message_id for msg in context.unread_messages]
-                    
+
                     # 标记为已读（会移到历史消息）
                     success = chat_stream.context_manager.mark_messages_as_read(message_ids)
-                    
+
                     if success:
                         logger.debug(f"✅ stream={stream_id[:8]}, 成功标记 {unread_count} 条消息为已读")
                     else:
@@ -481,7 +481,7 @@ class MessageManager:
                 try:
                     chat_manager = get_chat_manager()
                     chat_stream = await chat_manager.get_stream(stream_id)
-                    if chat_stream and hasattr(chat_stream.context_manager.context, 'is_chatter_processing'):
+                    if chat_stream and hasattr(chat_stream.context_manager.context, "is_chatter_processing"):
                         chat_stream.context_manager.context.is_chatter_processing = is_processing
                         logger.debug(f"设置StreamContext处理状态: stream={stream_id}, processing={is_processing}")
                 except Exception as e:
@@ -517,7 +517,7 @@ class MessageManager:
                 try:
                     chat_manager = get_chat_manager()
                     chat_stream = await chat_manager.get_stream(stream_id)
-                    if chat_stream and hasattr(chat_stream.context_manager.context, 'is_chatter_processing'):
+                    if chat_stream and hasattr(chat_stream.context_manager.context, "is_chatter_processing"):
                         return chat_stream.context_manager.context.is_chatter_processing
                 except Exception:
                     pass

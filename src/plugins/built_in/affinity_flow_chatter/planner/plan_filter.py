@@ -362,7 +362,7 @@ class ChatterPlanFilter:
                 return "最近没有聊天内容。", "没有未读消息。", []
 
             stream_context = chat_stream.context_manager
-            
+
             # 获取真正的已读和未读消息
             read_messages = stream_context.context.history_messages  # 已读消息存储在history_messages中
             if not read_messages:
@@ -652,30 +652,30 @@ class ChatterPlanFilter:
         if not action_info:
             logger.debug(f"动作 {action_name} 不在可用动作列表中，保留所有参数")
             return action_data
-        
+
         # 获取该动作定义的合法参数
         defined_params = set(action_info.action_parameters.keys())
-        
+
         # 合法参数集合
         valid_params = defined_params
-        
+
         # 过滤参数
         filtered_data = {}
         removed_params = []
-        
+
         for key, value in action_data.items():
             if key in valid_params:
                 filtered_data[key] = value
             else:
                 removed_params.append(key)
-        
+
         # 记录被移除的参数
         if removed_params:
             logger.info(
                 f"🧹 [参数过滤] 动作 '{action_name}' 移除了多余参数: {removed_params}. "
                 f"合法参数: {sorted(valid_params)}"
             )
-        
+
         return filtered_data
 
     def _filter_no_actions(self, action_list: list[ActionPlannerInfo]) -> list[ActionPlannerInfo]:

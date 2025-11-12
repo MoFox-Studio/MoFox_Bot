@@ -6,10 +6,10 @@
 import asyncio
 import base64
 import datetime
-import filetype
 from collections.abc import Callable
 
 import aiohttp
+import filetype
 from maim_message import UserInfo
 
 from src.chat.message_receive.chat_stream import get_chat_manager

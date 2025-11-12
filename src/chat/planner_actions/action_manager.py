@@ -248,16 +248,16 @@ class ChatterActionManager:
                 try:
                     # 根据动作类型确定提示词模式
                     prompt_mode = "s4u" if action_name == "reply" else "normal"
-                    
+
                     # 将prompt_mode传递给generate_reply
                     action_data_with_mode = (action_data or {}).copy()
                     action_data_with_mode["prompt_mode"] = prompt_mode
-                    
+
                     # 只传递当前正在执行的动作，而不是所有可用动作
                     # 这样可以让LLM明确知道"已决定执行X动作"，而不是"有这些动作可用"
                     current_action_info = self._using_actions.get(action_name)
                     current_actions: dict[str, Any] = {action_name: current_action_info} if current_action_info else {}
-                    
+
                     # 附加目标消息信息（如果存在）
                     if target_message:
                         # 提取目标消息的关键信息
@@ -268,7 +268,7 @@ class ChatterActionManager:
                             "time": getattr(target_message, "time", 0),
                         }
                         current_actions["_target_message"] = target_msg_info
-                    
+
                     success, response_set, _ = await generator_api.generate_reply(
                         chat_stream=chat_stream,
                         reply_message=target_message,
@@ -295,12 +295,12 @@ class ChatterActionManager:
                 should_quote_reply = None
                 if action_data and isinstance(action_data, dict):
                     should_quote_reply = action_data.get("should_quote_reply", None)
-                
+
                 # respond动作默认不引用回复，保持对话流畅
                 if action_name == "respond" and should_quote_reply is None:
                     should_quote_reply = False
 
-                async def _after_reply():              
+                async def _after_reply():
                     # 发送并存储回复
                     loop_info, reply_text, cycle_timers_reply = await self._send_and_store_reply(
                         chat_stream,

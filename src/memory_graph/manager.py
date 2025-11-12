@@ -149,7 +149,7 @@ class MemoryManager:
             # 读取阈值过滤配置
             search_min_importance = self.config.search_min_importance
             search_similarity_threshold = self.config.search_similarity_threshold
-            
+
             logger.info(
                 f"📊 配置检查: search_max_expand_depth={expand_depth}, "
                 f"search_expand_semantic_threshold={expand_semantic_threshold}, "
@@ -415,7 +415,7 @@ class MemoryManager:
             # 使用配置的默认值
             if top_k is None:
                 top_k = getattr(self.config, "search_top_k", 10)
-            
+
             # 准备搜索参数
             params = {
                 "query": query,
@@ -948,7 +948,7 @@ class MemoryManager:
                     )
                 else:
                     logger.debug(f"记忆已删除: {memory_id} (删除了 {deleted_vectors} 个向量)")
-                
+
                 # 4. 保存更新
                 await self.persistence.save_graph_store(self.graph_store)
                 return True
@@ -981,7 +981,7 @@ class MemoryManager:
         try:
             forgotten_count = 0
             all_memories = self.graph_store.get_all_memories()
-            
+
             # 获取配置参数
             min_importance = getattr(self.config, "forgetting_min_importance", 0.8)
             decay_rate = getattr(self.config, "activation_decay_rate", 0.9)
@@ -1007,10 +1007,10 @@ class MemoryManager:
                     try:
                         last_access_dt = datetime.fromisoformat(last_access)
                         days_passed = (datetime.now() - last_access_dt).days
-                        
+
                         # 应用指数衰减：activation = base * (decay_rate ^ days)
                         current_activation = base_activation * (decay_rate ** days_passed)
-                        
+
                         logger.debug(
                             f"记忆 {memory.id[:8]}: 基础激活度={base_activation:.3f}, "
                             f"经过{days_passed}天衰减后={current_activation:.3f}"
@@ -1032,20 +1032,20 @@ class MemoryManager:
             # 批量遗忘记忆（不立即清理孤立节点）
             if memories_to_forget:
                 logger.info(f"开始批量遗忘 {len(memories_to_forget)} 条记忆...")
-                
+
                 for memory_id, activation in memories_to_forget:
                     # cleanup_orphans=False：暂不清理孤立节点
                     success = await self.forget_memory(memory_id, cleanup_orphans=False)
                     if success:
                         forgotten_count += 1
-                
+
                 # 统一清理孤立节点和边
                 logger.info("批量遗忘完成，开始统一清理孤立节点和边...")
                 orphan_nodes, orphan_edges = await self._cleanup_orphan_nodes_and_edges()
-                
+
                 # 保存最终更新
                 await self.persistence.save_graph_store(self.graph_store)
-                
+
                 logger.info(
                     f"✅ 自动遗忘完成: 遗忘了 {forgotten_count} 条记忆, "
                     f"清理了 {orphan_nodes} 个孤立节点, {orphan_edges} 条孤立边"
@@ -1076,31 +1076,31 @@ class MemoryManager:
             # 1. 清理孤立节点
             # graph_store.node_to_memories 记录了每个节点属于哪些记忆
             nodes_to_remove = []
-            
+
             for node_id, memory_ids in list(self.graph_store.node_to_memories.items()):
                 # 如果节点不再属于任何记忆，标记为删除
                 if not memory_ids:
                     nodes_to_remove.append(node_id)
-            
+
             # 从图中删除孤立节点
             for node_id in nodes_to_remove:
                 if self.graph_store.graph.has_node(node_id):
                     self.graph_store.graph.remove_node(node_id)
                     orphan_nodes_count += 1
-                
+
                 # 从映射中删除
                 if node_id in self.graph_store.node_to_memories:
                     del self.graph_store.node_to_memories[node_id]
-            
+
             # 2. 清理孤立边（指向已删除节点的边）
             edges_to_remove = []
-            
-            for source, target, edge_id in self.graph_store.graph.edges(data='edge_id'):
+
+            for source, target, edge_id in self.graph_store.graph.edges(data="edge_id"):
                 # 检查边的源节点和目标节点是否还存在于node_to_memories中
                 if source not in self.graph_store.node_to_memories or \
                    target not in self.graph_store.node_to_memories:
                     edges_to_remove.append((source, target))
-            
+
             # 删除孤立边
             for source, target in edges_to_remove:
                 try:
@@ -1108,12 +1108,12 @@ class MemoryManager:
                     orphan_edges_count += 1
                 except Exception as e:
                     logger.debug(f"删除边失败 {source} -> {target}: {e}")
-            
+
             if orphan_nodes_count > 0 or orphan_edges_count > 0:
                 logger.info(
                     f"清理完成: {orphan_nodes_count} 个孤立节点, {orphan_edges_count} 条孤立边"
                 )
-            
+
             return orphan_nodes_count, orphan_edges_count
 
         except Exception as e:
@@ -1255,7 +1255,7 @@ class MemoryManager:
                 mem for mem in recent_memories
                 if mem.importance >= min_importance_for_consolidation
             ]
-            
+
             result["importance_filtered"] = len(recent_memories) - len(important_memories)
             logger.info(
                 f"📊 步骤2: 重要性过滤 (阈值={min_importance_for_consolidation:.2f}): "
@@ -1379,26 +1379,26 @@ class MemoryManager:
             # ===== 步骤4: 向量检索关联记忆 + LLM分析关系 =====
             # 过滤掉已删除的记忆
             remaining_memories = [m for m in important_memories if m.id not in deleted_ids]
-            
+
             if not remaining_memories:
                 logger.info("✅ 记忆整理完成: 去重后无剩余记忆")
                 return
 
             logger.info(f"📍 步骤4: 开始关联分析 ({len(remaining_memories)} 条记忆)...")
-            
+
             # 分批处理记忆关联
             llm_batch_size = getattr(self.config, "consolidation_llm_batch_size", 10)
             max_candidates_per_memory = getattr(self.config, "consolidation_max_candidates", 5)
             min_confidence = getattr(self.config, "consolidation_min_confidence", 0.6)
-            
+
             all_new_edges = []  # 收集所有新建的边
-            
+
             for batch_start in range(0, len(remaining_memories), llm_batch_size):
                 batch_end = min(batch_start + llm_batch_size, len(remaining_memories))
                 batch = remaining_memories[batch_start:batch_end]
-                
+
                 logger.debug(f"处理批次 {batch_start//llm_batch_size + 1}/{(len(remaining_memories)-1)//llm_batch_size + 1}")
-                
+
                 for memory in batch:
                     # 跳过已经有很多连接的记忆
                     existing_edges = len([
@@ -1451,14 +1451,14 @@ class MemoryManager:
                         except Exception as e:
                             logger.warning(f"创建关联边失败: {e}")
                             continue
-                
+
                 # 每个批次后让出控制权
                 await asyncio.sleep(0.01)
 
             # ===== 步骤5: 统一更新记忆数据 =====
             if all_new_edges:
                 logger.info(f"📍 步骤5: 统一更新 {len(all_new_edges)} 条新关联边...")
-                
+
                 for memory, edge, relation in all_new_edges:
                     try:
                         # 添加到图
@@ -2298,7 +2298,7 @@ class MemoryManager:
                     # 使用 asyncio.wait_for 来支持取消
                     await asyncio.wait_for(
                         asyncio.sleep(initial_delay),
-                        timeout=float('inf')  # 允许随时取消
+                        timeout=float("inf")  # 允许随时取消
                     )
 
                     # 检查是否仍然需要运行

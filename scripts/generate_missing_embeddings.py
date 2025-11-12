@@ -19,14 +19,13 @@
 import asyncio
 import sys
 from pathlib import Path
-from typing import List
 
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 async def generate_missing_embeddings(
-    target_node_types: List[str] = None,
+    target_node_types: list[str] = None,
     batch_size: int = 50,
 ):
     """
@@ -46,13 +45,13 @@ async def generate_missing_embeddings(
         target_node_types = [NodeType.TOPIC.value, NodeType.OBJECT.value]
 
     print(f"\n{'='*80}")
-    print(f"🔧 为节点生成嵌入向量")
+    print("🔧 为节点生成嵌入向量")
     print(f"{'='*80}\n")
     print(f"目标节点类型: {', '.join(target_node_types)}")
     print(f"批处理大小: {batch_size}\n")
 
     # 1. 初始化记忆管理器
-    print(f"🔧 正在初始化记忆管理器...")
+    print("🔧 正在初始化记忆管理器...")
     await initialize_memory_manager()
     manager = get_memory_manager()
 
@@ -60,10 +59,10 @@ async def generate_missing_embeddings(
         print("❌ 记忆管理器初始化失败")
         return
 
-    print(f"✅ 记忆管理器已初始化\n")
+    print("✅ 记忆管理器已初始化\n")
 
     # 2. 获取已索引的节点ID
-    print(f"🔍 检查现有向量索引...")
+    print("🔍 检查现有向量索引...")
     existing_node_ids = set()
     try:
         vector_count = manager.vector_store.collection.count()
@@ -78,14 +77,14 @@ async def generate_missing_embeddings(
                 )
                 if result and "ids" in result:
                     existing_node_ids.update(result["ids"])
-        
+
         print(f"✅ 发现 {len(existing_node_ids)} 个已索引节点\n")
     except Exception as e:
         logger.warning(f"获取已索引节点ID失败: {e}")
-        print(f"⚠️  无法获取已索引节点，将尝试跳过重复项\n")
+        print("⚠️  无法获取已索引节点，将尝试跳过重复项\n")
 
     # 3. 收集需要生成嵌入的节点
-    print(f"🔍 扫描需要生成嵌入的节点...")
+    print("🔍 扫描需要生成嵌入的节点...")
     all_memories = manager.graph_store.get_all_memories()
 
     nodes_to_process = []
@@ -110,7 +109,7 @@ async def generate_missing_embeddings(
                     })
                     type_stats[node.node_type.value]["need_emb"] += 1
 
-    print(f"\n📊 扫描结果:")
+    print("\n📊 扫描结果:")
     for node_type in target_node_types:
         stats = type_stats[node_type]
         already_ok = stats["already_indexed"]
@@ -121,11 +120,11 @@ async def generate_missing_embeddings(
     print(f"\n  总计: {total_target_nodes} 个目标节点, {len(nodes_to_process)} 个需要生成嵌入\n")
 
     if len(nodes_to_process) == 0:
-        print(f"✅ 所有节点已有嵌入向量，无需生成")
+        print("✅ 所有节点已有嵌入向量，无需生成")
         return
 
     # 3. 批量生成嵌入
-    print(f"🚀 开始生成嵌入向量...\n")
+    print("🚀 开始生成嵌入向量...\n")
 
     total_batches = (len(nodes_to_process) + batch_size - 1) // batch_size
     success_count = 0
@@ -193,22 +192,22 @@ async def generate_missing_embeddings(
         print(f"  📊 总进度: {total_processed}/{len(nodes_to_process)} ({progress:.1f}%)\n")
 
     # 4. 保存图数据（更新节点的 embedding 字段）
-    print(f"💾 保存图数据...")
+    print("💾 保存图数据...")
     try:
         await manager.persistence.save_graph_store(manager.graph_store)
-        print(f"✅ 图数据已保存\n")
+        print("✅ 图数据已保存\n")
     except Exception as e:
-        logger.error(f"保存图数据失败", exc_info=True)
+        logger.error("保存图数据失败", exc_info=True)
         print(f"❌ 保存失败: {e}\n")
 
     # 5. 验证结果
-    print(f"🔍 验证向量索引...")
+    print("🔍 验证向量索引...")
     final_vector_count = manager.vector_store.collection.count()
     stats = manager.graph_store.get_statistics()
     total_nodes = stats["total_nodes"]
 
     print(f"\n{'='*80}")
-    print(f"📊 生成完成")
+    print("📊 生成完成")
     print(f"{'='*80}")
     print(f"处理节点数: {len(nodes_to_process)}")
     print(f"成功生成: {success_count}")
@@ -219,7 +218,7 @@ async def generate_missing_embeddings(
     print(f"索引覆盖率: {final_vector_count / total_nodes * 100:.1f}%\n")
 
     # 6. 测试搜索
-    print(f"🧪 测试搜索功能...")
+    print("🧪 测试搜索功能...")
     test_queries = ["小红帽蕾克", "拾风", "杰瑞喵"]
 
     for query in test_queries:

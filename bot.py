@@ -588,7 +588,7 @@ class MaiBotMain:
 
     async def run_async_init(self, main_system):
         """执行异步初始化步骤"""
-        
+
         # 初始化数据库表结构
         await self.initialize_database_async()
 

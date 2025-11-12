@@ -436,7 +436,7 @@ class OpenaiClient(BaseClient):
         # 🔧 优化：增加连接池限制，支持高并发embedding请求
         # 默认httpx限制为100，对于高频embedding场景不够用
         import httpx
-        
+
         limits = httpx.Limits(
             max_keepalive_connections=200,  # 保持活跃连接数（原100）
             max_connections=300,  # 最大总连接数（原100）

@@ -4,7 +4,7 @@
 处理检测结果，执行相应的动作（允许/监控/加盾/阻止/反击）。
 """
 
-from src.chat.security.interfaces import SecurityAction, SecurityCheckResult
+from src.chat.security.interfaces import SecurityCheckResult
 from src.common.logger import get_logger
 
 from .counter_attack import CounterAttackGenerator

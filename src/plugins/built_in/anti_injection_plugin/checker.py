@@ -8,8 +8,8 @@ import time
 
 from src.chat.security.interfaces import (
     SecurityAction,
-    SecurityCheckResult,
     SecurityChecker,
+    SecurityCheckResult,
     SecurityLevel,
 )
 from src.common.logger import get_logger

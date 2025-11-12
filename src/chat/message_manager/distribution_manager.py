@@ -111,9 +111,9 @@ class StreamLoopManager:
         # 获取或创建该流的启动锁
         if stream_id not in self._stream_start_locks:
             self._stream_start_locks[stream_id] = asyncio.Lock()
-        
+
         lock = self._stream_start_locks[stream_id]
-        
+
         # 使用锁防止并发启动同一个流的多个循环任务
         async with lock:
             # 获取流上下文
@@ -148,7 +148,7 @@ class StreamLoopManager:
                     # 紧急取消
                     context.stream_loop_task.cancel()
                     await asyncio.sleep(0.1)
-                
+
                 loop_task = asyncio.create_task(self._stream_loop_worker(stream_id), name=f"stream_loop_{stream_id}")
 
                 # 将任务记录到 StreamContext 中
@@ -249,7 +249,7 @@ class StreamLoopManager:
                         self.stats["total_process_cycles"] += 1
                         if success:
                             logger.info(f"✅ [流工作器] stream={stream_id[:8]}, 任务ID={task_id}, 处理成功")
-                            
+
                             # 🔒 处理成功后，等待一小段时间确保清理操作完成
                             # 这样可以避免在 chatter_manager 清除未读消息之前就进入下一轮循环
                             await asyncio.sleep(0.1)
@@ -379,7 +379,7 @@ class StreamLoopManager:
                 self.chatter_manager.process_stream_context(stream_id, context),
                 name=f"chatter_process_{stream_id}"
             )
-         
+
             # 等待 chatter 任务完成
             results = await chatter_task
             success = results.get("success", False)
@@ -395,8 +395,8 @@ class StreamLoopManager:
             else:
                 logger.warning(f"流处理失败: {stream_id} - {results.get('error_message', '未知错误')}")
 
-            return success  
-        except asyncio.CancelledError:     
+            return success
+        except asyncio.CancelledError:
             if chatter_task and not chatter_task.done():
                 chatter_task.cancel()
             raise

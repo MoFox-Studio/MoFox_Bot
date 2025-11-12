@@ -482,7 +482,7 @@ class GraphStore:
             for node in memory.nodes:
                 if node.id in self.node_to_memories:
                     self.node_to_memories[node.id].discard(memory_id)
-                    
+
                     # 可选：立即清理孤立节点
                     if cleanup_orphans:
                         # 如果该节点不再属于任何记忆，从图中移除节点

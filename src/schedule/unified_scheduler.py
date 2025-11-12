@@ -17,7 +17,6 @@ import uuid
 import weakref
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
