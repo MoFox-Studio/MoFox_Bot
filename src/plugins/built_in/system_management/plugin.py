@@ -114,8 +114,8 @@ class SystemCommand(PlusCommand):
 • /system permission nodes [插件名] - 查看权限节点
 • /system permission allnodes - 查看所有权限节点详情
 """
-       elif target == "prompt":
-           help_text = """📝 提示词注入管理帮助
+        elif target == "prompt":
+            help_text = """📝 提示词注入管理帮助
 
 🔎 查询命令 (需要 `system.prompt.view` 权限):
 • `/system prompt help` - 显示此帮助
@@ -124,8 +124,7 @@ class SystemCommand(PlusCommand):
 • `/system prompt components` - 列出所有已注册的提示词组件
 • `/system prompt info <目标名>` - 查看特定核心提示词的注入详情
 """
-       await self.send_text(help_text)
-
+        await self.send_text(help_text)
     # =================================================================
     # Plugin Management Section
     # =================================================================
