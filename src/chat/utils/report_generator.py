@@ -65,14 +65,28 @@ class HTMLReportGenerator:
                 f"<tr>"
                 f"<td>{model_name}</td>"
                 f"<td>{count}</td>"
-                f"<td>{stat_data[IN_TOK_BY_MODEL].get(model_name, 0)}</td>"
-                f"<td>{stat_data[OUT_TOK_BY_MODEL].get(model_name, 0)}</td>"
+                f"<td>{stat_data[AVG_TOK_BY_MODEL].get(model_name, 0)}</td>"
                 f"<td>{stat_data[TOTAL_TOK_BY_MODEL].get(model_name, 0)}</td>"
+                f"<td>{stat_data[TPS_BY_MODEL].get(model_name, 0):.2f}</td>"
+                f"<td>{stat_data[COST_PER_KTOK_BY_MODEL].get(model_name, 0):.4f} ¥</td>"
                 f"<td>{stat_data[COST_BY_MODEL].get(model_name, 0):.4f} ¥</td>"
                 f"<td>{stat_data[AVG_TIME_COST_BY_MODEL].get(model_name, 0):.3f} 秒</td>"
-                f"<td>{stat_data[STD_TIME_COST_BY_MODEL].get(model_name, 0):.3f} 秒</td>"
                 f"</tr>"
                 for model_name, count in sorted(stat_data[REQ_CNT_BY_MODEL].items())
+            ]
+        )
+        # 按供应商分类统计
+        provider_rows = "\n".join(
+            [
+                f"<tr>"
+                f"<td>{provider_name}</td>"
+                f"<td>{count}</td>"
+                f"<td>{stat_data[TOTAL_TOK_BY_PROVIDER].get(provider_name, 0)}</td>"
+                f"<td>{stat_data[TPS_BY_PROVIDER].get(provider_name, 0):.2f}</td>"
+                f"<td>{stat_data[COST_PER_KTOK_BY_PROVIDER].get(provider_name, 0):.4f} ¥</td>"
+                f"<td>{stat_data[COST_BY_PROVIDER].get(provider_name, 0):.4f} ¥</td>"
+                f"</tr>"
+                for provider_name, count in sorted(stat_data[REQ_CNT_BY_PROVIDER].items())
             ]
         )
         # 按请求类型分类统计
@@ -114,21 +128,53 @@ class HTMLReportGenerator:
                 for chat_id, count in sorted(stat_data[MSG_CNT_BY_CHAT].items())
             ]
         )
+        summary_cards = f"""
+            <div class="summary-cards">
+                <div class="card">
+                    <h3>总花费</h3>
+                    <p>{stat_data.get(TOTAL_COST, 0):.4f} ¥</p>
+                </div>
+                <div class="card">
+                    <h3>总请求数</h3>
+                    <p>{stat_data.get(TOTAL_REQ_CNT, 0)}</p>
+                </div>
+                <div class="card">
+                    <h3>总Token数</h3>
+                    <p>{sum(stat_data.get(TOTAL_TOK_BY_MODEL, {}).values())}</p>
+                </div>
+                 <div class="card">
+                    <h3>总消息数</h3>
+                    <p>{stat_data.get(TOTAL_MSG_CNT, 0)}</p>
+                </div>
+                <div class="card">
+                    <h3>总在线时间</h3>
+                    <p>{format_online_time(int(stat_data.get(ONLINE_TIME, 0)))}</p>
+                </div>
+            </div>
+        """
+
+        # 增加饼图和条形图
+        # static_charts = self._generate_static_charts_div(stat_data, div_id) # 该功能尚未实现
+        static_charts = ""
         return f"""
         <div id="{div_id}" class="tab-content">
             <p class="info-item">
                 <strong>统计时段: </strong>
                 {start_time.strftime("%Y-%m-%d %H:%M:%S")} ~ {now.strftime("%Y-%m-%d %H:%M:%S")}
             </p>
-            <p class="info-item"><strong>总在线时间: </strong>{format_online_time(int(stat_data.get(ONLINE_TIME, 0)))}</p>
-            <p class="info-item"><strong>总消息数: </strong>{stat_data.get(TOTAL_MSG_CNT, 0)}</p>
-            <p class="info-item"><strong>总请求数: </strong>{stat_data.get(TOTAL_REQ_CNT, 0)}</p>
-            <p class="info-item"><strong>总花费: </strong>{stat_data.get(TOTAL_COST, 0):.4f} ¥</p>
+            {summary_cards}
+            {static_charts}
 
             <h2>按模型分类统计</h2>
             <table>
-                <tr><th>模型名称</th><th>调用次数</th><th>输入Token</th><th>输出Token</th><th>Token总量</th><th>累计花费</th><th>平均耗时(秒)</th><th>标准差(秒)</th></tr>
+                <tr><th>模型名称</th><th>调用次数</th><th>平均Token数</th><th>Token总量</th><th>TPS</th><th>每K Token成本</th><th>累计花费</th><th>平均耗时(秒)</th></tr>
                 <tbody>{model_rows}</tbody>
+            </table>
+
+            <h2>按供应商分类统计</h2>
+            <table>
+                <tr><th>供应商名称</th><th>调用次数</th><th>Token总量</th><th>TPS</th><th>每K Token成本</th><th>累计花费</th></tr>
+                <tbody>{provider_rows}</tbody>
             </table>
 
             <h2>按模块分类统计</h2>
@@ -156,7 +202,6 @@ class HTMLReportGenerator:
             </table>
         </div>
         """
-
     def _generate_chart_tab(self, chart_data: dict) -> str:
         """生成图表选项卡的HTML内容。"""
         return f"""

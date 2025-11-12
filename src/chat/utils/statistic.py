@@ -246,6 +246,7 @@ class StatisticOutputTask(AsyncTask):
                 REQ_CNT_BY_USER: defaultdict(int),
                 REQ_CNT_BY_MODEL: defaultdict(int),
                 REQ_CNT_BY_MODULE: defaultdict(int),
+                REQ_CNT_BY_PROVIDER: defaultdict(int),  # New
                 IN_TOK_BY_TYPE: defaultdict(int),
                 IN_TOK_BY_USER: defaultdict(int),
                 IN_TOK_BY_MODEL: defaultdict(int),
@@ -258,15 +259,18 @@ class StatisticOutputTask(AsyncTask):
                 TOTAL_TOK_BY_USER: defaultdict(int),
                 TOTAL_TOK_BY_MODEL: defaultdict(int),
                 TOTAL_TOK_BY_MODULE: defaultdict(int),
+                TOTAL_TOK_BY_PROVIDER: defaultdict(int),  # New
                 TOTAL_COST: 0.0,
                 COST_BY_TYPE: defaultdict(float),
                 COST_BY_USER: defaultdict(float),
                 COST_BY_MODEL: defaultdict(float),
                 COST_BY_MODULE: defaultdict(float),
+                COST_BY_PROVIDER: defaultdict(float),  # New
                 TIME_COST_BY_TYPE: defaultdict(list),
                 TIME_COST_BY_USER: defaultdict(list),
                 TIME_COST_BY_MODEL: defaultdict(list),
                 TIME_COST_BY_MODULE: defaultdict(list),
+                TIME_COST_BY_PROVIDER: defaultdict(list),  # New
                 AVG_TIME_COST_BY_TYPE: defaultdict(float),
                 AVG_TIME_COST_BY_USER: defaultdict(float),
                 AVG_TIME_COST_BY_MODEL: defaultdict(float),
@@ -275,6 +279,17 @@ class StatisticOutputTask(AsyncTask):
                 STD_TIME_COST_BY_USER: defaultdict(float),
                 STD_TIME_COST_BY_MODEL: defaultdict(float),
                 STD_TIME_COST_BY_MODULE: defaultdict(float),
+                # New calculated fields
+                TPS_BY_MODEL: defaultdict(float),
+                COST_PER_KTOK_BY_MODEL: defaultdict(float),
+                AVG_TOK_BY_MODEL: defaultdict(float),
+                TPS_BY_PROVIDER: defaultdict(float),
+                COST_PER_KTOK_BY_PROVIDER: defaultdict(float),
+                # Chart data
+                PIE_CHART_COST_BY_PROVIDER: {},
+                PIE_CHART_REQ_BY_PROVIDER: {},
+                BAR_CHART_COST_BY_MODEL: {},
+                BAR_CHART_REQ_BY_MODEL: {},
             }
             for period_key, _ in collect_period
         }
@@ -309,6 +324,7 @@ class StatisticOutputTask(AsyncTask):
                         request_type = record.get("request_type") or "unknown"
                         user_id = record.get("user_id") or "unknown"
                         model_name = record.get("model_name") or "unknown"
+                        provider_name = record.get("model_api_provider") or "unknown"
 
                         # 提取模块名：如果请求类型包含"."，取第一个"."之前的部分
                         module_name = request_type.split(".")[0] if "." in request_type else request_type
@@ -317,6 +333,7 @@ class StatisticOutputTask(AsyncTask):
                         stats[period_key][REQ_CNT_BY_USER][user_id] += 1
                         stats[period_key][REQ_CNT_BY_MODEL][model_name] += 1
                         stats[period_key][REQ_CNT_BY_MODULE][module_name] += 1
+                        stats[period_key][REQ_CNT_BY_PROVIDER][provider_name] += 1
 
                         prompt_tokens = record.get("prompt_tokens") or 0
                         completion_tokens = record.get("completion_tokens") or 0
@@ -336,6 +353,7 @@ class StatisticOutputTask(AsyncTask):
                         stats[period_key][TOTAL_TOK_BY_USER][user_id] += total_tokens
                         stats[period_key][TOTAL_TOK_BY_MODEL][model_name] += total_tokens
                         stats[period_key][TOTAL_TOK_BY_MODULE][module_name] += total_tokens
+                        stats[period_key][TOTAL_TOK_BY_PROVIDER][provider_name] += total_tokens
 
                         cost = record.get("cost") or 0.0
                         stats[period_key][TOTAL_COST] += cost
@@ -343,6 +361,7 @@ class StatisticOutputTask(AsyncTask):
                         stats[period_key][COST_BY_USER][user_id] += cost
                         stats[period_key][COST_BY_MODEL][model_name] += cost
                         stats[period_key][COST_BY_MODULE][module_name] += cost
+                        stats[period_key][COST_BY_PROVIDER][provider_name] += cost
 
                         # 收集time_cost数据
                         time_cost = record.get("time_cost") or 0.0
@@ -351,32 +370,84 @@ class StatisticOutputTask(AsyncTask):
                             stats[period_key][TIME_COST_BY_USER][user_id].append(time_cost)
                             stats[period_key][TIME_COST_BY_MODEL][model_name].append(time_cost)
                             stats[period_key][TIME_COST_BY_MODULE][module_name].append(time_cost)
+                            stats[period_key][TIME_COST_BY_PROVIDER][provider_name].append(time_cost)
                     break
 
-                    # 计算平均耗时和标准差
-        for period_key in stats:
-            for category in [REQ_CNT_BY_TYPE, REQ_CNT_BY_USER, REQ_CNT_BY_MODEL, REQ_CNT_BY_MODULE]:
-                time_cost_key = f"time_costs_by_{category.split('_')[-1]}"
-                avg_key = f"avg_time_costs_by_{category.split('_')[-1]}"
-                std_key = f"std_time_costs_by_{category.split('_')[-1]}"
+        # -- 计算派生指标 --
+        for period_key, period_stats in stats.items():
+            # 计算模型相关指标
+            for model_name, req_count in period_stats[REQ_CNT_BY_MODEL].items():
+                total_tok = period_stats[TOTAL_TOK_BY_MODEL].get(model_name, 0)
+                total_cost = period_stats[COST_BY_MODEL].get(model_name, 0.0)
+                time_costs = period_stats[TIME_COST_BY_MODEL].get(model_name, [])
+                total_time_cost = sum(time_costs)
 
-                for item_name in stats[period_key][category]:
-                    time_costs = stats[period_key][time_cost_key].get(item_name, [])
+                # TPS
+                if total_time_cost > 0:
+                    period_stats[TPS_BY_MODEL][model_name] = round(total_tok / total_time_cost, 2)
+                # Cost per 1K Tokens
+                if total_tok > 0:
+                    period_stats[COST_PER_KTOK_BY_MODEL][model_name] = round((total_cost / total_tok) * 1000, 4)
+                # Avg Tokens per Request
+                period_stats[AVG_TOK_BY_MODEL][model_name] = round(total_tok / req_count) if req_count > 0 else 0
+
+            # 计算供应商相关指标
+            for provider_name, req_count in period_stats[REQ_CNT_BY_PROVIDER].items():
+                total_tok = period_stats[TOTAL_TOK_BY_PROVIDER].get(provider_name, 0)
+                total_cost = period_stats[COST_BY_PROVIDER].get(provider_name, 0.0)
+                time_costs = period_stats[TIME_COST_BY_PROVIDER].get(provider_name, [])
+                total_time_cost = sum(time_costs)
+
+                # TPS
+                if total_time_cost > 0:
+                    period_stats[TPS_BY_PROVIDER][provider_name] = round(total_tok / total_time_cost, 2)
+                # Cost per 1K Tokens
+                if total_tok > 0:
+                    period_stats[COST_PER_KTOK_BY_PROVIDER][provider_name] = round((total_cost / total_tok) * 1000, 4)
+
+            # 计算平均耗时和标准差
+            for category_key, items in [
+                (REQ_CNT_BY_TYPE, "type"),
+                (REQ_CNT_BY_USER, "user"),
+                (REQ_CNT_BY_MODEL, "model"),
+                (REQ_CNT_BY_MODULE, "module"),
+            ]:
+                time_cost_key = f"time_costs_by_{items}"
+                avg_key = f"avg_time_costs_by_{items}"
+                std_key = f"std_time_costs_by_{items}"
+
+                for item_name in period_stats[category_key]:
+                    time_costs = period_stats[time_cost_key].get(item_name, [])
                     if time_costs:
-                        # 计算平均耗时
-                        avg_time_cost = sum(time_costs) / len(time_costs)
-                        stats[period_key][avg_key][item_name] = round(avg_time_cost, 3)
-
-                        # 计算标准差
+                        avg_time = sum(time_costs) / len(time_costs)
+                        period_stats[avg_key][item_name] = round(avg_time, 3)
                         if len(time_costs) > 1:
-                            variance = sum((x - avg_time_cost) ** 2 for x in time_costs) / len(time_costs)
-                            std_time_cost = variance**0.5
-                            stats[period_key][std_key][item_name] = round(std_time_cost, 3)
+                            variance = sum((x - avg_time) ** 2 for x in time_costs) / len(time_costs)
+                            period_stats[std_key][item_name] = round(variance**0.5, 3)
                         else:
-                            stats[period_key][std_key][item_name] = 0.0
+                            period_stats[std_key][item_name] = 0.0
                     else:
-                        stats[period_key][avg_key][item_name] = 0.0
-                        stats[period_key][std_key][item_name] = 0.0
+                        period_stats[avg_key][item_name] = 0.0
+                        period_stats[std_key][item_name] = 0.0
+
+            # 准备图表数据
+            # 按供应商花费饼图
+            provider_costs = period_stats[COST_BY_PROVIDER]
+            if provider_costs:
+                sorted_providers = sorted(provider_costs.items(), key=lambda item: item[1], reverse=True)
+                period_stats[PIE_CHART_COST_BY_PROVIDER] = {
+                    "labels": [item[0] for item in sorted_providers],
+                    "data": [round(item[1], 4) for item in sorted_providers],
+                }
+
+            # 按模型花费条形图
+            model_costs = period_stats[COST_BY_MODEL]
+            if model_costs:
+                sorted_models = sorted(model_costs.items(), key=lambda item: item[1], reverse=True)
+                period_stats[BAR_CHART_COST_BY_MODEL] = {
+                    "labels": [item[0] for item in sorted_models],
+                    "data": [round(item[1], 4) for item in sorted_models],
+                }
         return stats
 
     @staticmethod
