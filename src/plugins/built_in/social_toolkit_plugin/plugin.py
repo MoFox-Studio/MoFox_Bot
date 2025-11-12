@@ -465,22 +465,31 @@ class RemindAction(BaseAction):
 
             # 2. 包含匹配
             if not user_info:
-                for person_id, name in person_manager.person_name_list.items():
-                    if user_name in name:
-                        user_info = await person_manager.get_values(person_id, ["user_id", "user_nickname"])
+                # 使用数据库查询获取所有用户进行包含匹配
+                from src.common.database.api.crud import CRUDBase
+                from src.common.database.core.models import PersonInfo
+                crud = CRUDBase(PersonInfo)
+                all_records = await crud.get_multi(limit=1000)  # 限制数量避免性能问题
+                for record in all_records:
+                    if record.person_name and user_name in record.person_name:
+                        user_info = await person_manager.get_values(record.person_id, ["user_id", "user_nickname"])
                         break
 
             # 3. 模糊匹配 (此处简化为字符串相似度)
             if not user_info:
                 best_match = None
                 highest_similarity = 0
-                for person_id, name in person_manager.person_name_list.items():
-                    import difflib
+                import difflib
 
-                    similarity = difflib.SequenceMatcher(None, user_name, name).ratio()
-                    if similarity > highest_similarity:
-                        highest_similarity = similarity
-                        best_match = person_id
+                # 使用数据库查询获取所有用户进行模糊匹配
+                crud = CRUDBase(PersonInfo)
+                all_records = await crud.get_multi(limit=1000)  # 限制数量避免性能问题
+                for record in all_records:
+                    if record.person_name:
+                        similarity = difflib.SequenceMatcher(None, user_name, record.person_name).ratio()
+                        if similarity > highest_similarity:
+                            highest_similarity = similarity
+                            best_match = record.person_id
 
                 if best_match and highest_similarity > 0.6:  # 相似度阈值
                     user_info = await person_manager.get_values(best_match, ["user_id", "user_nickname"])

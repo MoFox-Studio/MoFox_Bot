@@ -104,7 +104,7 @@ class HeartFCSender:
                     # 将MessageSending转换为DatabaseMessages
                     db_message = await self._convert_to_database_message(message)
                     if db_message and message.chat_stream.context_manager:
-                        await message.chat_stream.context_manager.add_message(db_message)
+                        message.chat_stream.context_manager.context.history_messages.append(db_message)
                         logger.debug(f"[{chat_id}] Send API消息已添加到流上下文: {message_id}")
                 except Exception as context_error:
                     logger.warning(f"[{chat_id}] 将Send API消息添加到流上下文失败: {context_error}")
