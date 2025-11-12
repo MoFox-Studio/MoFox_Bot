@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from src.common.logger import get_logger
-from src.schedule.unified_scheduler import TriggerType, unified_scheduler
+from src.plugin_system.apis.unified_scheduler import TriggerType, unified_scheduler
 
 logger = get_logger("proactive_thinking_scheduler")
 

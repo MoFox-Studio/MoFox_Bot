@@ -249,7 +249,7 @@ class MainSystem:
         # 停止增强记忆系统
         # 停止统一调度器
         try:
-            from src.schedule.unified_scheduler import shutdown_scheduler
+            from src.plugin_system.apis.unified_scheduler import shutdown_scheduler
 
             cleanup_tasks.append(("统一调度器", shutdown_scheduler()))
         except Exception as e:
@@ -435,7 +435,7 @@ MoFox_Bot(第三方修改版)
             logger.error(f"注册API路由失败: {e}")
         # 初始化统一调度器
         try:
-            from src.schedule.unified_scheduler import initialize_scheduler
+            from src.plugin_system.apis.unified_scheduler import initialize_scheduler
 
             await initialize_scheduler()
         except Exception as e:

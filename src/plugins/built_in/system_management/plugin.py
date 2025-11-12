@@ -23,7 +23,7 @@ from src.plugin_system.base.component_types import (
 from src.plugin_system.base.config_types import ConfigField
 from src.plugin_system.base.plus_command import PlusCommand
 from src.plugin_system.utils.permission_decorators import require_permission
-from src.schedule.unified_scheduler import TriggerType, unified_scheduler
+from src.plugin_system.apis.unified_scheduler import TriggerType, unified_scheduler
 
 logger = get_logger("SystemManagement")
 
