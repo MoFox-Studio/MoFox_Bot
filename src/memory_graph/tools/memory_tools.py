@@ -1213,7 +1213,7 @@ class MemoryTools:
             similar_nodes = await self.vector_store.search_with_multiple_queries(
                 query_embeddings=query_embeddings,
                 query_weights=query_weights,
-                limit=top_k * 5,  # 🔥 从2倍提升到5倍，提高初始召回率
+                limit=top_k * 2,
                 fusion_strategy="weighted_max",
             )
 

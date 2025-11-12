@@ -33,7 +33,7 @@ class UserProfileTool(BaseTool):
         ("user_aliases", ToolParamType.STRING, "该用户的昵称或别名，如果发现用户自称或被他人称呼的其他名字时填写，多个别名用逗号分隔（可选）", False, None),
         ("impression_description", ToolParamType.STRING, "你对该用户的整体印象和性格感受，例如'这个用户很幽默开朗'、'TA对技术很有热情'等。当你通过对话了解到用户的性格、态度、行为特点时填写（可选）", False, None),
         ("preference_keywords", ToolParamType.STRING, "该用户表现出的兴趣爱好或偏好，如'编程,游戏,动漫'。当用户谈论自己喜欢的事物时填写，多个关键词用逗号分隔（可选）", False, None),
-        ("affection_score", ToolParamType.FLOAT, "你对该用户的好感程度，0.0(陌生/不喜欢)到1.0(很喜欢/好友)。当你们的互动让你对TA的感觉发生变化时更新（可选）", False, None),
+        ("affection_score", ToolParamType.FLOAT, "你对该用户的好感程度，0.0(陌生/不喜欢)到1.0(很喜欢/爱人)。当你们的互动让你对TA的感觉发生变化时更新【注意：0.6分已经是一个很高的分数，打分一定要保守谨慎】（可选）", False, None),
     ]
     available_for_llm = True
     history_ttl = 5
