@@ -41,3 +41,22 @@ STD_TIME_COST_BY_TYPE = "std_time_costs_by_type"
 STD_TIME_COST_BY_USER = "std_time_costs_by_user"
 STD_TIME_COST_BY_MODEL = "std_time_costs_by_model"
 STD_TIME_COST_BY_MODULE = "std_time_costs_by_module"
+
+# 新增模型性能指标
+TPS_BY_MODEL = "tps_by_model"  # Tokens Per Second
+COST_PER_KTOK_BY_MODEL = "cost_per_ktok_by_model"
+AVG_TOK_BY_MODEL = "avg_tok_by_model"
+
+# 新增按供应商统计
+REQ_CNT_BY_PROVIDER = "requests_by_provider"
+COST_BY_PROVIDER = "costs_by_provider"
+TOTAL_TOK_BY_PROVIDER = "tokens_by_provider"
+TPS_BY_PROVIDER = "tps_by_provider"
+COST_PER_KTOK_BY_PROVIDER = "cost_per_ktok_by_provider"
+TIME_COST_BY_PROVIDER = "time_cost_by_provider"
+
+# 新增饼图和条形图数据
+PIE_CHART_COST_BY_PROVIDER = "pie_chart_cost_by_provider"
+PIE_CHART_REQ_BY_PROVIDER = "pie_chart_req_by_provider"
+BAR_CHART_COST_BY_MODEL = "bar_chart_cost_by_model"
+BAR_CHART_REQ_BY_MODEL = "bar_chart_req_by_model"
