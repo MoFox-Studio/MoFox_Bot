@@ -1,7 +1,7 @@
 import asyncio
 import copy
 import re
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from src.chat.utils.prompt import global_prompt_manager
 from src.chat.utils.prompt_params import PromptParameters
@@ -301,7 +301,7 @@ class PromptComponentManager:
         async with self._lock:
             # 合并所有动态规则的目标和所有核心提示词，确保所有潜在目标都被包含
             all_targets = set(self._dynamic_rules.keys()) | set(self.get_core_prompts())
-            for target in sorted(list(all_targets)):
+            for target in sorted(all_targets):
                 rules = self._dynamic_rules.get(target, {})
                 if not rules:
                     injection_map[target] = []
