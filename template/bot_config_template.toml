@@ -1,5 +1,5 @@
 [inner]
-version = "7.6.8"
+version = "7.6.9"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -347,6 +347,12 @@ reaction = "请按照以下模板造句：[n]是这样的，xx只要xx就可以�
 [custom_prompt]
 image_prompt = "请用中文描述这张图片的内容。如果有文字，请把文字描述概括出来，请留意其主题，直观感受，输出为一段平文本，最多30字，请注意不要分点，就输出一段文本"
 planner_custom_prompt_content = "" # 决策器自定义提示词内容，如果这里没有内容则不生效
+
+# 注意力优化配置 - 防止提示词过度相似导致LLM注意力退化
+[attention_optimization]
+enable_noise = true # 启用轻量级噪声注入（空白字符调整）
+enable_semantic_variants = false # 启用语义变体替换（实验性功能）
+noise_strength = "light" # 噪声强度: "light"(轻量) | "medium"(中等) | "heavy"(强力)，推荐使用light
 
 [response_post_process]
 enable_response_post_process = true # 是否启用回复后处理，包括错别字生成器，回复分割器
