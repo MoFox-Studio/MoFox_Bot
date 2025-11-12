@@ -3,7 +3,6 @@ import copy
 import re
 from collections.abc import Awaitable, Callable
 
-from src.chat.utils.prompt import global_prompt_manager
 from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
 from src.plugin_system.base.base_prompt import BasePrompt
@@ -258,6 +257,7 @@ class PromptComponentManager:
         """
         try:
             # 从全局提示词管理器获取最原始的模板内容
+            from src.chat.utils.prompt import global_prompt_manager
             original_prompt = global_prompt_manager._prompts.get(target_prompt_name)
             if not original_prompt:
                 logger.warning(f"无法预览 '{target_prompt_name}'，因为找不到这个核心 Prompt。")
@@ -274,10 +274,12 @@ class PromptComponentManager:
 
     def get_core_prompts(self) -> list[str]:
         """获取所有已注册的核心提示词模板名称列表（即所有可注入的目标）。"""
+        from src.chat.utils.prompt import global_prompt_manager
         return list(global_prompt_manager._prompts.keys())
 
     def get_core_prompt_contents(self) -> dict[str, str]:
         """获取所有核心提示词模板的原始内容。"""
+        from src.chat.utils.prompt import global_prompt_manager
         return {name: prompt.template for name, prompt in global_prompt_manager._prompts.items()}
 
     def get_registered_prompt_component_info(self) -> list[PromptInfo]:
