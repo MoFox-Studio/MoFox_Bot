@@ -107,22 +107,20 @@ class AffinityChatter(BaseChatter):
                 logger.info(f"亲和力聊天处理器 {self.stream_id} 处理被取消")
                 self.stats["failed_executions"] += 1
                 self.last_activity_time = time.time()
-                # 清理 processing_message_id
-                context.processing_message_id = None
                 raise
             except Exception as e:
                 logger.error(f"亲和力聊天处理器 {self.stream_id} 处理StreamContext时出错: {e}\n{traceback.format_exc()}")
                 self.stats["failed_executions"] += 1
                 self.last_activity_time = time.time()
-                # 清理 processing_message_id
-                context.processing_message_id = None
-
                 return {
                     "success": False,
                     "stream_id": self.stream_id,
                     "error_message": str(e),
                     "executed_count": 0,
                 }
+            finally:
+                # 清理 processing_message_id
+                context.processing_message_id = None
 
     def get_stats(self) -> dict[str, Any]:
         """

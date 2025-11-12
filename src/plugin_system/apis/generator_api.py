@@ -20,7 +20,7 @@ from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ActionInfo
 
 if TYPE_CHECKING:
-    pass
+    from chat.replyer.default_generator import DefaultReplyer
 
 install(extra_lines=3)
 
@@ -37,7 +37,7 @@ async def get_replyer(
     chat_stream: ChatStream | None = None,
     chat_id: str | None = None,
     request_type: str = "replyer",
-) -> Any | None:
+) -> "DefaultReplyer | None":
     """获取回复器对象
 
     优先使用chat_stream，如果没有则使用chat_id直接查找。
@@ -163,6 +163,8 @@ async def generate_reply(
         assert llm_response_dict is not None, "llm_response_dict不应为None"  # 虽然说不会出现llm_response为空的情况
         if content := llm_response_dict.get("content", ""):
             # 处理为拟人化文本
+            from src.chat.utils.utils import filter_system_format_content
+            content = filter_system_format_content(content)
             reply_set = process_human_text(content, enable_splitter, enable_chinese_typo)
         else:
             reply_set = []

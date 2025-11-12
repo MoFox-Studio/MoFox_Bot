@@ -228,10 +228,6 @@ class ChatterPlanExecutor:
             error_message = str(e)
             logger.error(f"执行回复动作失败: {action_info.action_type}, 错误: {error_message}")
 
-        # 将机器人回复添加到已读消息中
-        if success and action_info.action_message:
-            await self._add_bot_reply_to_read_messages(action_info, plan, reply_content)
-
         execution_time = time.time() - start_time
         self.execution_stats["execution_times"].append(execution_time)
 

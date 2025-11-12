@@ -108,6 +108,17 @@ class StreamLoopManager:
         Returns:
             bool: 是否成功启动
         """
+        # 获取流上下文
+        context = await self._get_stream_context(stream_id)
+        if not context:
+            logger.warning(f"无法获取流上下文: {stream_id}")
+            return False
+        
+        # 快速路径：如果流已存在且不是强制启动，无需处理
+        if not force and context.stream_loop_task and not context.stream_loop_task.done():
+            logger.debug(f"🔄 [流循环] stream={stream_id[:8]}, 循环已在运行，跳过启动")
+            return True
+        
         # 获取或创建该流的启动锁
         if stream_id not in self._stream_start_locks:
             self._stream_start_locks[stream_id] = asyncio.Lock()
@@ -116,17 +127,6 @@ class StreamLoopManager:
 
         # 使用锁防止并发启动同一个流的多个循环任务
         async with lock:
-            # 获取流上下文
-            context = await self._get_stream_context(stream_id)
-            if not context:
-                logger.warning(f"无法获取流上下文: {stream_id}")
-                return False
-
-            # 快速路径：如果流已存在且不是强制启动，无需处理
-            if not force and context.stream_loop_task and not context.stream_loop_task.done():
-                logger.debug(f"🔄 [流循环] stream={stream_id[:8]}, 循环已在运行，跳过启动")
-                return True
-
             # 如果是强制启动且任务仍在运行，先取消旧任务
             if force and context.stream_loop_task and not context.stream_loop_task.done():
                 logger.warning(f"⚠️ [流循环] stream={stream_id[:8]}, 强制启动模式：先取消现有任务")
@@ -238,7 +238,7 @@ class StreamLoopManager:
 
                         # 3. 在处理前更新能量值（用于下次间隔计算）
                         try:
-                            await self._update_stream_energy(stream_id, context)
+                            asyncio.create_task(self._update_stream_energy(stream_id, context))
                         except Exception as e:
                             logger.debug(f"更新流能量失败 {stream_id}: {e}")
 
@@ -370,9 +370,6 @@ class StreamLoopManager:
             if last_message:
                 context.triggering_user_id = last_message.user_info.user_id
 
-            # 创建子任务用于刷新能量（不阻塞主流程）
-            asyncio.create_task(self._refresh_focus_energy(stream_id))
-
             # 设置 Chatter 正在处理的标志
             context.is_chatter_processing = True
             logger.debug(f"设置 Chatter 处理标志: {stream_id}")
@@ -388,11 +385,6 @@ class StreamLoopManager:
             success = results.get("success", False)
 
             if success:
-                # 处理成功后，再次刷新缓存中可能的新消息
-                additional_messages = await self._flush_cached_messages_to_unread(stream_id)
-                if additional_messages:
-                    logger.debug(f"处理完成后刷新新消息: stream={stream_id}, 数量={len(additional_messages)}")
-
                 process_time = time.time() - start_time
                 logger.debug(f"流处理成功: {stream_id} (耗时: {process_time:.2f}s)")
             else:

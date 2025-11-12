@@ -140,7 +140,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
             # 5. 考虑连续不回复的阈值调整
             adjusted_score = total_score
-            adjusted_reply_threshold, adjusted_action_threshold = self._apply_no_reply_threshold_adjustment()
+            adjusted_reply_threshold, adjusted_action_threshold = self._apply_threshold_adjustment()
             logger.debug(
                 f"[Affinity兴趣计算] 连续不回复调整: 回复阈值 {self.reply_threshold:.3f} → {adjusted_reply_threshold:.3f}, "
                 f"动作阈值 {global_config.affinity_flow.non_reply_action_interest_threshold:.3f} → {adjusted_action_threshold:.3f}"
@@ -282,7 +282,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
             logger.debug("[提及分计算] 未提及机器人，返回0.0")
             return 0.0
 
-    def _apply_no_reply_threshold_adjustment(self) -> tuple[float, float]:
+    def _apply_threshold_adjustment(self) -> tuple[float, float]:
         """应用阈值调整（包括连续不回复和回复后降低机制）
 
         Returns:

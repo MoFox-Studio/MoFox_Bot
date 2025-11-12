@@ -380,8 +380,8 @@ class DefaultReplyer:
             if not prompt:
                 logger.warning("构建prompt失败，跳过回复生成")
                 return False, None, None
+            
             from src.plugin_system.core.event_manager import event_manager
-
             # 触发 POST_LLM 事件（请求 LLM 之前）
             if not from_plugin:
                 result = await event_manager.trigger_event(
@@ -1202,19 +1202,11 @@ class DefaultReplyer:
                     return ""
             else:
                 # 有 reply_message，正常处理
-                # 统一处理 DatabaseMessages 对象和字典
-                if isinstance(reply_message, DatabaseMessages):
-                    platform = reply_message.chat_info.platform
-                    user_id = reply_message.user_info.user_id
-                    user_nickname = reply_message.user_info.user_nickname
-                    user_cardname = reply_message.user_info.user_cardname
-                    processed_plain_text = reply_message.processed_plain_text
-                else:
-                    platform = reply_message.get("chat_info_platform")
-                    user_id = reply_message.get("user_id")
-                    user_nickname = reply_message.get("user_nickname")
-                    user_cardname = reply_message.get("user_cardname")
-                    processed_plain_text = reply_message.get("processed_plain_text")
+                platform = reply_message.chat_info.platform
+                user_id = reply_message.user_info.user_id
+                user_nickname = reply_message.user_info.user_nickname
+                user_cardname = reply_message.user_info.user_cardname
+                processed_plain_text = reply_message.processed_plain_text
 
             person_id = person_info_manager.get_person_id(
                 platform,  # type: ignore
@@ -1237,7 +1229,7 @@ class DefaultReplyer:
             current_user_id = await person_info_manager.get_value(person_id, "user_id")
             current_platform = platform
 
-            if current_user_id == bot_user_id and current_platform == global_config.bot.platform:
+            if str(current_user_id) == bot_user_id and current_platform == global_config.bot.platform:
                 sender = f"{person_name}(你)"
             else:
                 # 如果不是bot自己，直接使用person_name

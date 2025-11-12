@@ -204,8 +204,7 @@ class ChatterActionManager:
                         action_prompt_display=reason,
                     )
                 else:
-                    # 改为同步等待，确保存储完成
-                    await database_api.store_action_info(
+                    asyncio.create_task(database_api.store_action_info(
                         chat_stream=chat_stream,
                         action_build_into_prompt=False,
                         action_prompt_display=reason,
@@ -213,7 +212,7 @@ class ChatterActionManager:
                         thinking_id=thinking_id or "",
                         action_data={"reason": reason},
                         action_name="no_reply",
-                    )
+                    ))
 
                 return {"action_type": "no_reply", "success": True, "reply_text": "", "command": ""}
 
@@ -229,9 +228,9 @@ class ChatterActionManager:
                     target_message,
                 )
 
-                # 记录执行的动作到目标消息（改为同步等待）
+                # 记录执行的动作到目标消息
                 if success:
-                    await self._record_action_to_message(chat_stream, action_name, target_message, action_data)
+                    asyncio.create_task(self._record_action_to_message(chat_stream, action_name, target_message, action_data))
                     # 重置打断计数
                     await self._reset_interruption_count_after_action(chat_stream.stream_id)
 
@@ -314,13 +313,13 @@ class ChatterActionManager:
                     )
 
                     # 记录回复动作到目标消息
-                    await self._record_action_to_message(chat_stream, action_name, target_message, action_data)
+                    asyncio.create_task(self._record_action_to_message(chat_stream, action_name, target_message, action_data))
 
-                    # 回复成功，重置打断计数（改为同步等待）
+                    # 回复成功，重置打断计数
                     await self._reset_interruption_count_after_action(chat_stream.stream_id)
 
                     return loop_info, reply_text, cycle_timers_reply
-                loop_info, reply_text, cycle_timers_reply = await asyncio.create_task(_after_reply())
+                loop_info, reply_text, _ = await _after_reply()
                 return {"action_type": action_name, "success": True, "reply_text": reply_text, "loop_info": loop_info}
 
         except Exception as e:

@@ -81,16 +81,10 @@ class ChatterActionPlanner:
         except asyncio.CancelledError:
             logger.info(f"规划流程被取消: {self.chat_id}")
             self.planner_stats["failed_plans"] += 1
-            # 确保清理 processing_message_id
-            if context:
-                context.processing_message_id = None
             raise
         except Exception as e:
             logger.error(f"规划流程出错: {e}")
             self.planner_stats["failed_plans"] += 1
-            # 确保清理 processing_message_id
-            if context:
-                context.processing_message_id = None
             return [], None
 
     async def _enhanced_plan_flow(self, context: "StreamContext | None") -> tuple[list[dict[str, Any]], Any | None]:
@@ -310,8 +304,6 @@ class ChatterActionPlanner:
                     action_data={},
                     action_message=None,
                 )
-                # 检查是否需要退出Normal模式
-                await self._check_exit_normal_mode(context)
                 return [asdict(no_action)], None
 
             # 2. 检查是否有消息达到reply阈值
@@ -341,8 +333,6 @@ class ChatterActionPlanner:
                         action_data={},
                         action_message=None,
                     )
-                    # 检查是否需要退出Normal模式
-                    await self._check_exit_normal_mode(context)
                     return [asdict(no_action)], None
 
                 # 记录当前正在处理的消息ID
@@ -387,9 +377,6 @@ class ChatterActionPlanner:
                     context.processing_message_id = None
                     logger.debug("Normal模式 - 已清理处理标记")
 
-                # 8. 检查是否需要退出Normal模式
-                await self._check_exit_normal_mode(context)
-
                 # respond动作不返回目标消息，因为它是统一回应所有未读消息
                 return [asdict(respond_action)], None
             else:
@@ -406,25 +393,19 @@ class ChatterActionPlanner:
                 # 更新连续不回复计数
                 await self._update_interest_calculator_state(replied=False)
 
-                # 检查是否需要退出Normal模式
-                await self._check_exit_normal_mode(context)
-
                 return [asdict(no_action)], None
 
         except asyncio.CancelledError:
             logger.info(f"Normal模式流程被取消: {self.chat_id}")
             self.planner_stats["failed_plans"] += 1
-            # 清理处理标记
-            if context:
-                context.processing_message_id = None
             raise
         except Exception as e:
             logger.error(f"Normal模式 - 流程出错: {e}")
             self.planner_stats["failed_plans"] += 1
-            # 清理处理标记
-            if context:
-                context.processing_message_id = None
             return [], None
+        finally:
+            # 检查是否需要退出Normal模式
+            await self._check_exit_normal_mode(context)
 
     async def _check_enter_normal_mode(self, context: "StreamContext | None") -> None:
         """检查并执行进入Normal模式的判定
