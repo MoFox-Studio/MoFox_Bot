@@ -75,7 +75,6 @@ class PromptComponentManager:
                 provider = create_provider(component_class)
                 target_rules = self._dynamic_rules.setdefault(rule.target_prompt, {})
                 target_rules[prompt_name] = (rule, provider, "static_default")
-        
         self._initialized = True
         logger.info("静态 Prompt 注入规则加载完成。")
 
@@ -238,12 +237,59 @@ def get_all_dynamic_rules(self) -> dict[str, dict[str, "InjectionRule"]]:
         rules_copy[target] = target_copy
     return copy.deepcopy(rules_copy)
 
-def get_dynamic_rule(self, prompt_name: str, target_prompt: str) -> InjectionRule | None:
-    """获取单条动态注入规则的详细信息。"""
-    rule_info = self._dynamic_rules.get(target_prompt, {}).get(prompt_name)
-    if rule_info:
-        return copy.deepcopy(rule_info[0])
-    return None
+def get_rules_for_target(self, target_prompt: str) -> dict[str, InjectionRule]:
+    """
+    获取所有注入到指定核心提示词的动态规则。
+
+    此函数允许你查询一个特定的核心Prompt（例如 'core_prompt'），
+    并获取一个包含所有以它为目标的注入规则的字典。
+
+    Args:
+        target_prompt (str): 目标核心提示词的名称。
+
+    Returns:
+        dict[str, InjectionRule]:
+            一个字典，其中：
+            - 键 (str): 是注入组件的名称 (例如 'persona_component')。
+            - 值 (InjectionRule): 是该组件对应的 `InjectionRule` 完整对象。
+            如果找不到任何注入到该目标的规则，则返回一个空字典。
+
+    示例:
+        >>> rules = prompt_component_manager.get_rules_for_target("core_prompt")
+        >>> for component_name, rule in rules.items():
+        ...     print(f"组件 '{component_name}' 以优先级 {rule.priority} 注入")
+    """
+    target_rules = self._dynamic_rules.get(target_prompt, {})
+    return {name: copy.deepcopy(rule_info[0]) for name, rule_info in target_rules.items()}
+
+def get_rules_by_component(self, component_name: str) -> dict[str, InjectionRule]:
+    """
+    获取由指定的单个注入组件定义的所有动态规则。
+
+    此函数允许你查询一个特定的注入组件（例如 'persona_component'），
+    并找出它注入到了哪些核心Prompt中，以及具体是如何注入的。
+
+    Args:
+        component_name (str): 注入组件的名称。
+
+    Returns:
+        dict[str, InjectionRule]:
+            一个字典，其中：
+            - 键 (str): 是该组件注入的目标核心提示词的名称 (例如 'core_prompt')。
+            - 值 (InjectionRule): 是该组件对应的 `InjectionRule` 完整对象。
+            如果该组件没有定义任何注入规则，则返回一个空字典。
+
+    示例:
+        >>> rules = prompt_component_manager.get_rules_by_component("persona_component")
+        >>> for target_name, rule in rules.items():
+        ...     print(f"组件 'persona_component' 注入到了 '{target_name}'")
+    """
+    found_rules = {}
+    for target, rules in self._dynamic_rules.items():
+        if component_name in rules:
+            rule_info = rules[component_name]
+            found_rules[target] = copy.deepcopy(rule_info[0])
+    return found_rules
 
 async def preview_prompt_injections(
     self, target_prompt_name: str, params: PromptParameters
