@@ -78,11 +78,9 @@ __all__ = [
     # 消息
     "MaiMessages",
     # 工具函数
-    "ManifestValidator",
     "PluginInfo",
     # 增强命令系统
     "PlusCommand",
-    "PlusCommandAdapter",
     "PythonDependency",
     "ToolInfo",
     "ToolParamType",

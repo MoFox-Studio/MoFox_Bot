@@ -31,4 +31,4 @@ __plugin_meta__ = PluginMetadata(
 # 导入插件主类
 from .plugin import AntiInjectionPlugin
 
-__all__ = ["__plugin_meta__", "AntiInjectionPlugin"]
+__all__ = ["AntiInjectionPlugin", "__plugin_meta__"]

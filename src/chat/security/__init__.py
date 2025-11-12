@@ -5,12 +5,12 @@
 插件可以通过实现这些接口来扩展安全功能。
 """
 
-from .interfaces import SecurityCheckResult, SecurityChecker
+from .interfaces import SecurityChecker, SecurityCheckResult
 from .manager import SecurityManager, get_security_manager
 
 __all__ = [
-    "SecurityChecker",
     "SecurityCheckResult",
+    "SecurityChecker",
     "SecurityManager",
     "get_security_manager",
 ]

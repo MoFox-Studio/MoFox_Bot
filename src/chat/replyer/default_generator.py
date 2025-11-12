@@ -365,7 +365,7 @@ class DefaultReplyer:
                 # 确保类型安全
                 if isinstance(mode, str):
                     prompt_mode_value = mode
-            
+
             # 构建 Prompt
             with Timer("构建Prompt", {}):  # 内部计时器，可选保留
                 prompt = await self.build_prompt_reply_context(
@@ -1171,16 +1171,16 @@ class DefaultReplyer:
                     from src.plugin_system.apis.chat_api import get_chat_manager
                     chat_manager = get_chat_manager()
                     chat_stream_obj = await chat_manager.get_stream(chat_id)
-                    
+
                     if chat_stream_obj:
                         unread_messages = chat_stream_obj.context_manager.get_unread_messages()
                         if unread_messages:
                             # 使用最后一条未读消息作为参考
                             last_msg = unread_messages[-1]
-                            platform = last_msg.chat_info.platform if hasattr(last_msg, 'chat_info') else chat_stream.platform
-                            user_id = last_msg.user_info.user_id if hasattr(last_msg, 'user_info') else ""
-                            user_nickname = last_msg.user_info.user_nickname if hasattr(last_msg, 'user_info') else ""
-                            user_cardname = last_msg.user_info.user_cardname if hasattr(last_msg, 'user_info') else ""
+                            platform = last_msg.chat_info.platform if hasattr(last_msg, "chat_info") else chat_stream.platform
+                            user_id = last_msg.user_info.user_id if hasattr(last_msg, "user_info") else ""
+                            user_nickname = last_msg.user_info.user_nickname if hasattr(last_msg, "user_info") else ""
+                            user_cardname = last_msg.user_info.user_cardname if hasattr(last_msg, "user_info") else ""
                             processed_plain_text = last_msg.processed_plain_text or ""
                         else:
                             # 没有未读消息，使用默认值
@@ -1263,19 +1263,19 @@ class DefaultReplyer:
         if available_actions:
             # 过滤掉特殊键（以_开头）
             action_items = {k: v for k, v in available_actions.items() if not k.startswith("_")}
-            
+
             # 提取目标消息信息（如果存在）
             target_msg_info = available_actions.get("_target_message")  # type: ignore
-            
+
             if action_items:
                 if len(action_items) == 1:
                     # 单个动作
                     action_name, action_info = list(action_items.items())[0]
                     action_desc = action_info.description
-                    
+
                     # 构建基础决策信息
                     action_descriptions = f"## 决策信息\n\n你已经决定要执行 **{action_name}** 动作（{action_desc}）。\n\n"
-                    
+
                     # 只有需要目标消息的动作才显示目标消息详情
                     # respond 动作是统一回应所有未读消息，不应该显示特定目标消息
                     if action_name not in ["respond"] and target_msg_info and isinstance(target_msg_info, dict):
@@ -1284,7 +1284,7 @@ class DefaultReplyer:
                         content = target_msg_info.get("content", "")
                         msg_time = target_msg_info.get("time", 0)
                         time_str = time_module.strftime("%H:%M:%S", time_module.localtime(msg_time)) if msg_time else "未知时间"
-                        
+
                         action_descriptions += f"**目标消息**: {time_str} {sender} 说: {content}\n\n"
                 else:
                     # 多个动作
@@ -2137,7 +2137,7 @@ class DefaultReplyer:
         except Exception as e:
             logger.error(f"存储聊天记忆失败: {e}")
 
-    
+
 
 def weighted_sample_no_replacement(items, weights, k) -> list:
     """

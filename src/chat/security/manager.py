@@ -10,7 +10,7 @@ from typing import Any
 
 from src.common.logger import get_logger
 
-from .interfaces import SecurityAction, SecurityCheckResult, SecurityChecker, SecurityLevel
+from .interfaces import SecurityAction, SecurityChecker, SecurityCheckResult, SecurityLevel
 
 logger = get_logger("security.manager")
 

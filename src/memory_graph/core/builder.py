@@ -128,7 +128,7 @@ class MemoryBuilder:
             # 6. 构建 Memory 对象
             # 新记忆应该有较高的初始激活度
             initial_activation = 0.75  # 新记忆初始激活度为 0.75
-            
+
             memory = Memory(
                 id=memory_id,
                 subject_id=subject_node.id,

@@ -98,7 +98,7 @@ class StreamContext(BaseDataModel):
                 break
 
     def mark_message_as_read(self, message_id: str):
-        """标记消息为已读"""  
+        """标记消息为已读"""
         # 先找到要标记的消息（处理 int/str 类型不匹配问题）
         message_to_mark = None
         for msg in self.unread_messages:
@@ -106,7 +106,7 @@ class StreamContext(BaseDataModel):
             if str(msg.message_id) == str(message_id):
                 message_to_mark = msg
                 break
-        
+
         # 然后移动到历史消息
         if message_to_mark:
             message_to_mark.is_read = True

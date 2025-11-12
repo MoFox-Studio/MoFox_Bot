@@ -132,7 +132,7 @@ async def generate_reply(
         prompt_mode = "s4u"  # 默认使用s4u模式
         if action_data and "prompt_mode" in action_data:
             prompt_mode = action_data.get("prompt_mode", "s4u")
-        
+
         # 将prompt_mode添加到available_actions中（作为特殊键）
         # 注意：这里我们需要暂时使用类型忽略，因为available_actions的类型定义不支持非ActionInfo值
         if available_actions is None:

@@ -545,14 +545,14 @@ async def execute_proactive_thinking(stream_id: str):
     # 获取或创建该聊天流的执行锁
     if stream_id not in _execution_locks:
         _execution_locks[stream_id] = asyncio.Lock()
-    
+
     lock = _execution_locks[stream_id]
-    
+
     # 尝试获取锁，如果已被占用则跳过本次执行（防止重复）
     if lock.locked():
         logger.warning(f"⚠️ 主动思考跳过：聊天流 {stream_id} 已有正在执行的主动思考任务")
         return
-    
+
     async with lock:
         logger.debug(f"🤔 开始主动思考 {stream_id}")
 
@@ -563,13 +563,13 @@ async def execute_proactive_thinking(stream_id: str):
                 from src.chat.message_receive.chat_stream import get_chat_manager
                 chat_manager = get_chat_manager()
                 chat_stream = await chat_manager.get_stream(stream_id)
-                
+
                 if chat_stream and chat_stream.context_manager.context.is_chatter_processing:
                     logger.warning(f"⚠️ 主动思考跳过：聊天流 {stream_id} 的 chatter 正在处理消息")
                     return
             except Exception as e:
                 logger.warning(f"检查 chatter 处理状态时出错: {e}，继续执行")
-            
+
             # 0.1 检查白名单/黑名单
             # 从 stream_id 获取 stream_config 字符串进行验证
             try:

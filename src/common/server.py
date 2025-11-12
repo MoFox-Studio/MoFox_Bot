@@ -3,7 +3,6 @@ import socket
 
 from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from rich.traceback import install
 from uvicorn import Config
 from uvicorn import Server as UvicornServer

@@ -64,15 +64,15 @@ class CoreActionsPlugin(BasePlugin):
 
         # --- 根据配置注册组件 ---
         components: ClassVar = []
-        
+
         # 注册 reply 动作
         if self.get_config("components.enable_reply", True):
             components.append((ReplyAction.get_action_info(), ReplyAction))
-        
+
         # 注册 respond 动作
         if self.get_config("components.enable_respond", True):
             components.append((RespondAction.get_action_info(), RespondAction))
-        
+
         # 注册 emoji 动作
         if self.get_config("components.enable_emoji", True):
             components.append((EmojiAction.get_action_info(), EmojiAction))

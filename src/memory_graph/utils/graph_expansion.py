@@ -62,7 +62,7 @@ async def expand_memories_with_semantic_filter(
     try:
         import time
         start_time = time.time()
-        
+
         # 记录已访问的记忆，避免重复
         visited_memories = set(initial_memory_ids)
         # 记录扩展的记忆及其分数
@@ -87,17 +87,17 @@ async def expand_memories_with_semantic_filter(
 
                 # 获取该记忆的邻居记忆（通过边关系）
                 neighbor_memory_ids = set()
-                
+
                 # 🆕 遍历记忆的所有边，收集邻居记忆（带边类型权重）
                 edge_weights = {}  # 记录通过不同边类型到达的记忆的权重
-                
+
                 for edge in memory.edges:
                     # 获取边的目标节点
                     target_node_id = edge.target_id
                     source_node_id = edge.source_id
-                    
+
                     # 🆕 根据边类型设置权重（优先扩展REFERENCE、ATTRIBUTE相关的边）
-                    edge_type_str = edge.edge_type.value if hasattr(edge.edge_type, 'value') else str(edge.edge_type)
+                    edge_type_str = edge.edge_type.value if hasattr(edge.edge_type, "value") else str(edge.edge_type)
                     if edge_type_str == "REFERENCE":
                         edge_weight = 1.3  # REFERENCE边权重最高（引用关系）
                     elif edge_type_str in ["ATTRIBUTE", "HAS_PROPERTY"]:
@@ -108,18 +108,18 @@ async def expand_memories_with_semantic_filter(
                         edge_weight = 0.9  # 一般关系适中降权
                     else:
                         edge_weight = 1.0  # 默认权重
-                    
+
                     # 通过节点找到其他记忆
                     for node_id in [target_node_id, source_node_id]:
                         if node_id in graph_store.node_to_memories:
                             for neighbor_id in graph_store.node_to_memories[node_id]:
                                 if neighbor_id not in edge_weights or edge_weights[neighbor_id] < edge_weight:
                                     edge_weights[neighbor_id] = edge_weight
-                
+
                 # 将权重高的邻居记忆加入候选
                 for neighbor_id, edge_weight in edge_weights.items():
                     neighbor_memory_ids.add((neighbor_id, edge_weight))
-                
+
                 # 过滤掉已访问的和自己
                 filtered_neighbors = []
                 for neighbor_id, edge_weight in neighbor_memory_ids:
@@ -129,7 +129,7 @@ async def expand_memories_with_semantic_filter(
                 # 批量评估邻居记忆
                 for neighbor_mem_id, edge_weight in filtered_neighbors:
                     candidates_checked += 1
-                    
+
                     neighbor_memory = graph_store.get_memory_by_id(neighbor_mem_id)
                     if not neighbor_memory:
                         continue
@@ -139,7 +139,7 @@ async def expand_memories_with_semantic_filter(
                         (n for n in neighbor_memory.nodes if n.has_embedding()),
                         None
                     )
-                    
+
                     if not topic_node or topic_node.embedding is None:
                         continue
 
@@ -179,11 +179,11 @@ async def expand_memories_with_semantic_filter(
                     if len(expanded_memories) >= max_expanded:
                         logger.debug(f"⏹️  提前停止：已达到最大扩展数量 {max_expanded}")
                         break
-                
+
                 # 早停检查
                 if len(expanded_memories) >= max_expanded:
                     break
-            
+
             # 记录本层统计
             depth_stats.append({
                 "depth": depth + 1,
@@ -199,20 +199,20 @@ async def expand_memories_with_semantic_filter(
 
             # 限制下一层的记忆数量，避免爆炸性增长
             current_level_memories = next_level_memories[:max_expanded]
-            
+
             # 每层让出控制权
             await asyncio.sleep(0.001)
 
         # 排序并返回
         sorted_results = sorted(expanded_memories.items(), key=lambda x: x[1], reverse=True)[:max_expanded]
-        
+
         elapsed = time.time() - start_time
         logger.info(
             f"✅ 图扩展完成: 初始{len(initial_memory_ids)}个 → "
             f"扩展{len(sorted_results)}个新记忆 "
             f"(深度={max_depth}, 阈值={semantic_threshold:.2f}, 耗时={elapsed:.3f}s)"
         )
-        
+
         # 输出每层统计
         for stat in depth_stats:
             logger.debug(

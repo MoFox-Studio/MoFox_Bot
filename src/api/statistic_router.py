@@ -1,6 +1,5 @@
-from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 

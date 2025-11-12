@@ -82,7 +82,7 @@ class SingleStreamContextManager:
 
                 self.total_messages += 1
                 self.last_access_time = time.time()
-                
+
                 # 如果使用了缓存系统，输出调试信息
                 if cache_enabled and self.context.is_cache_enabled:
                     if self.context.is_chatter_processing:
