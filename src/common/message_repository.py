@@ -89,7 +89,7 @@ async def find_messages(
                     query = query.where(*conditions)
 
             if filter_bot:
-                query = query.where(Messages.user_id != global_config.bot.qq_account)
+                query = query.where(Messages.user_id != str(global_config.bot.qq_account))
 
             if filter_command:
                 query = query.where(not_(Messages.is_command))

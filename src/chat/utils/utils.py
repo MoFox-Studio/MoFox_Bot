@@ -166,7 +166,7 @@ async def get_recent_group_speaker(chat_stream_id: str, sender, limit: int = 12)
         )
         if (
             (user_info.platform, user_info.user_id) != sender
-            and user_info.user_id != global_config.bot.qq_account
+            and user_info.user_id != str(global_config.bot.qq_account)
             and (user_info.platform, user_info.user_id, user_info.user_nickname) not in who_chat_in_group
             and len(who_chat_in_group) < 5
         ):  # 排除重复，排除消息发送者，排除bot，限制加载的关系数目

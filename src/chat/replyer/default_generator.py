@@ -1872,6 +1872,8 @@ class DefaultReplyer:
         # 获取用户ID
         person_info_manager = get_person_info_manager()
         person_id = await person_info_manager.get_person_id_by_person_name(sender)
+        if person_id == "SELF":
+            return f"你将要回复的是你自己发送的消息。"
         if not person_id:
             logger.warning(f"未找到用户 {sender} 的ID，跳过信息提取")
             return f"你完全不认识{sender}，不理解ta的相关信息。"

@@ -132,6 +132,8 @@ class PersonInfoManager:
         若未命中则查询数据库并更新缓存。
         """
         try:
+            if person_name == f"{global_config.bot.nickname}(你)":
+                return "SELF"
             # 优先使用内存缓存加速查找：self.person_name_list maps person_id -> person_name
             for pid, pname in self.person_name_list.items():
                 if pname == person_name:

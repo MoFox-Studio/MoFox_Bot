@@ -280,8 +280,6 @@ class MessageStorageBatcher:
                 user_platform = user_info_dict.get("platform")
                 user_id = user_info_dict.get("user_id")
                 # 将机器人自己的user_id标记为"SELF"，增强对自我身份的识别
-                if user_id == global_config.bot.qq_account:
-                    user_id = "SELF"
                 user_nickname = user_info_dict.get("user_nickname")
                 user_cardname = user_info_dict.get("user_cardname")
 
@@ -630,9 +628,6 @@ class MessageStorage:
 
                 user_platform = user_info_dict.get("platform")
                 user_id = user_info_dict.get("user_id")
-                # 将机器人自己的user_id标记为"SELF"，增强对自我身份的识别
-                if user_id == global_config.bot.qq_account:
-                    user_id = "SELF"
                 user_nickname = user_info_dict.get("user_nickname")
                 user_cardname = user_info_dict.get("user_cardname")
 

@@ -209,7 +209,7 @@ class StreamToolHistoryManager:
         except Exception as e:
             logger.warning(f"[{self.chat_id}] 缓存设置失败: {e}")
 
-    async def get_recent_history(self, count: int = 5, status_filter: str | None = None) -> list[ToolCallRecord]:
+    def get_recent_history(self, count: int = 5, status_filter: str | None = None) -> list[ToolCallRecord]:
         """获取最近的历史记录
 
         Args:
