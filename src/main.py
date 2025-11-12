@@ -400,7 +400,7 @@ MoFox_Bot(第三方修改版)
         base_init_tasks = [
             async_task_manager.add_task(OnlineTimeRecordTask()),
             async_task_manager.add_task(StatisticOutputTask()),
-            async_task_manager.add_task(TelemetryHeartBeatTask()),
+            #async_task_manager.add_task(TelemetryHeartBeatTask()),
         ]
 
         await asyncio.gather(*base_init_tasks, return_exceptions=True)

@@ -21,6 +21,10 @@ class LocalStoreManager:
         self.store = {}
         self.load_local_store()
 
+    def __contains__(self, key: str) -> bool:
+        """检查键是否存在"""
+        return key in self.store
+
     def __getitem__(self, item: str) -> str | list | dict | int | float | bool | None:
         """获取本地存储数据"""
         return self.store.get(item)
@@ -38,9 +42,9 @@ class LocalStoreManager:
         else:
             logger.warning(f"尝试删除不存在的键: {key}")
 
-    def __contains__(self, item: str) -> bool:
-        """检查本地存储数据是否存在"""
-        return item in self.store
+    def get(self, key: str, default=None):
+        """获取本地存储数据，支持默认值"""
+        return self.store.get(key, default)
 
     def load_local_store(self):
         """加载本地存储数据"""
