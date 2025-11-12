@@ -182,7 +182,7 @@ class PromptComponentManager:
         """获取所有核心提示词模板的原始内容。"""
         return {name: prompt.template for name, prompt in global_prompt_manager._prompts.items()}
 
-    def get_registered_prompt_components(self) -> list[PromptInfo]:
+    def get_registered_prompt_component_info(self) -> list[PromptInfo]:
         """获取所有在 ComponentRegistry 中注册的 Prompt 组件信息。"""
         components = component_registry.get_components_by_type(ComponentType.PROMPT).values()
         return [info for info in components if isinstance(info, PromptInfo)]
@@ -207,21 +207,64 @@ class PromptComponentManager:
                 injection_map[target] = info_list
         return injection_map
 
-    async def get_injections_for_prompt(self, target_prompt_name: str) -> list[dict]:
-        """获取指定核心提示词模板的所有注入信息。"""
-        full_map = await self.get_full_injection_map()
-        return full_map.get(target_prompt_name, [])
+async def get_injections_for_prompt(self, target_prompt_name: str) -> list[dict]:
+    """获取指定核心提示词模板的所有注入信息（增强版，包含更多细节）。"""
+    rules_for_target = self._dynamic_rules.get(target_prompt_name, {})
+    if not rules_for_target:
+        return []
 
-    def get_all_dynamic_rules(self) -> dict[str, dict[str, 'InjectionRule']]:
-        """获取所有当前的动态注入规则，以 InjectionRule 对象形式返回。"""
-        rules_copy = {}
-        # 只返回规则对象，隐藏 provider 实现细节
-        for target, rules in self._dynamic_rules.items():
-            target_copy = {}
-            for name, (rule, _, _) in rules.items():
-                target_copy[name] = rule
-            rules_copy[target] = target_copy
-        return copy.deepcopy(rules_copy)
+    info_list = []
+    for prompt_name, (rule, _, source) in rules_for_target.items():
+        info_list.append(
+            {
+                "name": prompt_name,
+                "priority": rule.priority,
+                "source": source,
+                "injection_type": rule.injection_type.value,
+                "target_content": rule.target_content,
+            }
+        )
+    info_list.sort(key=lambda x: x["priority"])
+    return info_list
+
+def get_all_dynamic_rules(self) -> dict[str, dict[str, "InjectionRule"]]:
+    """获取所有当前的动态注入规则，以 InjectionRule 对象形式返回。"""
+    rules_copy = {}
+    # 只返回规则对象，隐藏 provider 实现细节
+    for target, rules in self._dynamic_rules.items():
+        target_copy = {}
+        for name, (rule, _, _) in rules.items():
+            target_copy[name] = rule
+        rules_copy[target] = target_copy
+    return copy.deepcopy(rules_copy)
+
+def get_dynamic_rule(self, prompt_name: str, target_prompt: str) -> InjectionRule | None:
+    """获取单条动态注入规则的详细信息。"""
+    rule_info = self._dynamic_rules.get(target_prompt, {}).get(prompt_name)
+    if rule_info:
+        return copy.deepcopy(rule_info[0])
+    return None
+
+async def preview_prompt_injections(
+    self, target_prompt_name: str, params: PromptParameters
+) -> str:
+    """
+    【预览功能】模拟应用所有注入规则，返回最终生成的模板字符串，而不实际修改任何状态。
+    """
+    # 确保我们从最新的模板开始
+    try:
+        # Note: 这里我们不关心注入，只想获取最原始的模板，所以直接访问内部属性
+        original_prompt = global_prompt_manager._prompts.get(target_prompt_name)
+        if not original_prompt:
+            logger.warning(f"无法预览 '{target_prompt_name}'，因为找不到这个核心 Prompt。")
+            return f"Error: Prompt '{target_prompt_name}' not found."
+        original_template = original_prompt.template
+    except KeyError:
+        logger.warning(f"无法预览 '{target_prompt_name}'，因为找不到这个核心 Prompt。")
+        return f"Error: Prompt '{target_prompt_name}' not found."
+
+    # 直接调用核心注入逻辑
+    return await self.apply_injections(target_prompt_name, original_template, params)
 
 # 创建全局单例
 prompt_component_manager = PromptComponentManager()
