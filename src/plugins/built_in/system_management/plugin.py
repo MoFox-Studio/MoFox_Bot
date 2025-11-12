@@ -6,7 +6,7 @@
 
 import re
 from typing import ClassVar
-
+from src.chat.utils.prompt_component_manager import prompt_component_manager
 from src.plugin_system.apis import (
     plugin_manage_api,
 )
@@ -74,6 +74,7 @@ class SystemCommand(PlusCommand):
 • `/system permission` - 权限管理
 • `/system plugin` - 插件管理
 • `/system schedule` - 定时任务管理
+• `/system prompt` - 提示词注入管理
 """
         elif target == "schedule":
             help_text = """📅 定时任务管理帮助
@@ -113,8 +114,17 @@ class SystemCommand(PlusCommand):
 • /system permission nodes [插件名] - 查看权限节点
 • /system permission allnodes - 查看所有权限节点详情
 """
-        await self.send_text(help_text)
+       elif target == "prompt":
+           help_text = """📝 提示词注入管理帮助
 
+🔎 查询命令 (需要 `system.prompt.view` 权限):
+• `/system prompt help` - 显示此帮助
+• `/system prompt map` - 查看全局注入关系图
+• `/system prompt targets` - 列出所有可被注入的核心提示词
+• `/system prompt components` - 列出所有已注册的提示词组件
+• `/system prompt info <目标名>` - 查看特定核心提示词的注入详情
+"""
+       await self.send_text(help_text)
 
     # =================================================================
     # Plugin Management Section
@@ -230,6 +240,101 @@ class SystemCommand(PlusCommand):
             await self.send_text(f"▶️ 已恢复任务: `{schedule_id}`")
         else:
             await self.send_text(f"❌ 恢复任务失败: `{schedule_id}`")
+
+    # =================================================================
+    # Prompt Management Section
+    # =================================================================
+    async def _handle_prompt_commands(self, args: list[str]):
+        """处理提示词管理相关命令"""
+        if not args or args[0].lower() in ["help", "帮助"]:
+            await self._show_help("prompt")
+            return
+
+        action = args[0].lower()
+        remaining_args = args[1:]
+
+        if action in ["map", "关系图"]:
+            await self._show_injection_map()
+        elif action in ["targets", "目标"]:
+            await self._list_core_prompts()
+        elif action in ["components", "组件"]:
+            await self._list_prompt_components()
+        elif action in ["info", "详情"] and remaining_args:
+            await self._get_prompt_injection_info(remaining_args[0])
+        else:
+            await self.send_text("❌ 提示词管理命令不合法\n使用 /system prompt help 查看帮助")
+
+    @require_permission("prompt.view", deny_message="❌ 你没有查看提示词注入信息的权限")
+    async def _show_injection_map(self):
+        """显示全局注入关系图"""
+        injection_map = await prompt_component_manager.get_full_injection_map()
+        if not injection_map:
+            await self.send_text("📊 当前没有任何提示词注入关系")
+            return
+
+        response_parts = ["📊 全局提示词注入关系图：\n"]
+        for target, injections in injection_map.items():
+            if injections:
+                response_parts.append(f"🎯 **{target}** (注入源):")
+                for inj in injections:
+                    source_tag = f"({inj['source']})" if inj['source'] != 'static_default' else ''
+                    response_parts.append(f"  ⎿ `{inj['name']}` (优先级: {inj['priority']}) {source_tag}")
+            else:
+                response_parts.append(f"🎯 **{target}** (无注入)")
+
+        await self._send_long_message("\n".join(response_parts))
+
+    @require_permission("prompt.view", deny_message="❌ 你没有查看提示词注入信息的权限")
+    async def _list_core_prompts(self):
+        """列出所有可注入的核心提示词"""
+        targets = prompt_component_manager.get_core_prompts()
+        if not targets:
+            await self.send_text("🎯 当前没有可注入的核心提示词")
+            return
+
+        response = "🎯 所有可注入的核心提示词:\n" + "\n".join([f"• `{name}`" for name in targets])
+        await self.send_text(response)
+
+    @require_permission("prompt.view", deny_message="❌ 你没有查看提示词注入信息的权限")
+    async def _list_prompt_components(self):
+        """列出所有已注册的提示词组件"""
+        components = prompt_component_manager.get_registered_prompt_component_info()
+        if not components:
+            await self.send_text("🧩 当前没有已注册的提示词组件")
+            return
+
+        response_parts = [f"🧩 已注册的提示词组件 (共 {len(components)} 个):"]
+        for comp in components:
+            response_parts.append(f"• `{comp.name}` (来自: `{comp.plugin_name}`)")
+
+        await self._send_long_message("\n".join(response_parts))
+
+
+    @require_permission("prompt.view", deny_message="❌ 你没有查看提示词注入信息的权限")
+    async def _get_prompt_injection_info(self, target_name: str):
+        """获取特定核心提示词的注入详情"""
+        injections = await prompt_component_manager.get_injections_for_prompt(target_name)
+
+        core_prompts = prompt_component_manager.get_core_prompts()
+        if target_name not in core_prompts:
+            await self.send_text(f"❌ 找不到核心提示词: `{target_name}`")
+            return
+
+        if not injections:
+            await self.send_text(f"🎯 核心提示词 `{target_name}` 当前没有被任何组件注入。")
+            return
+
+        response_parts = [f"🔎 核心提示词 `{target_name}` 的注入详情:"]
+        for inj in injections:
+            response_parts.append(
+                f"  • **`{inj['name']}`** (优先级: {inj['priority']})"
+            )
+            response_parts.append(f"    - 来源: `{inj['source']}`")
+            response_parts.append(f"    - 类型: `{inj['injection_type']}`")
+            if inj.get('target_content'):
+                 response_parts.append(f"    - 操作目标: `{inj['target_content']}`")
+
+        await self.send_text("\n".join(response_parts))
 
     # =================================================================
     # Permission Management Section
