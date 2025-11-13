@@ -296,7 +296,7 @@ class StreamLoopManager:
 
             logger.info(f"🏁 [流工作器] stream={stream_id[:8]}, 任务ID={task_id}, 循环结束")
 
-    async def _get_stream_context(self, stream_id: str) -> "StreamContext" | None:
+    async def _get_stream_context(self, stream_id: str) -> "StreamContext | None":
         """获取流上下文
 
         Args:
