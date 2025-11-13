@@ -13,7 +13,7 @@
 import hashlib
 import random
 import re
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -26,7 +26,7 @@ class AttentionOptimizer:
 
     # 可交换的block组定义（组内block可以随机排序）
     # 每个组是一个列表，包含可以互换位置的block名称
-    SWAPPABLE_BLOCK_GROUPS = [
+    SWAPPABLE_BLOCK_GROUPS:ClassVar = [
         # 用户相关信息组（记忆、关系、表达习惯）
         ["memory_block", "relation_info_block", "expression_habits_block"],
         # 上下文增强组（工具、知识、跨群）
@@ -37,7 +37,7 @@ class AttentionOptimizer:
 
     # 语义等价的文本替换模板
     # 格式: {原始文本: [替换选项1, 替换选项2, ...]}
-    SEMANTIC_VARIANTS = {
+    SEMANTIC_VARIANTS:ClassVar = {
         "当前时间": ["当前时间", "现在是", "此时此刻", "时间"],
         "最近的系统通知": ["最近的系统通知", "系统通知", "通知消息", "最新通知"],
         "聊天历史": ["聊天历史", "对话记录", "历史消息", "之前的对话"],
@@ -125,7 +125,7 @@ class AttentionOptimizer:
             for group in self.SWAPPABLE_BLOCK_GROUPS:
                 # 过滤出实际存在且非空的block
                 existing_blocks = [
-                    block for block in group if block in context_data and context_data[block]
+                    block for block in group if context_data.get(block)
                 ]
 
                 if len(existing_blocks) > 1:

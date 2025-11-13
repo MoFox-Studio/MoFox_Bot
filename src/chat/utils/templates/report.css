@@ -1,0 +1,199 @@
+/* General Body Styles */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background-color: #f0f4f8; /* Light blue-gray background */
+    color: #333; /* Darker text for better contrast */
+    line-height: 1.6;
+}
+
+/* Main Container */
+.container {
+    max-width: 95%; /* Make container almost full-width */
+    margin: 20px auto;
+    background-color: #FFFFFF; /* Pure white background */
+    padding: 30px;
+    border-radius: 12px; /* Slightly more rounded corners */
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.07); /* Softer, deeper shadow */
+}
+/* Dashboard Layout */
+.dashboard-layout {
+    display: flex;
+    gap: 30px;
+}
+
+.main-content {
+    flex: 65%;
+    min-width: 0;
+}
+
+.sidebar-content {
+    flex: 35%;
+    min-width: 0;
+}
+
+/* Responsive Design for Mobile */
+@media (max-width: 992px) {
+    .dashboard-layout {
+        flex-direction: column;
+    }
+    .main-content, .sidebar-content {
+        flex: 1;
+    }
+}
+
+/* Typography */
+h1, h2 {
+    color: #212529;
+    padding-bottom: 10px;
+    margin-top: 0;
+}
+
+h1 {
+    text-align: center;
+    font-size: 2.2em;
+    margin-bottom: 20px;
+    color: #2A6CB5; /* A deeper, more professional blue */
+}
+
+h2 {
+    font-size: 1.5em;
+    margin-top: 40px;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #DDE6ED; /* Lighter border color */
+}
+
+/* Info Banners */
+.info-item {
+    background-color: #E9F2FA; /* Light blue background */
+    padding: 12px 18px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 0.95em;
+    border: 1px solid #D1E3F4; /* Light blue border */
+}
+
+.info-item strong {
+    color: #2A6CB5; /* Deeper blue for emphasis */
+}
+
+/* Tabs */
+.tabs {
+    border-bottom: 2px solid #DEE2E6;
+    display: flex;
+    margin-bottom: 20px;
+}
+
+.tabs button {
+    background: none;
+    border: none;
+    outline: none;
+    padding: 14px 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 16px;
+    color: #6C757D;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px; /* Align with container border */
+}
+
+.tabs button:hover {
+    color: #2A6CB5;
+    background-color: #f0f4f8; /* Subtle hover background */
+}
+
+.tabs button.active {
+    color: #2A6CB5; /* Active tab color */
+    border-bottom-color: #2A6CB5; /* Active tab border color */
+}
+
+.tab-content {
+    display: none;
+    padding-top: 10px;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Summary Cards */
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.card {
+    background-color: #FFFFFF;
+    padding: 20px;
+    border-radius: 8px;
+    text-align: center;
+    border: 1px solid #DDE6ED; /* Lighter border */
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.08);
+}
+
+.card h3 {
+    margin: 0 0 10px;
+    font-size: 1em;
+    color: #6C757D;
+}
+
+.card p {
+    margin: 0;
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #212529;
+}
+
+/* Tables */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+    font-size: 0.9em;
+}
+
+th, td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #EAEAEA;
+}
+th {
+    background-color: #4A90E2; /* Main theme blue */
+    color: white;
+    font-weight: bold;
+    font-size: 0.95em;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+tr:nth-child(even) {
+    background-color: #F7FAFC; /* Very light blue for alternate rows */
+}
+
+tr:hover {
+    background-color: #E9F2FA; /* Light blue for hover */
+}
+
+/* Chart Container in Sidebar */
+.chart-container {
+    position: relative;
+    height: 300px; /* Adjust height as needed */
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+/* Footer */
+.footer {
+    text-align: center;
+    margin-top: 40px;
+    font-size: 0.85em;
+    color: #6C757D;
+}

@@ -115,7 +115,7 @@ class StatisticOutputTask(AsyncTask):
 
     SEP_LINE = "-" * 84
 
-    def __init__(self, record_file_path: str = "maibot_statistics.html"):
+    def __init__(self, record_file_path: str = "mofox_bot_statistics.html"):
         # 延迟300秒启动，运行间隔300秒
         super().__init__(task_name="Statistics Data Output Task", wait_before_start=0, run_interval=300)
 
@@ -412,9 +412,9 @@ class StatisticOutputTask(AsyncTask):
                 (REQ_CNT_BY_MODEL, "model"),
                 (REQ_CNT_BY_MODULE, "module"),
             ]:
-                time_cost_key = f"time_costs_by_{items}"
-                avg_key = f"avg_time_costs_by_{items}"
-                std_key = f"std_time_costs_by_{items}"
+                time_cost_key = f"TIME_COST_BY_{items.upper()}"
+                avg_key = f"AVG_TIME_COST_BY_{items.upper()}"
+                std_key = f"STD_TIME_COST_BY_{items.upper()}"
 
                 for item_name in period_stats[category_key]:
                     time_costs = period_stats[time_cost_key].get(item_name, [])

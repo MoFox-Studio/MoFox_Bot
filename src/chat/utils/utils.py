@@ -930,12 +930,11 @@ def filter_system_format_content(content: str | None) -> str:
     过滤系统格式化内容，移除回复、@、图片、表情包等系统生成的格式文本
 
     此方法过滤以下类型的系统格式化内容：
-    1. 回复格式：[回复xxx]，说：xxx
+    1. 回复格式：[回复xxx]，说：xxx (包括深度嵌套)
     2. 表情包格式：[表情包：xxx]
     3. 图片格式：[图片:xxx]
     4. @格式：@<xxx>
     5. 错误格式：[表情包(...)]、[图片(...)]
-    6. [回复开头的格式
 
     Args:
         content: 原始内容
@@ -949,29 +948,20 @@ def filter_system_format_content(content: str | None) -> str:
     original_content = content
     cleaned_content = content.strip()
 
-    # 1. 移除回复格式：[回复xxx]，说：xxx（各种变体）
-    # 匹配所有包含"]，说："格式的回复
-    cleaned_content = re.sub(r"\[回复[^\]]*\]，说：\s*", "", cleaned_content)
-    # 匹配 [回复<xxx:数字>]，说：xxx 格式
-    cleaned_content = re.sub(r"\[回复<[^>]*>\]，说：\s*", "", cleaned_content)
-
-    # 2. 处理原有的[回复开头格式（保持向后兼容）
-    # 注意：这步要在上面处理完成后再执行，避免冲突
+    # 核心逻辑：优先处理最复杂的[回复...]格式，特别是嵌套格式。
+    # 这种方法最稳健：如果以[回复开头，就找到最后一个]，然后切掉之前的所有内容。
     if cleaned_content.startswith("[回复"):
         last_bracket_index = cleaned_content.rfind("]")
         if last_bracket_index != -1:
             cleaned_content = cleaned_content[last_bracket_index + 1 :].strip()
 
-    # 3. 移除表情包格式：[表情包：xxx]
+    # 在处理完回复格式后，再清理其他简单的格式
+    # 移除表情包格式：[表情包：xxx]
     cleaned_content = re.sub(r"\[表情包：[^\]]*\]", "", cleaned_content)
-
-    # 4. 移除图片格式：[图片:xxx]
+    # 移除图片格式：[图片:xxx]
     cleaned_content = re.sub(r"\[图片:[^\]]*\]", "", cleaned_content)
-
-    # 5. 移除@格式：@<xxx>
+    # 移除@格式：@<xxx>
     cleaned_content = re.sub(r"@<[^>]*>", "", cleaned_content)
-
-    # 6. 移除其他可能的系统格式
     # [表情包(描述生成失败)] 等错误格式
     cleaned_content = re.sub(r"\[表情包\([^)]*\)\]", "", cleaned_content)
     # [图片(描述生成失败)] 等错误格式

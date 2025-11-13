@@ -10,7 +10,7 @@ services:
     volumes:
       - ./docker-config/core/.env:/app/.env # 持久化env配置文件
       - ./docker-config/core:/app/config # 持久化bot配置文件
-      - ./data/core/maibot_statistics.html:/app/maibot_statistics.html #统计数据输出
+      - ./data/core/mofox_bot_statistics.html:/app/mofox_bot_statistics.html #统计数据输出
       - ./data/app:/app/data # 共享目录
       - ./data/core/plugins:/app/plugins # 插件目录
       - ./data/core/logs:/app/logs # 日志目录
