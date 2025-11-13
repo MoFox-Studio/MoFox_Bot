@@ -156,9 +156,6 @@ class ChatterActionPlanner:
 
                     except Exception as e:
                         logger.warning(f"Focus模式 - 处理消息 {message.message_id} 失败: {e}")
-                        message.interest_value = 0.0
-                        message.should_reply = False
-                        message.should_act = False
 
             # 2. 检查兴趣度是否达到非回复动作阈值
             non_reply_action_interest_threshold = global_config.affinity_flow.non_reply_action_interest_threshold
@@ -202,9 +199,9 @@ class ChatterActionPlanner:
                 filtered_plan = await plan_filter.filter(initial_plan)
                 
                 # 检查reply动作是否可用
-                reply_action_available = "reply" in available_actions or "respond" in available_actions
-                if filtered_plan.decided_actions and not reply_action_available:
-                    logger.info("Focus模式 - 回复动作不可用，移除所有回复相关动作")
+                has_reply_action = "reply" in available_actions or "respond" in available_actions
+                if filtered_plan.decided_actions and has_reply_action and reply_not_available:
+                    logger.info("Focus模式 - 未达到回复动作阈值，移除所有回复相关动作")
                     filtered_plan.decided_actions = [
                         action for action in filtered_plan.decided_actions
                         if action.action_type not in ["reply", "respond"]
