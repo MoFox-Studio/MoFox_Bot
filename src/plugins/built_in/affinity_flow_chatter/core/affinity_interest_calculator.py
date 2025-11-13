@@ -307,6 +307,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
                 self.post_reply_boost_max_count - self.post_reply_boost_remaining
             )
             post_reply_reduction = self.post_reply_threshold_reduction * decay_factor
+            self.post_reply_boost_remaining -= 1
             total_reduction += post_reply_reduction
             logger.debug(
                 f"[阈值调整] 回复后降低: {post_reply_reduction:.3f} "
@@ -318,17 +319,6 @@ class AffinityInterestCalculator(BaseInterestCalculator):
         adjusted_action_threshold = max(0.0, base_action_threshold - total_reduction)
 
         return adjusted_reply_threshold, adjusted_action_threshold
-
-    def _apply_no_reply_boost(self, base_score: float) -> float:
-        """【已弃用】应用连续不回复的概率提升
-
-        注意：此方法已被 _apply_no_reply_threshold_adjustment 替代
-        保留用于向后兼容
-        """
-        if self.no_reply_count > 0 and self.no_reply_count < self.max_no_reply_count:
-            boost = self.no_reply_count * self.probability_boost_per_no_reply
-            return min(1.0, base_score + boost)
-        return base_score
 
     def _extract_keywords_from_database(self, message: "DatabaseMessages") -> list[str]:
         """从数据库消息中提取关键词"""
@@ -394,7 +384,7 @@ class AffinityInterestCalculator(BaseInterestCalculator):
 
     def on_reply_sent(self):
         """当机器人发送回复后调用，激活回复后阈值降低机制"""
-        if self.enable_post_reply_boost:
+        if self.enable_post_reply_boost and not self.post_reply_boost_remaining:
             # 重置回复后降低计数器
             self.post_reply_boost_remaining = self.post_reply_boost_max_count
             logger.debug(
