@@ -287,109 +287,116 @@ class PromptComponentManager:
         components = component_registry.get_components_by_type(ComponentType.PROMPT).values()
         return [info for info in components if isinstance(info, PromptInfo)]
 
-    async def get_full_injection_map(self) -> dict[str, list[dict]]:
+    async def get_injection_info(
+        self,
+        target_prompt: str | None = None,
+        detailed: bool = False,
+    ) -> dict[str, list[dict]]:
         """
-        获取当前完整的注入映射图。
+        获取注入信息的映射图，可按目标筛选，并可控制信息的详细程度。
 
-        此方法提供了一个系统全局的注入视图，展示了每个核心提示词（target）
-        被哪些注入组件（source）以何种优先级注入。
+        - `get_injection_info()` 返回所有目标的摘要注入信息。
+        - `get_injection_info(target_prompt="...")` 返回指定目标的摘要注入信息。
+        - `get_injection_info(detailed=True)` 返回所有目标的详细注入信息。
+        - `get_injection_info(target_prompt="...", detailed=True)` 返回指定目标的详细注入信息。
+
+        Args:
+            target_prompt (str, optional): 如果指定，仅返回该目标的注入信息。
+            detailed (bool, optional): 如果为 True，则返回包含注入类型和内容的详细信息。
+                                       默认为 False，返回摘要信息。
 
         Returns:
             dict[str, list[dict]]: 一个字典，键是目标提示词名称，
-            值是按优先级排序的注入信息列表。
-            `[{"name": str, "priority": int, "source": str}]`
+                                   值是按优先级排序的注入信息列表。
         """
-        injection_map = {}
+        info_map = {}
         async with self._lock:
-            # 合并所有动态规则的目标和所有核心提示词，确保所有潜在目标都被包含
             all_targets = set(self._dynamic_rules.keys()) | set(self.get_core_prompts())
-            for target in sorted(all_targets):
+            
+            # 如果指定了目标，则只处理该目标
+            targets_to_process = [target_prompt] if target_prompt and target_prompt in all_targets else sorted(all_targets)
+
+            for target in targets_to_process:
                 rules = self._dynamic_rules.get(target, {})
                 if not rules:
-                    injection_map[target] = []
+                    info_map[target] = []
                     continue
 
                 info_list = []
                 for prompt_name, (rule, _, source) in rules.items():
-                    info_list.append({"name": prompt_name, "priority": rule.priority, "source": source})
+                    if detailed:
+                        info_list.append(
+                            {
+                                "name": prompt_name,
+                                "priority": rule.priority,
+                                "source": source,
+                                "injection_type": rule.injection_type.value,
+                                "target_content": rule.target_content,
+                            }
+                        )
+                    else:
+                        info_list.append({"name": prompt_name, "priority": rule.priority, "source": source})
 
-                # 按优先级排序后存入 map
                 info_list.sort(key=lambda x: x["priority"])
-                injection_map[target] = info_list
-        return injection_map
+                info_map[target] = info_list
+        return info_map
 
-    async def get_injections_for_prompt(self, target_prompt_name: str) -> list[dict]:
+    def get_injection_rules(
+        self,
+        target_prompt: str | None = None,
+        component_name: str | None = None,
+    ) -> dict[str, dict[str, "InjectionRule"]]:
         """
-        获取指定核心提示词模板的所有注入信息（包含详细规则）。
+        获取动态注入规则，可通过目标或组件名称进行筛选。
+
+        - 不提供任何参数时，返回所有规则。
+        - 提供 `target_prompt` 时，仅返回注入到该目标的规则。
+        - 提供 `component_name` 时，仅返回由该组件定义的所有规则。
+        - 同时提供 `target_prompt` 和 `component_name` 时，返回满足两个条件的规则。
 
         Args:
-            target_prompt_name (str): 目标核心提示词的名称。
+            target_prompt (str, optional): 按目标核心提示词名称筛选。
+            component_name (str, optional): 按注入组件名称筛选。
 
         Returns:
-            list[dict]: 一个包含注入规则详细信息的列表，已按优先级排序。
-        """
-        rules_for_target = self._dynamic_rules.get(target_prompt_name, {})
-        if not rules_for_target:
-            return []
-
-        info_list = []
-        for prompt_name, (rule, _, source) in rules_for_target.items():
-            info_list.append(
-                {
-                    "name": prompt_name,
-                    "priority": rule.priority,
-                    "source": source,
-                    "injection_type": rule.injection_type.value,
-                    "target_content": rule.target_content,
-                }
-            )
-        info_list.sort(key=lambda x: x["priority"])
-        return info_list
-
-    def get_all_dynamic_rules(self) -> dict[str, dict[str, "InjectionRule"]]:
-        """
-        获取所有当前的动态注入规则，以 InjectionRule 对象形式返回。
-
-        此方法返回一个深拷贝的规则副本，隐藏了 `content_provider` 等内部实现细节。
-        适合用于展示或序列化当前的规则配置。
+            dict[str, dict[str, InjectionRule]]: 一个深拷贝的规则字典。
+            结构: { "target_prompt": { "component_name": InjectionRule } }
         """
         rules_copy = {}
-        for target, rules in self._dynamic_rules.items():
-            target_copy = {name: rule for name, (rule, _, _) in rules.items()}
-            rules_copy[target] = target_copy
+        # 筛选目标
+        targets_to_check = [target_prompt] if target_prompt else self._dynamic_rules.keys()
+
+        for target in targets_to_check:
+            if target not in self._dynamic_rules:
+                continue
+
+            rules_for_target = self._dynamic_rules[target]
+            target_copy = {}
+
+            # 筛选组件
+            if component_name:
+                if component_name in rules_for_target:
+                    rule, _, _ = rules_for_target[component_name]
+                    target_copy[component_name] = rule
+            else:
+                for name, (rule, _, _) in rules_for_target.items():
+                    target_copy[name] = rule
+            
+            if target_copy:
+                rules_copy[target] = target_copy
+
+        # 如果是按组件筛选且未指定目标，则需遍历所有目标
+        if component_name and not target_prompt:
+            found_rules = {}
+            for target, rules in self._dynamic_rules.items():
+                if component_name in rules:
+                    rule, _, _ = rules[component_name]
+                    if target not in found_rules:
+                        found_rules[target] = {}
+                    found_rules[target][component_name] = rule
+            return copy.deepcopy(found_rules)
+
         return copy.deepcopy(rules_copy)
-
-    def get_rules_for_target(self, target_prompt: str) -> dict[str, InjectionRule]:
-        """
-        获取所有注入到指定核心提示词的动态规则。
-
-        Args:
-            target_prompt (str): 目标核心提示词的名称。
-
-        Returns:
-            dict[str, InjectionRule]: 一个字典，键是注入组件的名称，值是 `InjectionRule` 对象。
-            如果找不到任何注入到该目标的规则，则返回一个空字典。
-        """
-        target_rules = self._dynamic_rules.get(target_prompt, {})
-        return {name: copy.deepcopy(rule_info[0]) for name, rule_info in target_rules.items()}
-
-    def get_rules_by_component(self, component_name: str) -> dict[str, InjectionRule]:
-        """
-        获取由指定的单个注入组件定义的所有动态规则。
-
-        Args:
-            component_name (str): 注入组件的名称。
-
-        Returns:
-            dict[str, InjectionRule]: 一个字典，键是目标核心提示词的名称，值是 `InjectionRule` 对象。
-            如果该组件没有定义任何注入规则，则返回一个空字典。
-        """
-        found_rules = {}
-        for target, rules in self._dynamic_rules.items():
-            if component_name in rules:
-                rule_info = rules[component_name]
-                found_rules[target] = copy.deepcopy(rule_info[0])
-        return found_rules
 
 
 # 创建全局单例 (Singleton)

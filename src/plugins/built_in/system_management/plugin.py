@@ -6,6 +6,7 @@
 
 import re
 from typing import ClassVar
+
 from src.chat.utils.prompt_component_manager import prompt_component_manager
 from src.plugin_system.apis import (
     plugin_manage_api,
@@ -13,6 +14,7 @@ from src.plugin_system.apis import (
 from src.plugin_system.apis.logging_api import get_logger
 from src.plugin_system.apis.permission_api import permission_api
 from src.plugin_system.apis.plugin_register_api import register_plugin
+from src.plugin_system.apis.unified_scheduler import TriggerType, unified_scheduler
 from src.plugin_system.base.base_plugin import BasePlugin
 from src.plugin_system.base.command_args import CommandArgs
 from src.plugin_system.base.component_types import (
@@ -23,7 +25,6 @@ from src.plugin_system.base.component_types import (
 from src.plugin_system.base.config_types import ConfigField
 from src.plugin_system.base.plus_command import PlusCommand
 from src.plugin_system.utils.permission_decorators import require_permission
-from src.plugin_system.apis.unified_scheduler import TriggerType, unified_scheduler
 
 logger = get_logger("SystemManagement")
 
@@ -266,7 +267,7 @@ class SystemCommand(PlusCommand):
     @require_permission("prompt.view", deny_message="❌ 你没有查看提示词注入信息的权限")
     async def _show_injection_map(self):
         """显示全局注入关系图"""
-        injection_map = await prompt_component_manager.get_full_injection_map()
+        injection_map = await prompt_component_manager.get_injection_info()
         if not injection_map:
             await self.send_text("📊 当前没有任何提示词注入关系")
             return
@@ -312,7 +313,8 @@ class SystemCommand(PlusCommand):
     @require_permission("prompt.view", deny_message="❌ 你没有查看提示词注入信息的权限")
     async def _get_prompt_injection_info(self, target_name: str):
         """获取特定核心提示词的注入详情"""
-        injections = await prompt_component_manager.get_injections_for_prompt(target_name)
+        injection_info = await prompt_component_manager.get_injection_info(target_prompt=target_name, detailed=True)
+        injections = injection_info.get(target_name, [])
 
         core_prompts = prompt_component_manager.get_core_prompts()
         if target_name not in core_prompts:
