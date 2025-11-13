@@ -574,6 +574,8 @@ class ChatterPlanFilter:
 
             # 构建参数的JSON示例
             params_json_list = []
+            for param_name, param_desc in action_info.action_parameters.items():
+                params_json_list.append(f'            "{param_name}": "<{param_desc}>",')
 
             # 构建完整的action_data JSON示例
             action_data_lines = ["{"]
