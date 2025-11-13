@@ -60,6 +60,8 @@ class SystemCommand(PlusCommand):
             await self._handle_schedule_commands(remaining_args)
         elif subcommand in ["help", "帮助"]:
             await self._show_help("all")
+        elif subcommand in ["prompt","提示词"]:
+            await self._handle_prompt_commands(remaining_args)
         else:
             await self.send_text(f"❌ 未知的子命令: {subcommand}\n使用 /system help 查看帮助")
 
