@@ -176,13 +176,13 @@ def cached(
             if use_args and args:
                 # 将位置参数转换为字符串
                 args_str = ",".join(str(arg) for arg in args)
-                args_hash = hashlib.md5(args_str.encode()).hexdigest()[:8]
+                args_hash = hashlib.sha256(args_str.encode()).hexdigest()[:8]
                 cache_key_parts.append(f"args:{args_hash}")
 
             if use_kwargs and kwargs:
                 # 将关键字参数转换为字符串（排序以保证一致性）
                 kwargs_str = ",".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
-                kwargs_hash = hashlib.md5(kwargs_str.encode()).hexdigest()[:8]
+                kwargs_hash = hashlib.sha256(kwargs_str.encode()).hexdigest()[:8]
                 cache_key_parts.append(f"kwargs:{kwargs_hash}")
 
             cache_key = ":".join(cache_key_parts)
