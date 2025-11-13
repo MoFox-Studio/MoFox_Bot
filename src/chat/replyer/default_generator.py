@@ -9,7 +9,7 @@ import re
 import time
 import traceback
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from src.chat.express.expression_selector import expression_selector
 from src.chat.message_receive.chat_stream import ChatStream
@@ -129,7 +129,7 @@ def init_prompt():
 ## 规则
 {safety_guidelines_block}
 
-注意：在规划回复时，务必确定对方是不是真的在叫自己。聊天时往往有数百甚至数千个用户，请务必认清自己的身份和角色，避免误以为对方在和自己对话而贸然插入回复，导致尴尬局面。
+{group_chat_reminder_block}
 你的回复应该是一条简短、完整且口语化的回复。
 
  --------------------------------
@@ -211,7 +211,7 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 
 ## 规则
 {safety_guidelines_block}
-注意：在规划回复时，务必确定对方是不是真的在叫自己。聊天时往往有数百甚至数千个用户，请务必认清自己的身份和角色，避免误以为对方在和自己对话而贸然插入回复，导致尴尬局面。
+{group_chat_reminder_block}
 你的回复应该是一条简短、完整且口语化的回复。
 
  --------------------------------
@@ -355,7 +355,7 @@ class DefaultReplyer:
         try:
             # 从available_actions中提取prompt_mode（由action_manager传递）
             # 如果没有指定，默认使用s4u模式
-            prompt_mode_value: str = "s4u"
+            prompt_mode_value: Any = "s4u"
             if available_actions and "_prompt_mode" in available_actions:
                 mode = available_actions.get("_prompt_mode", "s4u")
                 # 确保类型安全
@@ -602,14 +602,20 @@ class DefaultReplyer:
                     }
 
                     # 使用记忆管理器的智能检索（多查询策略）
-                    memories = await manager.search_memories(
-                        query=target,
-                        top_k=global_config.memory.search_top_k,
-                        min_importance=global_config.memory.search_min_importance,
-                        include_forgotten=False,
-                        use_multi_query=True,
-                        context=query_context,
-                    )
+                    memories = []
+                    if global_config.memory:
+                        memories = []
+                        if global_config.memory:
+                            top_k = global_config.memory.search_top_k
+                            min_importance = global_config.memory.search_min_importance
+                            memories = await manager.search_memories(
+                                query=target,
+                                top_k=top_k,
+                                min_importance=min_importance,
+                                include_forgotten=False,
+                                use_multi_query=True,
+                                context=query_context,
+                            )
 
                     if memories:
                         logger.info(f"[记忆图] 检索到 {len(memories)} 条相关记忆")
@@ -1095,7 +1101,7 @@ class DefaultReplyer:
         available_actions: dict[str, ActionInfo] | None = None,
         enable_tool: bool = True,
         reply_message: DatabaseMessages | None = None,
-        prompt_mode: str = "s4u",  # 新增参数：s4u 或 normal
+        prompt_mode: Literal["s4u", "normal", "minimal"] = "s4u",  # 新增参数：s4u 或 normal
     ) -> str:
         """
         构建回复器上下文
@@ -1506,6 +1512,11 @@ class DefaultReplyer:
 
         auth_role_prompt_block = await self._build_auth_role_prompt()
 
+        # 动态构建群聊提醒
+        group_chat_reminder_block = ""
+        if is_group_chat:
+            group_chat_reminder_block = "注意：在规划回复时，务必确定对方是不是真的在叫自己。聊天时往往有数百甚至数千个用户，请务必认清自己的身份和角色，避免误以为对方在和自己对话而贸然插入回复，导致尴尬局面。"
+
         # 使用新的统一Prompt系统 - 创建PromptParameters
         prompt_parameters = PromptParameters(
             chat_scene=chat_scene_prompt,
@@ -1542,6 +1553,7 @@ class DefaultReplyer:
             mood_prompt=mood_prompt,
             auth_role_prompt_block=auth_role_prompt_block,
             action_descriptions=action_descriptions,
+            group_chat_reminder_block=group_chat_reminder_block,
             bot_name=global_config.bot.nickname,
             bot_nickname=",".join(global_config.bot.alias_names) if global_config.bot.alias_names else "",
         )

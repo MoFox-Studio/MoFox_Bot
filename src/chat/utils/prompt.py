@@ -910,6 +910,8 @@ class Prompt:
             or context_data.get("auth_role_prompt_block", ""),
             "chat_scene": self.parameters.chat_scene
             or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
+            "group_chat_reminder_block": self.parameters.group_chat_reminder_block
+            or context_data.get("group_chat_reminder_block", ""),
         }
 
     def _prepare_normal_params(self, context_data: dict[str, Any]) -> dict[str, Any]:
@@ -952,6 +954,8 @@ class Prompt:
             or "你正在一个QQ群里聊天，你需要理解整个群的聊天动态和话题走向，并做出自然的回应。",
             "bot_name": self.parameters.bot_name,
             "bot_nickname": self.parameters.bot_nickname,
+            "group_chat_reminder_block": self.parameters.group_chat_reminder_block
+            or context_data.get("group_chat_reminder_block", ""),
         }
 
     def _prepare_default_params(self, context_data: dict[str, Any]) -> dict[str, Any]:
