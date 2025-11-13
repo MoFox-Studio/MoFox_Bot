@@ -84,12 +84,12 @@ def format_memory_for_prompt(memory: Memory, include_metadata: bool = False) -> 
         if object_node is not None:
             # 有完整的主谓宾
             if core_relation:
-                parts.append(f"{subject_text}{topic_text}{core_relation}{object_node.content}")
+                parts.append(f"{subject_text}-{topic_text}{core_relation}{object_node.content}")
             else:
-                parts.append(f"{subject_text}{topic_text}{object_node.content}")
+                parts.append(f"{subject_text}-{topic_text}{object_node.content}")
         else:
             # 只有主谓
-            parts.append(f"{subject_text}{topic_text}")
+            parts.append(f"{subject_text}-{topic_text}")
 
         # 添加属性信息
         if attributes:
