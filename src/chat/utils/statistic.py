@@ -417,7 +417,12 @@ class StatisticOutputTask(AsyncTask):
                 avg_key = f"AVG_TIME_COST_BY_{items.upper()}"
                 std_key = f"STD_TIME_COST_BY_{items.upper()}"
 
-                for item_name in period_stats[category_key]:
+                # Ensure the stat dicts exist before trying to access them, making the process more robust.
+                period_stats.setdefault(time_cost_key, defaultdict(list))
+                period_stats.setdefault(avg_key, defaultdict(float))
+                period_stats.setdefault(std_key, defaultdict(float))
+
+                for item_name in period_stats.get(category_key, {}):
                     time_costs = period_stats[time_cost_key].get(item_name, [])
                     if time_costs:
                         avg_time = sum(time_costs) / len(time_costs)
@@ -614,37 +619,31 @@ class StatisticOutputTask(AsyncTask):
         # 统计数据合并
         # 合并三类统计数据
         for period_key, _ in stat_start_timestamp:
-            stat[period_key].update(model_req_stat[period_key])
-            stat[period_key].update(online_time_stat[period_key])
-            stat[period_key].update(message_count_stat[period_key])
+            stat[period_key].update(model_req_stat.get(period_key, {}))
+            stat[period_key].update(online_time_stat.get(period_key, {}))
+            stat[period_key].update(message_count_stat.get(period_key, {}))
 
         if last_all_time_stat:
             # 若存在上次完整统计数据，则将其与当前统计数据合并
             for key, val in last_all_time_stat.items():
-                # 确保当前统计数据中存在该key
+                # If a key from old stats is not in the current period's stats, it means no new data was generated.
+                # In this case, we carry over the old data.
                 if key not in stat["all_time"]:
+                    stat["all_time"][key] = val
                     continue
 
+                # If the key exists in both, we merge.
                 if isinstance(val, dict):
-                    # 是字典类型，则进行合并
+                    # It's a dictionary-like object (e.g., COST_BY_MODEL, TIME_COST_BY_TYPE)
+                    current_dict = stat["all_time"][key]
                     for sub_key, sub_val in val.items():
-                        # 普通的数值或字典合并
-                        if sub_key in stat["all_time"][key]:
-                            # 检查是否为嵌套的字典类型（如版本统计）
-                            if isinstance(sub_val, dict) and isinstance(stat["all_time"][key][sub_key], dict):
-                                # 合并嵌套字典
-                                for nested_key, nested_val in sub_val.items():
-                                    if nested_key in stat["all_time"][key][sub_key]:
-                                        stat["all_time"][key][sub_key][nested_key] += nested_val
-                                    else:
-                                        stat["all_time"][key][sub_key][nested_key] = nested_val
-                            else:
-                                # 普通数值累加
-                                stat["all_time"][key][sub_key] += sub_val
+                        if sub_key in current_dict:
+                            # For lists (like TIME_COST), this extends. For numbers, this adds.
+                            current_dict[sub_key] += sub_val
                         else:
-                            stat["all_time"][key][sub_key] = sub_val
+                            current_dict[sub_key] = sub_val
                 else:
-                    # 直接合并
+                    # It's a simple value (e.g., TOTAL_COST)
                     stat["all_time"][key] += val
 
         # 更新上次完整统计数据的时间戳
@@ -686,10 +685,10 @@ class StatisticOutputTask(AsyncTask):
         """
 
         output = [
-            f"总在线时间: {_format_online_time(stats[ONLINE_TIME])}",
-            f"总消息数: {stats[TOTAL_MSG_CNT]}",
-            f"总请求数: {stats[TOTAL_REQ_CNT]}",
-            f"总花费: {stats[TOTAL_COST]:.4f}¥",
+            f"总在线时间: {_format_online_time(stats.get(ONLINE_TIME, 0))}",
+            f"总消息数: {stats.get(TOTAL_MSG_CNT, 0)}",
+            f"总请求数: {stats.get(TOTAL_REQ_CNT, 0)}",
+            f"总花费: {stats.get(TOTAL_COST, 0.0):.4f}¥",
             "",
         ]
 
@@ -700,21 +699,21 @@ class StatisticOutputTask(AsyncTask):
         """
         格式化按模型分类的统计数据
         """
-        if stats[TOTAL_REQ_CNT] <= 0:
+        if stats.get(TOTAL_REQ_CNT, 0) <= 0:
             return ""
         data_fmt = "{:<32}  {:>10}  {:>12}  {:>12}  {:>12}  {:>9.4f}¥  {:>10}  {:>10}"
 
         output = [
             " 模型名称                          调用次数    输入Token     输出Token     Token总量     累计花费    平均耗时(秒)  标准差(秒)",
         ]
-        for model_name, count in sorted(stats[REQ_CNT_BY_MODEL].items()):
+        for model_name, count in sorted(stats.get(REQ_CNT_BY_MODEL, {}).items()):
             name = f"{model_name[:29]}..." if len(model_name) > 32 else model_name
-            in_tokens = stats[IN_TOK_BY_MODEL][model_name]
-            out_tokens = stats[OUT_TOK_BY_MODEL][model_name]
-            tokens = stats[TOTAL_TOK_BY_MODEL][model_name]
-            cost = stats[COST_BY_MODEL][model_name]
-            avg_time_cost = stats[AVG_TIME_COST_BY_MODEL][model_name]
-            std_time_cost = stats[STD_TIME_COST_BY_MODEL][model_name]
+            in_tokens = stats.get(IN_TOK_BY_MODEL, {}).get(model_name, 0)
+            out_tokens = stats.get(OUT_TOK_BY_MODEL, {}).get(model_name, 0)
+            tokens = stats.get(TOTAL_TOK_BY_MODEL, {}).get(model_name, 0)
+            cost = stats.get(COST_BY_MODEL, {}).get(model_name, 0.0)
+            avg_time_cost = stats.get(AVG_TIME_COST_BY_MODEL, {}).get(model_name, 0.0)
+            std_time_cost = stats.get(STD_TIME_COST_BY_MODEL, {}).get(model_name, 0.0)
             output.append(
                 data_fmt.format(name, count, in_tokens, out_tokens, tokens, cost, avg_time_cost, std_time_cost)
             )
@@ -726,12 +725,12 @@ class StatisticOutputTask(AsyncTask):
         """
         格式化聊天统计数据
         """
-        if stats[TOTAL_MSG_CNT] <= 0:
+        if stats.get(TOTAL_MSG_CNT, 0) <= 0:
             return ""
         output = ["聊天消息统计:", " 联系人/群组名称                  消息数量"]
         output.extend(
             f"{self.name_mapping.get(chat_id, (chat_id, 0))[0][:32]:<32}  {count:>10}"
-            for chat_id, count in sorted(stats[MSG_CNT_BY_CHAT].items())
+            for chat_id, count in sorted(stats.get(MSG_CNT_BY_CHAT, {}).items())
         )
         output.append("")
         return "\n".join(output)
