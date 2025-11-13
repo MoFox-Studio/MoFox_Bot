@@ -16,7 +16,6 @@ logger = get_logger("maibot_statistic")
 # 彻底异步化：删除原同步包装器 _sync_db_get，所有数据库访问统一使用 await db_get。
 
 
-from .report_generator import HTMLReportGenerator, format_online_time
 from .statistic_keys import *
 
 
@@ -181,16 +180,6 @@ class StatisticOutputTask(AsyncTask):
             logger.info("统计数据收集完成")
 
             self._statistic_console_output(stats, now)
-            # 使用新的 HTMLReportGenerator 生成报告
-            chart_data = await self._collect_chart_data(stats)
-            deploy_time = datetime.fromtimestamp(local_storage.get("deploy_time", now.timestamp()))
-            report_generator = HTMLReportGenerator(
-                name_mapping=self.name_mapping,
-                stat_period=self.stat_period,
-                deploy_time=deploy_time,
-            )
-            await report_generator.generate_report(stats, chart_data, now, self.record_file_path)
-            logger.info("统计数据HTML报告输出完成")
 
         except Exception as e:
             logger.exception(f"输出统计数据过程中发生异常，错误信息：{e}")
@@ -207,18 +196,6 @@ class StatisticOutputTask(AsyncTask):
                 logger.info("(后台) 正在收集统计数据(异步)...")
                 stats = await self._collect_all_statistics(now)
                 self._statistic_console_output(stats, now)
-
-                # 使用新的 HTMLReportGenerator 生成报告
-                chart_data = await self._collect_chart_data(stats)
-                deploy_time = datetime.fromtimestamp(local_storage.get("deploy_time", now.timestamp()))
-                report_generator = HTMLReportGenerator(
-                    name_mapping=self.name_mapping,
-                    stat_period=self.stat_period,
-                    deploy_time=deploy_time,
-                )
-                await report_generator.generate_report(stats, chart_data, now, self.record_file_path)
-
-                logger.info("统计数据后台输出完成")
             except Exception as e:
                 logger.exception(f"后台统计数据输出过程中发生异常：{e}")
 
