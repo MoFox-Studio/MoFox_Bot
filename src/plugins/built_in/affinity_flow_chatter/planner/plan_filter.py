@@ -73,31 +73,31 @@ class ChatterPlanFilter:
                         "actions": {"action_type": "no_action", "reason": "返回内容无法解析为JSON"},
                     }
 
-                if "reply" in plan.available_actions and reply_not_available:
-                    # 如果reply动作不可用，但llm返回的仍然有reply，则改为no_reply
-                    if isinstance(parsed_json, dict):
-                        actions_obj = parsed_json.get("actions", {})
-                        # actions 可能是字典或列表
-                        if isinstance(actions_obj, dict) and actions_obj.get("action_type", "") == "reply":
-                            parsed_json["actions"]["action_type"] = "no_reply"
-                        elif isinstance(actions_obj, list):
-                            for action_item in actions_obj:
-                                if isinstance(action_item, dict) and action_item.get("action_type", "") == "reply":
-                                    action_item["action_type"] = "no_reply"
-                                    if "reason" in action_item:
-                                        action_item["reason"] += " (但由于兴趣度不足，reply动作不可用，已改为no_reply)"
-                    elif isinstance(parsed_json, list):
-                        for item in parsed_json:
-                            if isinstance(item, dict):
-                                actions_obj = item.get("actions", {})
-                                if isinstance(actions_obj, dict) and actions_obj.get("action_type", "") == "reply":
-                                    item["actions"]["action_type"] = "no_reply"
-                                elif isinstance(actions_obj, list):
-                                    for action_item in actions_obj:
-                                        if isinstance(action_item, dict) and action_item.get("action_type", "") == "reply":
-                                            action_item["action_type"] = "no_reply"
-                                            if "reason" in action_item:
-                                                action_item["reason"] += " (但由于兴趣度不足，reply动作不可用，已改为no_reply)"
+                # 检查reply和respond动作是否真正可用
+                reply_action_available = False
+                respond_action_available = False
+
+                # 检查reply动作
+                if "reply" in plan.available_actions:
+                    reply_action_info = plan.available_actions.get("reply")
+                    if reply_action_info and hasattr(reply_action_info, 'enabled') and reply_action_info.enabled:
+                        reply_action_available = True
+
+                # 检查respond动作
+                if "respond" in plan.available_actions:
+                    respond_action_info = plan.available_actions.get("respond")
+                    if respond_action_info and hasattr(respond_action_info, 'enabled') and respond_action_info.enabled:
+                        respond_action_available = True
+
+                # 如果reply/respond动作真正存在但兴趣度不足（reply_not_available=True），则将它们改为no_reply/no_action
+                if reply_not_available:
+                    # 如果reply动作可用但兴趣度不足，则将reply改为no_reply
+                    if reply_action_available:
+                        self._filter_action_in_json(parsed_json, "reply", "no_reply", "但由于兴趣度不足，reply动作不可用，已改为no_reply")
+
+                    # 如果respond动作可用但兴趣度不足，则将respond改为no_action
+                    if respond_action_available:
+                        self._filter_action_in_json(parsed_json, "respond", "no_action", "但由于兴趣度不足，respond动作不可用，已改为no_action")
 
                 if isinstance(parsed_json, dict):
                     parsed_json = [parsed_json]
@@ -655,6 +655,7 @@ class ChatterPlanFilter:
 
         # 获取该动作定义的合法参数
         defined_params = set(action_info.action_parameters.keys())
+        defined_params.add("thinking")  # 保留thinking字段
 
         # 合法参数集合
         valid_params = defined_params
@@ -930,3 +931,37 @@ class ChatterPlanFilter:
             ):
                 return message
         return None
+
+    def _filter_action_in_json(self, parsed_json: dict | list, action_name: str, target_action: str, reason_suffix: str) -> None:
+        """
+        在解析后的JSON中过滤指定的动作类型
+
+        Args:
+            parsed_json: 解析后的JSON（可能是dict或list）
+            action_name: 要过滤的动作名称（如"reply", "respond"）
+            target_action: 替换的目标动作（如"no_reply", "no_action"）
+            reason_suffix: 添加到reason中的后缀说明
+        """
+        if isinstance(parsed_json, dict):
+            actions_obj = parsed_json.get("actions", {})
+            # actions 可能是字典或列表
+            if isinstance(actions_obj, dict) and actions_obj.get("action_type", "") == action_name:
+                actions_obj["action_type"] = target_action
+            elif isinstance(actions_obj, list):
+                for action_item in actions_obj:
+                    if isinstance(action_item, dict) and action_item.get("action_type", "") == action_name:
+                        action_item["action_type"] = target_action
+                        if "reason" in action_item:
+                            action_item["reason"] += f" ({reason_suffix})"
+        elif isinstance(parsed_json, list):
+            for item in parsed_json:
+                if isinstance(item, dict):
+                    actions_obj = item.get("actions", {})
+                    if isinstance(actions_obj, dict) and actions_obj.get("action_type", "") == action_name:
+                        actions_obj["action_type"] = target_action
+                    elif isinstance(actions_obj, list):
+                        for action_item in actions_obj:
+                            if isinstance(action_item, dict) and action_item.get("action_type", "") == action_name:
+                                action_item["action_type"] = target_action
+                                if "reason" in action_item:
+                                    action_item["reason"] += f" ({reason_suffix})"
