@@ -598,6 +598,7 @@ class LPMMKnowledgeConfig(ValidatedConfigBase):
     """LPMM知识库配置类"""
 
     enable: bool = Field(default=True, description="启用")
+    enable_summary: bool = Field(default=True, description="是否启用知识库总结")
     rag_synonym_search_top_k: int = Field(default=10, description="RAG同义词搜索Top K")
     rag_synonym_threshold: float = Field(default=0.8, description="RAG同义词阈值")
     info_extraction_workers: int = Field(default=3, description="信息提取工作线程数")

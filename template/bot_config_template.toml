@@ -301,6 +301,7 @@ asr_provider = "api"
 
 [lpmm_knowledge] # lpmm知识库配置
 enable = false # 是否启用lpmm知识库
+enable_summary = true # 是否启用知识库总结
 rag_synonym_search_top_k = 10 # 同义词搜索TopK
 rag_synonym_threshold = 0.8 # 同义词阈值（相似度高于此阈值的词语会被认为是同义词）
 info_extraction_workers = 3 # 实体提取同时执行线程数，非Pro模型不要设置超过5

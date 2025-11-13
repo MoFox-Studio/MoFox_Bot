@@ -502,7 +502,7 @@ class Prompt:
             }
 
             # 使用 asyncio.gather 实现并发执行，提供更好的错误处理和性能
-            results = [None] * len(tasks)  # 预分配结果列表，保持任务顺序
+            results: list[Any] = [None] * len(tasks)  # 预分配结果列表，保持任务顺序
             tasks_to_run = []  # 存储带超时的任务
             task_info = []  # 存储任务信息，用于结果处理
 
@@ -825,7 +825,7 @@ class Prompt:
                             knowledge_parts.append(f"- [{relevance_str}] {content}")
 
                 # 如果有总结，也一并加入
-                if knowledge_results.get("summary"):
+                if global_config.lpmm_knowledge.enable_summary and knowledge_results.get("summary"):
                     knowledge_parts.append(
                         f"\n知识总结: {knowledge_results['summary']}"
                     )
