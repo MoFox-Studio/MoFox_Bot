@@ -351,7 +351,6 @@ class ChatterActionPlanner:
                     reasoning="Normal模式 - 兴趣度达到阈值，使用respond动作统一回应未读消息",
                     action_data={},  # respond动作不需要参数
                     action_message=None,  # respond动作不针对特定消息
-                    should_quote_reply=False,  # Normal模式默认不引用回复，保持对话流畅
                 )
 
                 # Normal模式下直接构建最小化的Plan，跳过generator和action_modifier
