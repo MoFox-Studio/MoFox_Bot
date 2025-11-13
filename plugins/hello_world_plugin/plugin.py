@@ -194,6 +194,7 @@ class WeatherPrompt(BasePrompt):
     async def execute(self) -> str:
         # 在实际应用中，这里可以调用天气API
         # 为了演示，我们返回一个固定的天气信息
+        logger.info(self.target_prompt_name)
         return "当前天气：晴朗，温度25°C。"
 
 
@@ -202,7 +203,7 @@ class HelloWorldPlugin(BasePlugin):
     """一个包含四大核心组件和高级配置功能的入门示例插件。"""
 
     plugin_name = "hello_world_plugin"
-    enable_plugin = False
+    enable_plugin = True
     dependencies: ClassVar = []
     python_dependencies: ClassVar = []
     config_file_name = "config.toml"

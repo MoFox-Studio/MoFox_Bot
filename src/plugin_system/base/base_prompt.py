@@ -27,22 +27,24 @@ class BasePrompt(ABC):
     # 定义此组件希望如何注入到核心Prompt中
     # 这是一个 InjectionRule 对象的列表，可以实现复杂的注入逻辑
     # 例如: [InjectionRule(target_prompt="planner_prompt", injection_type=InjectionType.APPEND, priority=50)]
-    injection_rules: ClassVar[list[InjectionRule] ] = []
+    injection_rules: ClassVar[list[InjectionRule]] = []
     """定义注入规则的列表"""
 
     # 旧的注入点定义，用于向后兼容。如果定义了这个，它将被自动转换为 injection_rules。
     injection_point: str | list[str] | None = None
     """[已废弃] 要注入的目标Prompt名称或列表，请使用 injection_rules"""
 
-    def __init__(self, params: PromptParameters, plugin_config: dict | None = None):
+    def __init__(self, params: PromptParameters, plugin_config: dict | None = None, target_prompt_name: str | None = None):
         """初始化Prompt组件
 
         Args:
             params: 统一提示词参数，包含所有构建提示词所需的上下文信息。
             plugin_config: 插件配置字典。
+            target_prompt_name: 在应用注入时，当前注入的目标提示词名称。
         """
         self.params = params
         self.plugin_config = plugin_config or {}
+        self.target_prompt_name = target_prompt_name
         self.log_prefix = "[PromptComponent]"
 
         logger.debug(f"{self.log_prefix} Prompt组件 '{self.prompt_name}' 初始化完成")
