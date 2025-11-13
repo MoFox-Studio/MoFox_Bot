@@ -22,6 +22,7 @@ dependencies = [
     "filetype>=1.2.0",
     "google-genai>=1.29.0",
     "httpx>=0.28.1",
+    "jieba>=0.42.1",
     "json-repair>=0.47.6",
     "json5>=0.12.1",
     "jsonlines>=4.0.0",
