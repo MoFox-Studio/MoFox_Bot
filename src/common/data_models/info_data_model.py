@@ -27,8 +27,6 @@ class ActionPlannerInfo(BaseDataModel):
     action_data: dict | None = None
     action_message: Optional["DatabaseMessages"] = None
     available_actions: dict[str, "ActionInfo"] | None = None
-    should_quote_reply: bool | None = None  # 是否应该引用回复原消息，None表示由系统自动决定
-
 
 @dataclass
 class InterestScore(BaseDataModel):

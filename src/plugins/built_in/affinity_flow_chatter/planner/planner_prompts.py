@@ -72,23 +72,26 @@ def init_prompts():
 {action_options_text}
 
 ## 输出格式（只输出 JSON，不要多余文本或代码块）
+最终输出必须是一个包含 thinking 和 actions 字段的 JSON 对象，其中 actions 必须是一个列表。
+
 示例（单动作）:
 ```json
 {{
     "thinking": "在这里写下你的思绪流...",
     "actions": [
         {{
-            "action_type": "respond",
-            "reasoning": "选择该动作的理由",
+            "action_type": "reply",
+            "reasoning": "选择该动作的详细理由",
             "action_data": {{
-                "content": "你的回复内容",
+                "target_message_id": "m124",
+                "content": "回复内容"
             }}
         }}
     ]
 }}
 ```
 
-示例（多重回复，并行 - 需要区分回复对象时才引用）:
+示例（多重动作，并行）:
 ```json
 {{
     "thinking": "在这里写下你的思绪流...",
@@ -97,14 +100,14 @@ def init_prompts():
             "action_type": "reply",
             "reasoning": "理由A - 这个消息较早且需要明确回复对象",
             "action_data": {{
-                "target_message_id": "m124",
-                "content": "对A的回复",
-                "should_quote_reply": true
+                 "target_message_id": "m124",
+                 "content": "对A的回复",
+                 "should_quote_reply": false
             }}
         }},
         {{
-            "action_type": "reply",
-            "reasoning": "理由B - 这是对最新消息的自然接续",
+            "action_type": "emoji",
+            "reasoning": "理由B",
             "action_data": {{
                 "target_message_id": "m125",
                 "content": "对B的回复",
@@ -116,16 +119,11 @@ def init_prompts():
 ```
 
 # 强制规则
-- 需要目标消息的动作（reply/poke_user/set_emoji_like 等），必须提供准确的 target_message_id（来自未读历史里的 <m...> 标签）。
-- 当动作需要额外参数时，必须在 action_data 中补全。
-- 私聊场景只允许使用 reply；群聊可选用辅助动作。
-- 如果没有合适的目标或无需动作，请输出：
-```json
-{{
-    "thinking": "说明为什么不需要动作/不需要回复",
-    "actions": []
-}}
-```
+- 每个动作块必须包含 action_type、reasoning 和 action_data 三个字段
+- actions 必须是一个列表，即使是单个动作也要放在列表中
+- 如果动作不需要任何参数，则 action_data 为空对象 {{}}
+- 需要目标消息的动作，target_message_id 提取统一使用一套流程，没有任何区别对待
+- 如果没有合适的目标或无需动作，请返回空的 actions 列表： "actions": []
 
 {no_action_block}
 """,

@@ -51,7 +51,7 @@ class ChatStream:
             context=StreamContext(
                 stream_id=stream_id,
                 chat_type=ChatType.GROUP if group_info else ChatType.PRIVATE,
-                chat_mode=ChatMode.NORMAL,
+                chat_mode=ChatMode.FOCUS,
             ),
         )
 
@@ -523,7 +523,7 @@ class ChatManager:
                 context=StreamContext(
                     stream_id=stream_id,
                     chat_type=ChatType.GROUP if stream.group_info else ChatType.PRIVATE,
-                    chat_mode=ChatMode.NORMAL,
+                    chat_mode=ChatMode.FOCUS,
                 ),
             )
         else:
@@ -777,7 +777,7 @@ class ChatManager:
                         context=StreamContext(
                             stream_id=stream.stream_id,
                             chat_type=ChatType.GROUP if stream.group_info else ChatType.PRIVATE,
-                            chat_mode=ChatMode.NORMAL,
+                            chat_mode=ChatMode.FOCUS,
                         ),
                     )
                 else:
