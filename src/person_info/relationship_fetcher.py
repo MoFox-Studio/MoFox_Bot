@@ -258,11 +258,22 @@ class RelationshipFetcher:
         try:
             import time
 
+            from src.common.database.api.crud import CRUDBase
             from src.common.database.api.specialized import get_or_create_chat_stream
+            from src.common.database.core.models import ChatStreams
 
-            # 使用优化后的API（带缓存）
-            # 从stream_id解析platform，或使用默认值
-            platform = stream_id.split("_")[0] if "_" in stream_id else "unknown"
+            # 先尝试通过stream_id直接查询现有记录
+            crud = CRUDBase(ChatStreams)
+            existing_stream = await crud.get_by(stream_id=stream_id)
+
+            platform = "unknown"
+            if existing_stream:
+                # 从现有记录获取platform
+                platform = getattr(existing_stream, 'platform', 'unknown') or "unknown"
+                logger.debug(f"从现有ChatStream获取到platform: {platform}, stream_id: {stream_id}")
+            else:
+                logger.debug(f"未找到现有ChatStream记录，使用默认platform: unknown, stream_id: {stream_id}")
+
             current_time = time.time()
 
             stream, _ = await get_or_create_chat_stream(
@@ -286,6 +297,7 @@ class RelationshipFetcher:
                     "stream_impression_text": stream.__dict__.get("stream_impression_text"),
                     "stream_chat_style": stream.__dict__.get("stream_chat_style"),
                     "stream_topic_keywords": stream.__dict__.get("stream_topic_keywords"),
+                    "stream_interest_score": stream.__dict__.get("stream_interest_score"),
                 }
             except Exception as e:
                 logger.warning(f"访问stream对象属性失败: {e}")
