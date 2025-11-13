@@ -15,6 +15,7 @@ from .apis import (
     get_logger,
     llm_api,
     message_api,
+    mood_api,
     person_api,
     plugin_manage_api,
     register_plugin,
@@ -84,7 +85,6 @@ __all__ = [
     "PythonDependency",
     "ToolInfo",
     "ToolParamType",
-    # API 模块
     "chat_api",
     "component_manage_api",
     "config_api",
@@ -102,6 +102,8 @@ __all__ = [
     "get_logger",
     "llm_api",
     "message_api",
+    # API 模块
+    "mood_api",
     "person_api",
     "plugin_manage_api",
     "register_plugin",
