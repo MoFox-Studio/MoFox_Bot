@@ -11,9 +11,15 @@ function showTab(evt, tabName) {
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-    // This is a placeholder for chart data which will be injected by python.
-    const allChartData = JSON.parse('{{ all_chart_data }}')
-;
+ // Chart data is injected by python via the HTML template.
+    let allChartData = {};
+    try {
+        allChartData = JSON.parse(all_chart_data_json_string);
+    } catch (e) {
+        console.error("Failed to parse all_chart_data:", e);
+        console.error("Problematic all_chart_data string:", all_chart_data_json_string);
+    }
+
     let currentCharts = {};
     const chartConfigs = {
         totalCost: { id: 'totalCostChart', title: '总花费', yAxisLabel: '花费 (¥)', dataKey: 'total_cost_data', fill: true },
@@ -73,8 +79,14 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Static charts
-    const staticChartData = JSON.parse('{{ static_chart_data }}')
-;
+    let staticChartData = {};
+    try {
+        staticChartData = JSON.parse(static_chart_data_json_string);
+    } catch (e) {
+        console.error("Failed to parse static_chart_data:", e);
+        console.error("Problematic static_chart_data string:", static_chart_data_json_string);
+    }
+
     Object.keys(staticChartData).forEach(period_id => {
         const providerCostData = staticChartData[period_id].provider_cost_data;
         const modelCostData = staticChartData[period_id].model_cost_data;
@@ -82,7 +94,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Provider Cost Pie Chart
         const providerCtx = document.getElementById(`providerCostPieChart_${period_id}`);
-        if (providerCtx && providerCostData && providerCostData.data.length > 0) {
+        if (providerCtx && providerCostData && providerCostData.data && providerCostData.data.length > 0) {
             new Chart(providerCtx, {
                 type: 'pie',
                 data: {
@@ -106,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // Model Cost Bar Chart
         const modelCtx = document.getElementById(`modelCostBarChart_${period_id}`);
-        if (modelCtx && modelCostData && modelCostData.data.length > 0) {
+        if (modelCtx && modelCostData && modelCostData.data && modelCostData.data.length > 0) {
             new Chart(modelCtx, {
                 type: 'bar',
                 data: {

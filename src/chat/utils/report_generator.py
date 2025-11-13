@@ -2,12 +2,13 @@
 该模块用于生成HTML格式的统计报告。
 """
 
-from datetime import datetime, timedelta
-from typing import Any
 import json
 import os
-from jinja2 import Environment, FileSystemLoader
+from datetime import datetime, timedelta
+from typing import Any
+
 import aiofiles
+from jinja2 import Environment, FileSystemLoader
 
 from .statistic_keys import *  # noqa: F403
 

@@ -3,22 +3,20 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     margin: 0;
     padding: 20px;
-    background-color: #F8F9FA; /* Light grey background */
-    color: #495057; /* Softer text color */
+    background-color: #f0f4f8; /* Light blue-gray background */
+    color: #333; /* Darker text for better contrast */
     line-height: 1.6;
 }
 
 /* Main Container */
 .container {
-    max-width: 1200px;
+    max-width: 95%; /* Make container almost full-width */
     margin: 20px auto;
     background-color: #FFFFFF; /* Pure white background */
     padding: 30px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-    border: 1px solid #EAEAEA;
+    border-radius: 12px; /* Slightly more rounded corners */
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.07); /* Softer, deeper shadow */
 }
-
 /* Dashboard Layout */
 .dashboard-layout {
     display: flex;
@@ -56,28 +54,28 @@ h1 {
     text-align: center;
     font-size: 2.2em;
     margin-bottom: 20px;
-    color: #4A90E2; /* Main blue for title */
+    color: #2A6CB5; /* A deeper, more professional blue */
 }
 
 h2 {
     font-size: 1.5em;
     margin-top: 40px;
     margin-bottom: 15px;
-    border-bottom: 2px solid #EAEAEA;
+    border-bottom: 2px solid #DDE6ED; /* Lighter border color */
 }
 
 /* Info Banners */
 .info-item {
-    background-color: #E9ECEF;
-    padding: 10px 15px;
-    border-radius: 6px;
+    background-color: #E9F2FA; /* Light blue background */
+    padding: 12px 18px;
+    border-radius: 8px;
     margin-bottom: 20px;
     font-size: 0.95em;
-    border: 1px solid #DEE2E6;
+    border: 1px solid #D1E3F4; /* Light blue border */
 }
 
 .info-item strong {
-    color: #4A90E2;
+    color: #2A6CB5; /* Deeper blue for emphasis */
 }
 
 /* Tabs */
@@ -101,12 +99,13 @@ h2 {
 }
 
 .tabs button:hover {
-    color: #212529;
+    color: #2A6CB5;
+    background-color: #f0f4f8; /* Subtle hover background */
 }
 
 .tabs button.active {
-    color: #4A90E2;
-    border-bottom-color: #4A90E2;
+    color: #2A6CB5; /* Active tab color */
+    border-bottom-color: #2A6CB5; /* Active tab border color */
 }
 
 .tab-content {
@@ -131,7 +130,7 @@ h2 {
     padding: 20px;
     border-radius: 8px;
     text-align: center;
-    border: 1px solid #EAEAEA;
+    border: 1px solid #DDE6ED; /* Lighter border */
     transition: all 0.3s ease;
 }
 
@@ -166,9 +165,8 @@ th, td {
     text-align: left;
     border-bottom: 1px solid #EAEAEA;
 }
-
 th {
-    background-color: #4A90E2;
+    background-color: #4A90E2; /* Main theme blue */
     color: white;
     font-weight: bold;
     font-size: 0.95em;
@@ -177,11 +175,11 @@ th {
 }
 
 tr:nth-child(even) {
-    background-color: #F8F9FA;
+    background-color: #F7FAFC; /* Very light blue for alternate rows */
 }
 
 tr:hover {
-    background-color: #E9ECEF;
+    background-color: #E9F2FA; /* Light blue for hover */
 }
 
 /* Chart Container in Sidebar */

@@ -14,6 +14,10 @@
         <div class="tabs">{{ tab_list }}</div>
         {{ tab_content }}
     </div>
+    <script>
+        const all_chart_data_json_string = `{{ all_chart_data|safe }}`;
+        const static_chart_data_json_string = `{{ static_chart_data|safe }}`;
+    </script>
     <script>{{ report_js }}</script>
 </body>
 </html>
