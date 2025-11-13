@@ -1,6 +1,6 @@
-import json
-import time
+import orjson
 import random
+import time
 import websockets as Server
 import uuid
 from maim_message import (
@@ -46,13 +46,18 @@ class SendHandler:
     async def handle_message(self, raw_message_base_dict: dict) -> None:
         raw_message_base: MessageBase = MessageBase.from_dict(raw_message_base_dict)
         message_segment: Seg = raw_message_base.message_segment
-        logger.info("接收到来自MaiBot的消息，处理中")
+        logger.info("接收到来自MoFox-Bot的消息，处理中")
         if message_segment.type == "command":
             logger.info("处理命令")
             return await self.send_command(raw_message_base)
         elif message_segment.type == "adapter_command":
             logger.info("处理适配器命令")
             return await self.handle_adapter_command(raw_message_base)
+        elif message_segment.type == "adapter_response":
+            # adapter_response消息是Napcat发送给Bot的，不应该在这里处理
+            # 这个handler只处理Bot发送给Napcat的消息
+            logger.info("收到adapter_response消息，此消息应该由Bot端处理，跳过")
+            return None
         else:
             logger.info("处理普通消息")
             return await self.send_normal_message(raw_message_base)
@@ -196,8 +201,10 @@ class SendHandler:
                 # 对于其他命令，使用默认超时
                 response = await self.send_message_to_napcat(action, params)
 
-            # 发送响应回MaiBot
+            # 发送响应回MoFox-Bot
+            logger.debug(f"[DEBUG handle_adapter_command] 即将调用send_adapter_command_response, request_id={request_id}")
             await self.send_adapter_command_response(raw_message_base, response, request_id)
+            logger.debug("[DEBUG handle_adapter_command] send_adapter_command_response调用完成")
 
             if response.get("status") == "ok":
                 logger.info(f"适配器命令 {action} 执行成功")
@@ -253,7 +260,7 @@ class SendHandler:
                 False,
             )
         elif seg.type == "face":
-            logger.warning("MaiBot 发送了qq原生表情，暂时不支持")
+            logger.warning("MoFox-Bot 发送了qq原生表情，暂时不支持")
         elif seg.type == "image":
             image = seg.data
             new_payload = self.build_payload(payload, self.handle_image_message(image), False)
@@ -596,7 +603,7 @@ class SendHandler:
 
     async def send_message_to_napcat(self, action: str, params: dict, timeout: float = 20.0) -> dict:
         request_uuid = str(uuid.uuid4())
-        payload = json.dumps({"action": action, "params": params, "echo": request_uuid})
+        payload = orjson.dumps({"action": action, "params": params, "echo": request_uuid}).decode('utf-8')
 
         # 获取当前连接
         connection = self.get_server_connection()
@@ -637,7 +644,7 @@ class SendHandler:
         self, original_message: MessageBase, response_data: dict, request_id: str
     ) -> None:
         """
-        发送适配器命令响应回MaiBot
+        发送适配器命令响应回MoFox-Bot
 
         Args:
             original_message: 原始消息
@@ -658,7 +665,6 @@ class SendHandler:
             )
 
             await message_send_instance.message_send(original_message)
-            logger.debug(f"已发送适配器命令响应，request_id: {request_id}")
 
         except Exception as e:
             logger.error(f"发送适配器命令响应时出错: {e}")

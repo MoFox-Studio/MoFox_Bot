@@ -4,7 +4,7 @@ URL parser tool implementation
 
 import asyncio
 import functools
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 from bs4 import BeautifulSoup
@@ -30,12 +30,12 @@ class URLParserTool(BaseTool):
     name: str = "parse_url"
     description: str = "当需要理解一个或多个特定网页链接的内容时，使用此工具。例如：'这些网页讲了什么？[https://example.com, https://example2.com]' 或 '帮我总结一下这些文章'"
     available_for_llm: bool = True
-    parameters = [
+    parameters: ClassVar[list] = [
         ("urls", ToolParamType.STRING, "要理解的网站", True, None),
     ]
 
-    def __init__(self, plugin_config=None):
-        super().__init__(plugin_config)
+    def __init__(self, plugin_config=None, chat_stream=None):
+        super().__init__(plugin_config, chat_stream)
         self._initialize_exa_clients()
 
     def _initialize_exa_clients(self):
@@ -93,6 +93,8 @@ class URLParserTool(BaseTool):
             text = soup.get_text(strip=True)
 
             if not text:
+
+
                 return {"error": "无法从页面提取有效文本内容。"}
 
             summary_prompt = f"请根据以下网页内容，生成一段不超过300字的中文摘要，保留核心信息和关键点:\n\n---\n\n标题: {title}\n\n内容:\n{text[:4000]}\n\n---\n\n摘要:"
@@ -144,16 +146,19 @@ class URLParserTool(BaseTool):
 
         urls_input = function_args.get("urls")
         if not urls_input:
+
             return {"error": "URL列表不能为空。"}
 
         # 处理URL输入，确保是列表格式
         urls = parse_urls_from_input(urls_input)
         if not urls:
+
             return {"error": "提供的字符串中未找到有效的URL。"}
 
         # 验证URL格式
         valid_urls = validate_urls(urls)
         if not valid_urls:
+
             return {"error": "未找到有效的URL。"}
 
         urls = valid_urls
@@ -174,7 +179,7 @@ class URLParserTool(BaseTool):
                     logger.error("无法获取Exa客户端")
                 else:
                     loop = asyncio.get_running_loop()
-                    exa_params = {"text": True, "summary": True, "highlights": True}
+                    exa_params = {"text": True, "summary": True}
                     func = functools.partial(exa_client.get_contents, urls, **exa_params)
                     contents_response = await loop.run_in_executor(None, func)
             except Exception as e:
@@ -192,9 +197,8 @@ class URLParserTool(BaseTool):
                         res = results_map.get(status.id)
                         if res:
                             summary = getattr(res, "summary", "")
-                            highlights = " ".join(getattr(res, "highlights", []))
                             text_snippet = (getattr(res, "text", "")[:300] + "...") if getattr(res, "text", "") else ""
-                            snippet = summary or highlights or text_snippet or "无摘要"
+                            snippet = summary or text_snippet or "无摘要"
 
                             successful_results.append(
                                 {
@@ -226,6 +230,8 @@ class URLParserTool(BaseTool):
                     successful_results.append(res)
 
         if not successful_results:
+
+
             return {"error": "无法从所有给定的URL获取内容。", "details": error_messages}
 
         formatted_content = format_url_parse_results(successful_results)

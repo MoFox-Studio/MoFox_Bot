@@ -7,10 +7,10 @@ from typing import Any
 
 import orjson
 from json_repair import repair_json
-from sqlalchemy import select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import PersonInfo
+from src.common.database.api.crud import CRUDBase
+from src.common.database.core.models import PersonInfo
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -55,7 +55,7 @@ person_info_default = {
 class PersonInfoManager:
     def __init__(self):
         """初始化PersonInfoManager"""
-        self.person_name_list = {}
+        # 移除self.person_name_list缓存，统一使用数据库缓存系统
         self.qv_name_llm = LLMRequest(model_set=model_config.model_task_config.utils, request_type="relation.qv_name")
         # try:
         #     async with get_db_session() as session:
@@ -72,19 +72,7 @@ class PersonInfoManager:
         # except Exception as e:
         #         logger.error(f"数据库连接或 PersonInfo 表创建失败: {e}")
 
-        #     # 初始化时读取所有person_name
-        try:
-            pass
-            # 在这里获取会话
-            # async with get_db_session() as session:
-            #     for record in session.execute(
-            #         select(PersonInfo.person_id, PersonInfo.person_name).where(PersonInfo.person_name.is_not(None))
-            #     ).fetchall():
-            #         if record.person_name:
-            #             self.person_name_list[record.person_id] = record.person_name
-            #     logger.debug(f"已加载 {len(self.person_name_list)} 个用户名称 (SQLAlchemy)")
-        except Exception as e:
-            logger.error(f"从 SQLAlchemy 加载 person_name_list 失败: {e}")
+        # 移除初始化时读取person_name_list的逻辑，统一使用数据库缓存
 
     @staticmethod
     def get_person_id(platform: str, user_id: int | str) -> str:
@@ -108,39 +96,40 @@ class PersonInfoManager:
         # 直接返回计算的 id（同步）
         return hashlib.md5(key.encode()).hexdigest()
 
+    @cached(ttl=300, key_prefix="person_known", use_kwargs=False)
     async def is_person_known(self, platform: str, user_id: int):
-        """判断是否认识某人"""
+        """判断是否认识某人（带5分钟缓存）"""
         person_id = self.get_person_id(platform, user_id)
 
-        async def _db_check_known_async(p_id: str):
-            # 在需要时获取会话
-            async with get_db_session() as session:
-                return (
-                    await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                ).scalar() is not None
-
         try:
-            return await _db_check_known_async(person_id)
+            # 使用CRUD进行查询
+            crud = CRUDBase(PersonInfo)
+            record = await crud.get_by(person_id=person_id)
+            return record is not None
         except Exception as e:
-            logger.error(f"检查用户 {person_id} 是否已知时出错 (SQLAlchemy): {e}")
+            logger.error(f"检查用户 {person_id} 是否已知时出错: {e}")
             return False
 
-    async def get_person_id_by_person_name(self, person_name: str) -> str:
+    @staticmethod
+    @cached(ttl=600, key_prefix="person_name_to_id", use_kwargs=False)
+    async def get_person_id_by_person_name(person_name: str) -> str:
         """
-        根据用户名获取用户ID（同步）
+        根据用户名获取用户ID（异步）
 
-        说明: 为了避免在多个调用点将 coroutine 误传递到数据库查询中，
-        此处提供一个同步实现。优先在内存缓存 `self.person_name_list` 中查找，
-        若未命中则返回空字符串。若后续需要更强的一致性，可在异步上下文
-        额外实现带 await 的查询方法。
+        统一使用数据库缓存系统，移除内存缓存
         """
+        if not person_name:
+            return ""
+
         try:
-            # 优先使用内存缓存加速查找：self.person_name_list maps person_id -> person_name
-            for pid, pname in self.person_name_list.items():
-                if pname == person_name:
-                    return pid
+            # 使用CRUD接口查询，使用装饰器缓存
+            crud = CRUDBase(PersonInfo)
+            records = await crud.get_multi(person_name=person_name, limit=1)
 
-            # 未找到缓存命中，避免在同步路径中进行阻塞的数据库查询，直接返回空字符串
+            if records:
+                return records[0].person_id
+
+            # 数据库中没有找到
             return ""
         except Exception as e:
             logger.error(f"根据用户名 {person_name} 获取用户ID时出错: {e}")
@@ -151,8 +140,7 @@ class PersonInfoManager:
         """判断是否认识某人"""
         person_id = PersonInfoManager.get_person_id(platform, user_id)
         # 生成唯一的 person_name
-        person_info_manager = get_person_info_manager()
-        unique_nickname = await person_info_manager._generate_unique_person_name(user_nickname)
+        unique_nickname = await PersonInfoManager._generate_unique_person_name(user_nickname)
         data = {
             "platform": platform,
             "user_id": user_id,
@@ -161,9 +149,9 @@ class PersonInfoManager:
             "person_name": unique_nickname,  # 使用唯一的 person_name
         }
         # 先创建用户基本信息，使用安全创建方法避免竞态条件
-        await person_info_manager._safe_create_person_info(person_id=person_id, data=data)
+        await PersonInfoManager._safe_create_person_info(person_id=person_id, data=data)
         # 更新昵称
-        await person_info_manager.update_one_field(
+        await get_person_info_manager().update_one_field(
             person_id=person_id, field_name="nickname", value=user_nickname, data=data
         )
 
@@ -215,18 +203,12 @@ class PersonInfoManager:
                     final_data[key] = orjson.dumps([]).decode("utf-8")
                 # If it's already a string, assume it's valid JSON or a non-JSON string field
 
-        async def _db_create_async(p_data: dict):
-            async with get_db_session() as session:
-                try:
-                    new_person = PersonInfo(**p_data)
-                    session.add(new_person)
-                    await session.commit()
-                    return True
-                except Exception as e:
-                    logger.error(f"创建 PersonInfo 记录 {p_data.get('person_id')} 失败 (SQLAlchemy): {e}")
-                    return False
-
-        await _db_create_async(final_data)
+        # 使用CRUD接口创建记录
+        try:
+            crud = CRUDBase(PersonInfo)
+            await crud.create(final_data)
+        except Exception as e:
+            logger.error(f"创建 PersonInfo 记录 {final_data.get('person_id')} 失败 (SQLAlchemy): {e}")
 
     @staticmethod
     async def _safe_create_person_info(person_id: str, data: dict | None = None):
@@ -273,27 +255,24 @@ class PersonInfoManager:
                     final_data[key] = orjson.dumps([]).decode("utf-8")
 
         async def _db_safe_create_async(p_data: dict):
-            async with get_db_session() as session:
-                try:
-                    existing = (
-                        await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_data["person_id"]))
-                    ).scalar()
-                    if existing:
-                        logger.debug(f"用户 {p_data['person_id']} 已存在，跳过创建")
-                        return True
-
-                    # 尝试创建
-                    new_person = PersonInfo(**p_data)
-                    session.add(new_person)
-                    await session.commit()
+            try:
+                # 使用CRUD进行检查和创建
+                crud = CRUDBase(PersonInfo)
+                existing = await crud.get_by(person_id=p_data["person_id"])
+                if existing:
+                    logger.debug(f"用户 {p_data['person_id']} 已存在，跳过创建")
                     return True
-                except Exception as e:
-                    if "UNIQUE constraint failed" in str(e):
-                        logger.debug(f"检测到并发创建用户 {p_data.get('person_id')}，跳过错误")
-                        return True
-                    else:
-                        logger.error(f"创建 PersonInfo 记录 {p_data.get('person_id')} 失败 (SQLAlchemy): {e}")
-                        return False
+
+                # 创建新记录
+                await crud.create(p_data)
+                return True
+            except Exception as e:
+                if "UNIQUE constraint failed" in str(e):
+                    logger.debug(f"检测到并发创建用户 {p_data.get('person_id')}，跳过错误")
+                    return True
+                else:
+                    logger.error(f"创建 PersonInfo 记录 {p_data.get('person_id')} 失败: {e}")
+                    return False
 
         await _db_safe_create_async(final_data)
 
@@ -314,32 +293,44 @@ class PersonInfoManager:
 
         async def _db_update_async(p_id: str, f_name: str, val_to_set):
             start_time = time.time()
-            async with get_db_session() as session:
-                try:
-                    result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                    record = result.scalar()
-                    query_time = time.time()
-                    if record:
-                        setattr(record, f_name, val_to_set)
-                        save_time = time.time()
-                        total_time = save_time - start_time
-                        if total_time > 0.5:
-                            logger.warning(
-                                f"数据库更新操作耗时 {total_time:.3f}秒 (查询: {query_time - start_time:.3f}s, 保存: {save_time - query_time:.3f}s) person_id={p_id}, field={f_name}"
-                            )
-                        await session.commit()
-                        return True, False
-                    else:
-                        total_time = time.time() - start_time
-                        if total_time > 0.5:
-                            logger.warning(f"数据库查询操作耗时 {total_time:.3f}秒 person_id={p_id}, field={f_name}")
-                        return False, True
-                except Exception as e:
-                    total_time = time.time() - start_time
-                    logger.error(f"数据库操作异常，耗时 {total_time:.3f}秒: {e}")
-                    raise
+            try:
+                # 使用CRUD进行更新
+                crud = CRUDBase(PersonInfo)
+                record = await crud.get_by(person_id=p_id)
+                query_time = time.time()
 
-        found, needs_creation = await _db_update_async(person_id, field_name, processed_value)
+                if record:
+                    # 更新记录
+                    await crud.update(record.id, {f_name: val_to_set})
+                    save_time = time.time()
+                    total_time = save_time - start_time
+
+                    if total_time > 0.5:
+                        logger.warning(
+                            f"数据库更新操作耗时 {total_time:.3f}秒 (查询: {query_time - start_time:.3f}s, 保存: {save_time - query_time:.3f}s) person_id={p_id}, field={f_name}"
+                        )
+
+                    # 使缓存失效
+                    from src.common.database.optimization.cache_manager import get_cache
+                    from src.common.database.utils.decorators import generate_cache_key
+                    cache = await get_cache()
+                    # 使相关缓存失效
+                    await cache.delete(generate_cache_key("person_value", p_id, f_name))
+                    await cache.delete(generate_cache_key("person_values", p_id))
+                    await cache.delete(generate_cache_key("person_has_field", p_id, f_name))
+
+                    return True, False
+                else:
+                    total_time = time.time() - start_time
+                    if total_time > 0.5:
+                        logger.warning(f"数据库查询操作耗时 {total_time:.3f}秒 person_id={p_id}, field={f_name}")
+                    return False, True
+            except Exception as e:
+                total_time = time.time() - start_time
+                logger.error(f"数据库操作异常，耗时 {total_time:.3f}秒: {e}")
+                raise
+
+        _found, needs_creation = await _db_update_async(person_id, field_name, processed_value)
 
         if needs_creation:
             logger.info(f"{person_id} 不存在，将新建。")
@@ -369,24 +360,22 @@ class PersonInfoManager:
             await self._safe_create_person_info(person_id, creation_data)
 
     @staticmethod
+    @cached(ttl=300, key_prefix="person_has_field")
     async def has_one_field(person_id: str, field_name: str):
-        """判断是否存在某一个字段"""
+        """判断是否存在某一个字段（带5分钟缓存）"""
         # 获取 SQLAlchemy 模型的所有字段名
         model_fields = [column.name for column in PersonInfo.__table__.columns]
         if field_name not in model_fields:
             logger.debug(f"检查字段'{field_name}'失败，未在 PersonInfo SQLAlchemy 模型中定义。")
             return False
 
-        async def _db_has_field_async(p_id: str, f_name: str):
-            async with get_db_session() as session:
-                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                record = result.scalar()
-            return bool(record)
-
         try:
-            return await _db_has_field_async(person_id, field_name)
+            # 使用CRUD进行查询
+            crud = CRUDBase(PersonInfo)
+            record = await crud.get_by(person_id=person_id)
+            return bool(record)
         except Exception as e:
-            logger.error(f"检查字段 {field_name} for {person_id} 时出错 (SQLAlchemy): {e}")
+            logger.error(f"检查字段 {field_name} for {person_id} 时出错: {e}")
             return False
 
     @staticmethod
@@ -412,23 +401,33 @@ class PersonInfoManager:
         logger.info(f"文本: {text}")
         return {"nickname": "", "reason": ""}
 
-    async def _generate_unique_person_name(self, base_name: str) -> str:
+    @staticmethod
+    async def _generate_unique_person_name(base_name: str) -> str:
         """生成唯一的 person_name，如果存在重复则添加数字后缀"""
         # 处理空昵称的情况
         if not base_name or base_name.isspace():
             base_name = "空格"
 
-        # 检查基础名称是否已存在
-        if base_name not in self.person_name_list.values():
-            return base_name
+        try:
+            # 使用CRUD接口检查基础名称是否已存在于数据库中
+            crud = CRUDBase(PersonInfo)
+            existing_record = await crud.get_by(person_name=base_name)
+            if not existing_record:
+                return base_name
 
-        # 如果存在，添加数字后缀
-        counter = 1
-        while True:
-            new_name = f"{base_name}[{counter}]"
-            if new_name not in self.person_name_list.values():
-                return new_name
-            counter += 1
+            # 如果存在，添加数字后缀并检查
+            counter = 1
+            while True:
+                new_name = f"{base_name}[{counter}]"
+                existing_new_record = await crud.get_by(person_name=new_name)
+                if not existing_new_record:
+                    return new_name
+                counter += 1
+        except Exception as e:
+            logger.error(f"生成唯一person_name时出错: {e}")
+            # 出错时返回带时间戳的唯一名称
+            import time
+            return f"{base_name}_{int(time.time())}"
 
     async def qv_person_name(
         self, person_id: str, user_nickname: str, user_cardname: str, user_avatar: str, request: str = ""
@@ -444,7 +443,15 @@ class PersonInfoManager:
         max_retries = 8
         current_try = 0
         existing_names_str = ""
-        current_name_set = set(self.person_name_list.values())
+        # 获取数据库中已存在的名称用于重复检查
+        try:
+            # 使用CRUD接口获取所有已存在的名称
+            crud = CRUDBase(PersonInfo)
+            all_records = await crud.get_multi(limit=1000)  # 限制数量避免性能问题
+            current_name_set = set(record.person_name for record in all_records if record.person_name)
+        except Exception as e:
+            logger.warning(f"获取现有名称列表失败: {e}")
+            current_name_set = set()
 
         while current_try < max_retries:
             # prompt_personality =get_individuality().get_prompt(x_person=2, level=1)
@@ -490,12 +497,10 @@ class PersonInfoManager:
             else:
 
                 async def _db_check_name_exists_async(name_to_check):
-                    async with get_db_session() as session:
-                        result = await session.execute(
-                            select(PersonInfo).where(PersonInfo.person_name == name_to_check)
-                        )
-                        record = result.scalar()
-                        return record is not None
+                    # 使用CRUD接口检查名称是否存在
+                    crud = CRUDBase(PersonInfo)
+                    existing_record = await crud.get_by(person_name=name_to_check)
+                    return existing_record is not None
 
                 if await _db_check_name_exists_async(generated_nickname):
                     is_duplicate = True
@@ -509,7 +514,7 @@ class PersonInfoManager:
                     f"成功给用户{user_nickname} {person_id} 取名 {generated_nickname}，理由：{result.get('reason', '未提供理由')}"
                 )
 
-                self.person_name_list[person_id] = generated_nickname
+                # 移除内存缓存更新，统一使用数据库缓存
                 return result
             else:
                 if existing_names_str:
@@ -519,11 +524,11 @@ class PersonInfoManager:
                 current_try += 1
 
         # 如果多次尝试后仍未成功，使用唯一的 user_nickname 作为默认值
-        unique_nickname = await self._generate_unique_person_name(user_nickname)
+        unique_nickname = await PersonInfoManager._generate_unique_person_name(user_nickname)
         logger.warning(f"在{max_retries}次尝试后未能生成唯一昵称，使用默认昵称 {unique_nickname}")
         await self.update_one_field(person_id, "person_name", unique_nickname)
         await self.update_one_field(person_id, "name_reason", "使用用户原始昵称作为默认值")
-        self.person_name_list[person_id] = unique_nickname
+        # 移除内存缓存更新，统一使用数据库缓存
         return {"nickname": unique_nickname, "reason": "使用用户原始昵称作为默认值"}
 
     @staticmethod
@@ -535,16 +540,19 @@ class PersonInfoManager:
 
         async def _db_delete_async(p_id: str):
             try:
-                async with get_db_session() as session:
-                    result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                    record = result.scalar()
-                    if record:
-                        await session.delete(record)
-                        await session.commit()
-                        return 1
+                # 使用CRUD进行删除
+                crud = CRUDBase(PersonInfo)
+                record = await crud.get_by(person_id=p_id)
+                if record:
+                    await crud.delete(record.id)
+
+                    # 注意: 删除操作很少发生,缓存会在TTL过期后自动清除
+                    # 无法从person_id反向得到platform和user_id,因此无法精确清除缓存
+                    # 删除后的查询仍会返回正确结果(None/False)
+                    return 1
                 return 0
             except Exception as e:
-                logger.error(f"删除 PersonInfo {p_id} 失败 (SQLAlchemy): {e}")
+                logger.error(f"删除 PersonInfo {p_id} 失败: {e}")
                 return 0
 
         deleted_count = await _db_delete_async(person_id)
@@ -555,15 +563,12 @@ class PersonInfoManager:
             logger.debug(f"删除失败：未找到 person_id={person_id} 或删除未影响行")
 
     @staticmethod
+    @cached(ttl=600, key_prefix="person_value")
     async def get_value(person_id: str, field_name: str) -> Any:
-        """获取单个字段值（同步版本）"""
+        """获取单个字段值（带10分钟缓存）"""
         if not person_id:
             logger.debug("get_value获取失败：person_id不能为空")
             return None
-
-        async with get_db_session() as session:
-            result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == person_id))
-            record = result.scalar()
 
         model_fields = [column.name for column in PersonInfo.__table__.columns]
 
@@ -575,31 +580,38 @@ class PersonInfoManager:
                 logger.debug(f"get_value查询失败：字段'{field_name}'未在SQLAlchemy模型和默认配置中定义。")
                 return None
 
+        # 使用CRUD进行查询
+        crud = CRUDBase(PersonInfo)
+        record = await crud.get_by(person_id=person_id)
+
         if record:
-            value = getattr(record, field_name)
-            if value is not None:
-                return value
-            else:
+            # 在访问属性前确保对象已加载所有数据
+            # 使用 try-except 捕获可能的延迟加载错误
+            try:
+                value = getattr(record, field_name)
+                if value is not None:
+                    return value
+                else:
+                    return copy.deepcopy(person_info_default.get(field_name))
+            except Exception as e:
+                logger.warning(f"访问字段 {field_name} 失败: {e}, 使用默认值")
                 return copy.deepcopy(person_info_default.get(field_name))
         else:
             return copy.deepcopy(person_info_default.get(field_name))
 
     @staticmethod
+    @cached(ttl=600, key_prefix="person_values")
     async def get_values(person_id: str, field_names: list) -> dict:
-        """获取指定person_id文档的多个字段值，若不存在该字段，则返回该字段的全局默认值"""
+        """获取指定person_id文档的多个字段值（带10分钟缓存）"""
         if not person_id:
             logger.debug("get_values获取失败：person_id不能为空")
             return {}
 
         result = {}
 
-        async def _db_get_record_async(p_id: str):
-            async with get_db_session() as session:
-                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                record = result.scalar()
-                return record
-
-        record = await _db_get_record_async(person_id)
+        # 使用CRUD进行查询
+        crud = CRUDBase(PersonInfo)
+        record = await crud.get_by(person_id=person_id)
 
         # 获取 SQLAlchemy 模型的所有字段名
         model_fields = [column.name for column in PersonInfo.__table__.columns]
@@ -615,10 +627,14 @@ class PersonInfoManager:
                 continue
 
             if record:
-                value = getattr(record, field_name)
-                if value is not None:
-                    result[field_name] = value
-                else:
+                try:
+                    value = getattr(record, field_name)
+                    if value is not None:
+                        result[field_name] = value
+                    else:
+                        result[field_name] = copy.deepcopy(person_info_default.get(field_name))
+                except Exception as e:
+                    logger.warning(f"访问字段 {field_name} 失败: {e}, 使用默认值")
                     result[field_name] = copy.deepcopy(person_info_default.get(field_name))
             else:
                 result[field_name] = copy.deepcopy(person_info_default.get(field_name))
@@ -626,6 +642,7 @@ class PersonInfoManager:
         return result
 
     @staticmethod
+    @cached(ttl=300, key_prefix="person_specific_list", use_kwargs=False)
     async def get_specific_value_list(
         field_name: str,
         way: Callable[[Any], bool],
@@ -642,15 +659,22 @@ class PersonInfoManager:
         async def _db_get_specific_async(f_name: str):
             found_results = {}
             try:
-                async with get_db_session() as session:
-                    result = await session.execute(select(PersonInfo.person_id, getattr(PersonInfo, f_name)))
-                    for record in result.fetchall():
-                        value = getattr(record, f_name)
-                        if way(value):
-                            found_results[record.person_id] = value
+                # 使用CRUD获取所有记录
+                crud = CRUDBase(PersonInfo)
+                all_records = await crud.get_multi(limit=100000)  # 获取所有记录
+                for record in all_records:
+                    try:
+                        value = getattr(record, f_name, None)
+                        if value is not None and way(value):
+                            person_id_value = getattr(record, "person_id", None)
+                            if person_id_value:
+                                found_results[person_id_value] = value
+                    except Exception as e:
+                        logger.warning(f"访问记录字段失败: {e}")
+                        continue
             except Exception as e_query:
                 logger.error(
-                    f"数据库查询失败 (SQLAlchemy specific_value_list for {f_name}): {e_query!s}", exc_info=True
+                    f"数据库查询失败 (specific_value_list for {f_name}): {e_query!s}", exc_info=True
                 )
             return found_results
 
@@ -672,32 +696,29 @@ class PersonInfoManager:
 
         async def _db_get_or_create_async(p_id: str, init_data: dict):
             """原子性的获取或创建操作"""
-            async with get_db_session() as session:
-                # 首先尝试获取现有记录
-                result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                record = result.scalar()
-                if record:
-                    return record, False  # 记录存在，未创建
+            # 使用CRUD进行获取或创建
+            crud = CRUDBase(PersonInfo)
 
-                # 记录不存在，尝试创建
-                try:
-                    new_person = PersonInfo(**init_data)
-                    session.add(new_person)
-                    await session.commit()
-                    await session.refresh(new_person)
-                    return new_person, True  # 创建成功
-                except Exception as e:
-                    # 如果创建失败（可能是因为竞态条件），再次尝试获取
-                    if "UNIQUE constraint failed" in str(e):
-                        logger.debug(f"检测到并发创建用户 {p_id}，获取现有记录")
-                        result = await session.execute(select(PersonInfo).where(PersonInfo.person_id == p_id))
-                    record = result.scalar()
+            # 首先尝试获取现有记录
+            record = await crud.get_by(person_id=p_id)
+            if record:
+                return record, False  # 记录存在，未创建
+
+            # 记录不存在，尝试创建
+            try:
+                new_person = await crud.create(init_data)
+                return new_person, True  # 创建成功
+            except Exception as e:
+                # 如果创建失败（可能是因为竞态条件），再次尝试获取
+                if "UNIQUE constraint failed" in str(e):
+                    logger.debug(f"检测到并发创建用户 {p_id}，获取现有记录")
+                    record = await crud.get_by(person_id=p_id)
                     if record:
                         return record, False  # 其他协程已创建，返回现有记录
-                    # 如果仍然失败，重新抛出异常
-                    raise e
+                # 如果仍然失败，重新抛出异常
+                raise e
 
-        unique_nickname = await self._generate_unique_person_name(nickname)
+        unique_nickname = await PersonInfoManager._generate_unique_person_name(nickname)
         initial_data = {
             "person_id": person_id,
             "platform": platform,
@@ -723,7 +744,7 @@ class PersonInfoManager:
         model_fields = [column.name for column in PersonInfo.__table__.columns]
         filtered_initial_data = {k: v for k, v in initial_data.items() if v is not None and k in model_fields}
 
-        record, was_created = await _db_get_or_create_async(person_id, filtered_initial_data)
+        _record, was_created = await _db_get_or_create_async(person_id, filtered_initial_data)
 
         if was_created:
             logger.info(f"用户 {platform}:{user_id} (person_id: {person_id}) 不存在，将创建新记录。")
@@ -733,37 +754,24 @@ class PersonInfoManager:
 
         return person_id
 
-    async def get_person_info_by_name(self, person_name: str) -> dict | None:
+    @staticmethod
+    @cached(ttl=600, key_prefix="person_info_by_name", use_kwargs=False)
+    async def get_person_info_by_name(person_name: str) -> dict | None:
         """根据 person_name 查找用户并返回基本信息 (如果找到)"""
         if not person_name:
             logger.debug("get_person_info_by_name 获取失败：person_name 不能为空")
             return None
 
-        found_person_id = None
-        for pid, name_in_cache in self.person_name_list.items():
-            if name_in_cache == person_name:
-                found_person_id = pid
-                break
-
-        if not found_person_id:
-
-            async def _db_find_by_name_async(p_name_to_find: str):
-                async with get_db_session() as session:
-                    return (
-                        await session.execute(select(PersonInfo).where(PersonInfo.person_name == p_name_to_find))
-                    ).scalar()
-
-            record = await _db_find_by_name_async(person_name)
-            if record:
-                found_person_id = record.person_id
-                if (
-                    found_person_id not in self.person_name_list
-                    or self.person_name_list[found_person_id] != person_name
-                ):
-                    self.person_name_list[found_person_id] = person_name
-            else:
-                logger.debug(f"数据库中也未找到名为 '{person_name}' 的用户 (Peewee)")
-                return None
+        # 直接查询数据库，移除内存缓存逻辑
+        # 使用CRUD进行查询 (person_name不是唯一字段,可能返回多条)
+        crud = CRUDBase(PersonInfo)
+        records = await crud.get_multi(person_name=person_name, limit=1)
+        if records:
+            record = records[0]
+            found_person_id = record.person_id
+        else:
+            logger.debug(f"数据库中未找到名为 '{person_name}' 的用户")
+            return None
 
         if found_person_id:
             required_fields = [
@@ -780,7 +788,7 @@ class PersonInfoManager:
             model_fields = [column.name for column in PersonInfo.__table__.columns]
             valid_fields_to_get = [f for f in required_fields if f in model_fields or f in person_info_default]
 
-            person_data = await self.get_values(found_person_id, valid_fields_to_get)
+            person_data = await PersonInfoManager.get_values(found_person_id, valid_fields_to_get)
 
             if person_data:
                 final_result = {key: person_data.get(key) for key in required_fields}

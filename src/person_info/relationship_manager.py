@@ -104,7 +104,7 @@ class RelationshipManager:
             replace_person_name = await person_info_manager.get_value(replace_person_id, "person_name")
 
             # 跳过机器人自己
-            if replace_user_id == global_config.bot.qq_account:
+            if replace_user_id == str(global_config.bot.qq_account):
                 name_mapping[f"{global_config.bot.nickname}"] = f"{global_config.bot.nickname}"
                 continue
 

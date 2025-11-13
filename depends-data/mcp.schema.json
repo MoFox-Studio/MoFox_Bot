@@ -1,0 +1,144 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MoFox Bot MCP Configuration",
+  "description": "Configuration for Model Context Protocol (MCP) servers",
+  "type": "object",
+  "properties": {
+    "mcpServers": {
+      "type": "object",
+      "description": "Dictionary of MCP server configurations",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string",
+              "description": "Human-readable description of this MCP server"
+            },
+            "enabled": {
+              "type": "boolean",
+              "description": "Whether this server is enabled",
+              "default": true
+            },
+            "transport": {
+              "type": "object",
+              "description": "Transport configuration",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["streamable-http", "stdio"],
+                  "description": "Transport type"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "URL for HTTP-based transports",
+                  "format": "uri"
+                },
+                "command": {
+                  "type": "string",
+                  "description": "Command for stdio transport"
+                },
+                "args": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Arguments for stdio transport"
+                }
+              },
+              "required": ["type"],
+              "oneOf": [
+                {
+                  "properties": {
+                    "type": {
+                      "enum": ["streamable-http"]
+                    }
+                  },
+                  "required": ["url"]
+                },
+                {
+                  "properties": {
+                    "type": {
+                      "enum": ["stdio"]
+                    }
+                  },
+                  "required": ["command"]
+                }
+              ]
+            },
+            "auth": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["bearer", "oauth"]
+                    },
+                    "token": {
+                      "type": "string",
+                      "description": "Bearer token"
+                    }
+                  },
+                  "required": ["type"]
+                }
+              ],
+              "description": "Authentication configuration"
+            },
+            "timeout": {
+              "type": "number",
+              "description": "Request timeout in seconds",
+              "minimum": 1,
+              "default": 30
+            },
+            "retry": {
+              "type": "object",
+              "properties": {
+                "max_retries": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "default": 3
+                },
+                "retry_delay": {
+                  "type": "number",
+                  "minimum": 0,
+                  "default": 1
+                }
+              }
+            }
+          },
+          "required": ["transport"]
+        }
+      }
+    },
+    "global": {
+      "type": "object",
+      "description": "Global MCP configuration",
+      "properties": {
+        "default_timeout": {
+          "type": "number",
+          "minimum": 1,
+          "default": 30
+        },
+        "max_concurrent_connections": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        },
+        "auto_reconnect": {
+          "type": "boolean",
+          "default": true
+        },
+        "log_level": {
+          "type": "string",
+          "enum": ["DEBUG", "INFO", "WARNING", "ERROR"],
+          "default": "INFO"
+        }
+      }
+    }
+  },
+  "required": ["mcpServers"]
+}

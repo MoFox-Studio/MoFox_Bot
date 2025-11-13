@@ -7,11 +7,13 @@ import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import orjson
 import structlog
 import tomlkit
+from rich.console import Console
+from rich.text import Text
+from structlog.typing import EventDict, WrappedLogger
 
 # 创建logs目录
 LOG_DIR = Path("logs")
@@ -26,37 +28,11 @@ _LOGGER_META_LOCK = threading.Lock()
 _LOGGER_META: dict[str, dict[str, str | None]] = {}
 
 
-def _normalize_color(color: str | None) -> str | None:
-    """接受 ANSI 码 / #RRGGBB / rgb(r,g,b) / 颜色名(直接返回) -> ANSI 码.
-    不做复杂解析，只支持 #RRGGBB 转 24bit ANSI。
-    """
-    if not color:
-        return None
-    color = color.strip()
-    if color.startswith("\033["):
-        return color  # 已经是ANSI
-    if color.startswith("#") and len(color) == 7:
-        try:
-            r = int(color[1:3], 16)
-            g = int(color[3:5], 16)
-            b = int(color[5:7], 16)
-            return f"\033[38;2;{r};{g};{b}m"
-        except ValueError:
-            return None
-    # 简单 rgb(r,g,b)
-    if color.lower().startswith("rgb(") and color.endswith(")"):
-        try:
-            nums = color[color.find("(") + 1 : -1].split(",")
-            r, g, b = (int(x) for x in nums[:3])
-            return f"\033[38;2;{r};{g};{b}m"
-        except Exception:
-            return None
-    # 其他情况直接返回，假设是短ANSI或名称（控制台渲染器不做翻译，仅输出）
-    return color
-
-
 def _register_logger_meta(name: str, *, alias: str | None = None, color: str | None = None):
-    """注册/更新 logger 元数据。"""
+    """注册/更新 logger 元数据。
+
+    color 参数直接存储 #RRGGBB 格式的颜色值。
+    """
     if not name:
         return
     with _LOGGER_META_LOCK:
@@ -64,7 +40,8 @@ def _register_logger_meta(name: str, *, alias: str | None = None, color: str | N
         if alias is not None:
             meta["alias"] = alias
         if color is not None:
-            meta["color"] = _normalize_color(color)
+            # 直接存储颜色值（假设已经是 #RRGGBB 格式）
+            meta["color"] = color.upper() if color.startswith("#") else color
 
 
 def get_logger_meta(name: str) -> dict[str, str | None]:
@@ -258,10 +235,7 @@ def remove_duplicate_handlers():  # sourcery skip: for-append-to-extend, list-co
     root_logger = logging.getLogger()
 
     # 收集所有时间戳文件handler
-    file_handlers = []
-    for handler in root_logger.handlers[:]:
-        if isinstance(handler, TimestampedFileHandler):
-            file_handlers.append(handler)
+    file_handlers = [handler for handler in root_logger.handlers[:] if isinstance(handler, TimestampedFileHandler)]
 
     # 如果有多个文件handler，保留第一个，关闭其他的
     if len(file_handlers) > 1:
@@ -431,200 +405,200 @@ def reconfigure_existing_loggers():
 
 DEFAULT_MODULE_COLORS = {
     # 核心模块
-    "main": "\033[1;97m",  # 亮白色+粗体 (主程序)
-    "api": "\033[92m",  # 亮绿色
-    "emoji": "\033[38;5;214m",  # 橙黄色，偏向橙色但与replyer和action_manager不同
-    "chat": "\033[92m",  # 亮蓝色
-    "config": "\033[93m",  # 亮黄色
-    "common": "\033[95m",  # 亮紫色
-    "tools": "\033[96m",  # 亮青色
-    "lpmm": "\033[96m",
-    "plugin_system": "\033[91m",  # 亮红色
-    "person_info": "\033[32m",  # 绿色
-    "individuality": "\033[94m",  # 显眼的亮蓝色
-    "manager": "\033[35m",  # 紫色
-    "llm_models": "\033[36m",  # 青色
-    "remote": "\033[38;5;242m",  # 深灰色，更不显眼
-    "planner": "\033[36m",
-    "memory": "\033[38;5;117m",  # 天蓝色
-    "hfc": "\033[38;5;81m",  # 稍微暗一些的青色，保持可读
-    "action_manager": "\033[38;5;208m",  # 橙色，不与replyer重复
-    "message_manager": "\033[38;5;27m",  # 深蓝色，消息管理器
-    "chatter_manager": "\033[38;5;129m",  # 紫色，聊天管理器
-    "chatter_interest_scoring": "\033[38;5;214m",  # 橙黄色，兴趣评分
-    "plan_executor": "\033[38;5;172m",  # 橙褐色，计划执行器
+    "main": "#FFFFFF",  # 亮白色+粗体 (主程序)
+    "api": "#00FF00",  # 亮绿色
+    "emoji": "#FFAF00",  # 橙黄色，偏向橙色但与replyer和action_manager不同
+    "chat": "#00FF00",  # 亮蓝色
+    "config": "#FFFF00",  # 亮黄色
+    "common": "#FF00FF",  # 亮紫色
+    "tools": "#00FFFF",  # 亮青色
+    "lpmm": "#00FFFF",
+    "plugin_system": "#FF0000",  # 亮红色
+    "person_info": "#008000",  # 绿色
+    "individuality": "#0000FF",  # 显眼的亮蓝色
+    "manager": "#800080",  # 紫色
+    "llm_models": "#008080",  # 青色
+    "remote": "#6C6C6C",  # 深灰色，更不显眼
+    "planner": "#008080",
+    "memory": "#87D7FF",  # 天蓝色
+    "hfc": "#5FD7FF",  # 稍微暗一些的青色，保持可读
+    "action_manager": "#FF8700",  # 橙色，不与replyer重复
+    "message_manager": "#005FFF",  # 深蓝色，消息管理器
+    "chatter_manager": "#AF00FF",  # 紫色，聊天管理器
+    "chatter_interest_scoring": "#FFAF00",  # 橙黄色，兴趣评分
+    "plan_executor": "#D78700",  # 橙褐色，计划执行器
     # 关系系统
-    "relation": "\033[38;5;139m",  # 柔和的紫色，不刺眼
+    "relation": "#AF87AF",  # 柔和的紫色，不刺眼
     # 聊天相关模块
-    "normal_chat": "\033[38;5;81m",  # 亮蓝绿色
-    "heartflow": "\033[38;5;175m",  # 柔和的粉色，不显眼但保持粉色系
-    "sub_heartflow": "\033[38;5;207m",  # 粉紫色
-    "subheartflow_manager": "\033[38;5;201m",  # 深粉色
-    "background_tasks": "\033[38;5;240m",  # 灰色
-    "chat_message": "\033[38;5;45m",  # 青色
-    "chat_stream": "\033[38;5;51m",  # 亮青色
-    "sender": "\033[38;5;67m",  # 稍微暗一些的蓝色，不显眼
-    "message_storage": "\033[38;5;33m",  # 深蓝色
-    "expressor": "\033[38;5;166m",  # 橙色
+    "normal_chat": "#5FD7FF",  # 亮蓝绿色
+    "heartflow": "#D787AF",  # 柔和的粉色，不显眼但保持粉色系
+    "sub_heartflow": "#FF5FFF",  # 粉紫色
+    "subheartflow_manager": "#FF00FF",  # 深粉色
+    "background_tasks": "#585858",  # 灰色
+    "chat_message": "#00D7FF",  # 青色
+    "chat_stream": "#00FFFF",  # 亮青色
+    "sender": "#5F87AF",  # 稍微暗一些的蓝色，不显眼
+    "message_storage": "#0087FF",  # 深蓝色
+    "expressor": "#D75F00",  # 橙色
     # 专注聊天模块
-    "replyer": "\033[38;5;166m",  # 橙色
-    "memory_activator": "\033[38;5;117m",  # 天蓝色
+    "replyer": "#D75F00",  # 橙色
+    "memory_activator": "#87D7FF",  # 天蓝色
     # 插件系统
-    "plugins": "\033[31m",  # 红色
-    "plugin_api": "\033[33m",  # 黄色
-    "plugin_manager": "\033[38;5;208m",  # 红色
-    "base_plugin": "\033[38;5;202m",  # 橙红色
-    "send_api": "\033[38;5;208m",  # 橙色
-    "base_command": "\033[38;5;208m",  # 橙色
-    "component_registry": "\033[38;5;214m",  # 橙黄色
-    "stream_api": "\033[38;5;220m",  # 黄色
-    "plugin_hot_reload": "\033[38;5;226m",  # 品红色
-    "config_api": "\033[38;5;226m",  # 亮黄色
-    "heartflow_api": "\033[38;5;154m",  # 黄绿色
-    "action_apis": "\033[38;5;118m",  # 绿色
-    "independent_apis": "\033[38;5;82m",  # 绿色
-    "llm_api": "\033[38;5;46m",  # 亮绿色
-    "database_api": "\033[38;5;10m",  # 绿色
-    "utils_api": "\033[38;5;14m",  # 青色
-    "message_api": "\033[38;5;6m",  # 青色
+    "plugins": "#800000",  # 红色
+    "plugin_api": "#808000",  # 黄色
+    "plugin_manager": "#FF8700",  # 红色
+    "base_plugin": "#FF5F00",  # 橙红色
+    "send_api": "#FF8700",  # 橙色
+    "base_command": "#FF8700",  # 橙色
+    "component_registry": "#FFAF00",  # 橙黄色
+    "stream_api": "#FFD700",  # 黄色
+    "plugin_hot_reload": "#FFFF00",  # 品红色
+    "config_api": "#FFFF00",  # 亮黄色
+    "heartflow_api": "#AFFF00",  # 黄绿色
+    "action_apis": "#87FF00",  # 绿色
+    "independent_apis": "#5FFF00",  # 绿色
+    "llm_api": "#00FF00",  # 亮绿色
+    "database_api": "#00FF00",  # 绿色
+    "utils_api": "#00FFFF",  # 青色
+    "message_api": "#008080",  # 青色
     # 管理器模块
-    "async_task_manager": "\033[38;5;129m",  # 紫色
-    "mood": "\033[38;5;135m",  # 紫红色
-    "local_storage": "\033[38;5;141m",  # 紫色
-    "willing": "\033[38;5;147m",  # 浅紫色
+    "async_task_manager": "#AF00FF",  # 紫色
+    "mood": "#AF5FFF",  # 紫红色
+    "local_storage": "#AF87FF",  # 紫色
+    "willing": "#AFAFFF",  # 浅紫色
     # 工具模块
-    "tool_use": "\033[38;5;172m",  # 橙褐色
-    "tool_executor": "\033[38;5;172m",  # 橙褐色
-    "base_tool": "\033[38;5;178m",  # 金黄色
+    "tool_use": "#D78700",  # 橙褐色
+    "tool_executor": "#D78700",  # 橙褐色
+    "base_tool": "#D7AF00",  # 金黄色
     # 工具和实用模块
-    "prompt_build": "\033[38;5;105m",  # 紫色
-    "chat_utils": "\033[38;5;111m",  # 蓝色
-    "chat_image": "\033[38;5;117m",  # 浅蓝色
-    "maibot_statistic": "\033[38;5;129m",  # 紫色
+    "prompt_build": "#8787FF",  # 紫色
+    "chat_utils": "#87AFFF",  # 蓝色
+    "chat_image": "#87D7FF",  # 浅蓝色
+    "maibot_statistic": "#AF00FF",  # 紫色
     # 特殊功能插件
-    "mute_plugin": "\033[38;5;240m",  # 灰色
-    "core_actions": "\033[38;5;117m",  # 深红色
-    "tts_action": "\033[38;5;58m",  # 深黄色
-    "doubao_pic_plugin": "\033[38;5;64m",  # 深绿色
+    "mute_plugin": "#585858",  # 灰色
+    "core_actions": "#87D7FF",  # 深红色
+    "tts_action": "#5F5F00",  # 深黄色
+    "doubao_pic_plugin": "#5F8700",  # 深绿色
     # Action组件
-    "no_reply_action": "\033[38;5;214m",  # 亮橙色，显眼但不像警告
-    "reply_action": "\033[38;5;46m",  # 亮绿色
-    "base_action": "\033[38;5;250m",  # 浅灰色
+    "no_reply_action": "#FFAF00",  # 亮橙色，显眼但不像警告
+    "reply_action": "#00FF00",  # 亮绿色
+    "base_action": "#BCBCBC",  # 浅灰色
     # 数据库和消息
-    "database_model": "\033[38;5;94m",  # 橙褐色
-    "database": "\033[38;5;46m",  # 橙褐色
-    "maim_message": "\033[38;5;140m",  # 紫褐色
+    "database_model": "#875F00",  # 橙褐色
+    "database": "#00FF00",  # 橙褐色
+    "maim_message": "#AF87D7",  # 紫褐色
     # 日志系统
-    "logger": "\033[38;5;8m",  # 深灰色
-    "confirm": "\033[1;93m",  # 黄色+粗体
+    "logger": "#808080",  # 深灰色
+    "confirm": "#FFFF00",  # 黄色+粗体
     # 模型相关
-    "model_utils": "\033[38;5;164m",  # 紫红色
-    "relationship_fetcher": "\033[38;5;170m",  # 浅紫色
-    "relationship_builder": "\033[38;5;93m",  # 浅蓝色
-    "sqlalchemy_init": "\033[38;5;105m",  #
-    "sqlalchemy_models": "\033[38;5;105m",
-    "sqlalchemy_database_api": "\033[38;5;105m",
+    "model_utils": "#D700D7",  # 紫红色
+    "relationship_fetcher": "#D75FD7",  # 浅紫色
+    "relationship_builder": "#8700FF",  # 浅蓝色
+    "sqlalchemy_init": "#8787FF",  #
+    "sqlalchemy_models": "#8787FF",
+    "sqlalchemy_database_api": "#8787FF",
     # s4u
-    "context_web_api": "\033[38;5;240m",  # 深灰色
-    "S4U_chat": "\033[92m",  # 亮绿色
+    "context_web_api": "#585858",  # 深灰色
+    "S4U_chat": "#00FF00",  # 亮绿色
     # API相关扩展
-    "chat_api": "\033[38;5;34m",  # 深绿色
-    "emoji_api": "\033[38;5;40m",  # 亮绿色
-    "generator_api": "\033[38;5;28m",  # 森林绿
-    "person_api": "\033[38;5;22m",  # 深绿色
-    "tool_api": "\033[38;5;76m",  # 绿色
-    "OpenAI客户端": "\033[38;5;81m",
-    "Gemini客户端": "\033[38;5;81m",
+    "chat_api": "#00AF00",  # 深绿色
+    "emoji_api": "#00D700",  # 亮绿色
+    "generator_api": "#008700",  # 森林绿
+    "person_api": "#005F00",  # 深绿色
+    "tool_api": "#5FD700",  # 绿色
+    "OpenAI客户端": "#5FD7FF",
+    "Gemini客户端": "#5FD7FF",
     # 插件系统扩展
-    "plugin_base": "\033[38;5;196m",  # 红色
-    "base_event_handler": "\033[38;5;203m",  # 粉红色
-    "events_manager": "\033[38;5;209m",  # 橙红色
-    "global_announcement_manager": "\033[38;5;215m",  # 浅橙色
+    "plugin_base": "#FF0000",  # 红色
+    "base_event_handler": "#FF5F5F",  # 粉红色
+    "events_manager": "#FF875F",  # 橙红色
+    "global_announcement_manager": "#FFAF5F",  # 浅橙色
     # 工具和依赖管理
-    "dependency_config": "\033[38;5;24m",  # 深蓝色
-    "dependency_manager": "\033[38;5;30m",  # 深青色
-    "manifest_utils": "\033[38;5;39m",  # 蓝色
-    "schedule_manager": "\033[38;5;27m",  # 深蓝色
-    "monthly_plan_manager": "\033[38;5;171m",
-    "plan_manager": "\033[38;5;171m",
-    "llm_generator": "\033[38;5;171m",
-    "schedule_bridge": "\033[38;5;171m",
-    "sleep_manager": "\033[38;5;171m",
-    "official_configs": "\033[38;5;171m",
-    "mmc_com_layer": "\033[38;5;67m",
+    "dependency_config": "#005F87",  # 深蓝色
+    "dependency_manager": "#008787",  # 深青色
+    "manifest_utils": "#00AFFF",  # 蓝色
+    "schedule_manager": "#005FFF",  # 深蓝色
+    "monthly_plan_manager": "#D75FFF",
+    "plan_manager": "#D75FFF",
+    "llm_generator": "#D75FFF",
+    "schedule_bridge": "#D75FFF",
+    "sleep_manager": "#D75FFF",
+    "official_configs": "#D75FFF",
+    "mmc_com_layer": "#5F87AF",
     # 聊天和多媒体扩展
-    "chat_voice": "\033[38;5;87m",  # 浅青色
-    "typo_gen": "\033[38;5;123m",  # 天蓝色
-    "utils_video": "\033[38;5;75m",  # 亮蓝色
-    "ReplyerManager": "\033[38;5;173m",  # 浅橙色
-    "relationship_builder_manager": "\033[38;5;176m",  # 浅紫色
-    "expression_selector": "\033[38;5;176m",
-    "chat_message_builder": "\033[38;5;176m",
+    "chat_voice": "#5FFFFF",  # 浅青色
+    "typo_gen": "#87FFFF",  # 天蓝色
+    "utils_video": "#5FAFFF",  # 亮蓝色
+    "ReplyerManager": "#D7875F",  # 浅橙色
+    "relationship_builder_manager": "#D787D7",  # 浅紫色
+    "expression_selector": "#D787D7",
+    "chat_message_builder": "#D787D7",
     # MaiZone QQ空间相关
-    "MaiZone": "\033[38;5;98m",  # 紫色
-    "MaiZone-Monitor": "\033[38;5;104m",  # 深紫色
-    "MaiZone.ConfigLoader": "\033[38;5;110m",  # 蓝紫色
-    "MaiZone-Scheduler": "\033[38;5;134m",  # 紫红色
-    "MaiZone-Utils": "\033[38;5;140m",  # 浅紫色
+    "MaiZone": "#875FD7",  # 紫色
+    "MaiZone-Monitor": "#8787D7",  # 深紫色
+    "MaiZone.ConfigLoader": "#87AFD7",  # 蓝紫色
+    "MaiZone-Scheduler": "#AF5FD7",  # 紫红色
+    "MaiZone-Utils": "#AF87D7",  # 浅紫色
     # MaiZone Refactored
-    "MaiZone.HistoryUtils": "\033[38;5;140m",
-    "MaiZone.SchedulerService": "\033[38;5;134m",
-    "MaiZone.QZoneService": "\033[38;5;98m",
-    "MaiZone.MonitorService": "\033[38;5;104m",
-    "MaiZone.ImageService": "\033[38;5;110m",
-    "MaiZone.CookieService": "\033[38;5;140m",
-    "MaiZone.ContentService": "\033[38;5;110m",
-    "MaiZone.Plugin": "\033[38;5;98m",
-    "MaiZone.SendFeedCommand": "\033[38;5;134m",
-    "MaiZone.SendFeedAction": "\033[38;5;134m",
-    "MaiZone.ReadFeedAction": "\033[38;5;134m",
+    "MaiZone.HistoryUtils": "#AF87D7",
+    "MaiZone.SchedulerService": "#AF5FD7",
+    "MaiZone.QZoneService": "#875FD7",
+    "MaiZone.MonitorService": "#8787D7",
+    "MaiZone.ImageService": "#87AFD7",
+    "MaiZone.CookieService": "#AF87D7",
+    "MaiZone.ContentService": "#87AFD7",
+    "MaiZone.Plugin": "#875FD7",
+    "MaiZone.SendFeedCommand": "#AF5FD7",
+    "MaiZone.SendFeedAction": "#AF5FD7",
+    "MaiZone.ReadFeedAction": "#AF5FD7",
     # 网络工具
-    "web_surfing_tool": "\033[38;5;130m",  # 棕色
-    "tts": "\033[38;5;136m",  # 浅棕色
-    "poke_plugin": "\033[38;5;136m",
-    "set_emoji_like_plugin": "\033[38;5;136m",
+    "web_surfing_tool": "#AF5F00",  # 棕色
+    "tts": "#AF8700",  # 浅棕色
+    "poke_plugin": "#AF8700",
+    "set_emoji_like_plugin": "#AF8700",
     # mais4u系统扩展
-    "s4u_config": "\033[38;5;18m",  # 深蓝色
-    "action": "\033[38;5;52m",  # 深红色（mais4u的action）
-    "context_web": "\033[38;5;58m",  # 深黄色
-    "gift_manager": "\033[38;5;161m",  # 粉红色
-    "prompt": "\033[38;5;99m",  # 紫色（mais4u的prompt）
-    "super_chat_manager": "\033[38;5;125m",  # 紫红色
-    "watching": "\033[38;5;131m",  # 深橙色
-    "offline_llm": "\033[38;5;236m",  # 深灰色
-    "s4u_stream_generator": "\033[38;5;60m",  # 深紫色
+    "s4u_config": "#000087",  # 深蓝色
+    "action": "#5F0000",  # 深红色（mais4u的action）
+    "context_web": "#5F5F00",  # 深黄色
+    "gift_manager": "#D7005F",  # 粉红色
+    "prompt": "#875FFF",  # 紫色（mais4u的prompt）
+    "super_chat_manager": "#AF005F",  # 紫红色
+    "watching": "#AF5F5F",  # 深橙色
+    "offline_llm": "#303030",  # 深灰色
+    "s4u_stream_generator": "#5F5F87",  # 深紫色
     # 其他工具
-    "消息压缩工具": "\033[38;5;244m",  # 灰色
-    "lpmm_get_knowledge_tool": "\033[38;5;102m",  # 绿色
-    "message_chunker": "\033[38;5;244m",
-    "plan_generator": "\033[38;5;171m",
-    "Permission": "\033[38;5;196m",
-    "web_search_plugin": "\033[38;5;130m",
-    "url_parser_tool": "\033[38;5;130m",
-    "api_key_manager": "\033[38;5;130m",
-    "tavily_engine": "\033[38;5;130m",
-    "exa_engine": "\033[38;5;130m",
-    "ddg_engine": "\033[38;5;130m",
-    "bing_engine": "\033[38;5;130m",
-    "vector_instant_memory_v2": "\033[38;5;117m",
-    "async_memory_optimizer": "\033[38;5;117m",
-    "async_instant_memory_wrapper": "\033[38;5;117m",
-    "action_diagnostics": "\033[38;5;214m",
-    "anti_injector.message_processor": "\033[38;5;196m",
-    "anti_injector.user_ban": "\033[38;5;196m",
-    "anti_injector.statistics": "\033[38;5;196m",
-    "anti_injector.decision_maker": "\033[38;5;196m",
-    "anti_injector.counter_attack": "\033[38;5;196m",
-    "hfc.processor": "\033[38;5;81m",
-    "hfc.normal_mode": "\033[38;5;81m",
-    "wakeup": "\033[38;5;81m",
-    "cache_manager": "\033[38;5;244m",
-    "monthly_plan_db": "\033[38;5;94m",
-    "db_migration": "\033[38;5;94m",
-    "小彩蛋": "\033[38;5;214m",
-    "AioHTTP-Gemini客户端": "\033[38;5;81m",
-    "napcat_adapter": "\033[38;5;67m",  # 柔和的灰蓝色，不刺眼且低调
-    "event_manager": "\033[38;5;79m",  # 柔和的蓝绿色，稍微醒目但不刺眼
+    "消息压缩工具": "#808080",  # 灰色
+    "lpmm_get_knowledge_tool": "#878787",  # 绿色
+    "message_chunker": "#808080",
+    "plan_generator": "#D75FFF",
+    "Permission": "#FF0000",
+    "web_search_plugin": "#AF5F00",
+    "url_parser_tool": "#AF5F00",
+    "api_key_manager": "#AF5F00",
+    "tavily_engine": "#AF5F00",
+    "exa_engine": "#AF5F00",
+    "ddg_engine": "#AF5F00",
+    "bing_engine": "#AF5F00",
+    "vector_instant_memory_v2": "#87D7FF",
+    "async_memory_optimizer": "#87D7FF",
+    "async_instant_memory_wrapper": "#87D7FF",
+    "action_diagnostics": "#FFAF00",
+    "anti_injector.message_processor": "#FF0000",
+    "anti_injector.user_ban": "#FF0000",
+    "anti_injector.statistics": "#FF0000",
+    "anti_injector.decision_maker": "#FF0000",
+    "anti_injector.counter_attack": "#FF0000",
+    "hfc.processor": "#5FD7FF",
+    "hfc.normal_mode": "#5FD7FF",
+    "wakeup": "#5FD7FF",
+    "cache_manager": "#808080",
+    "monthly_plan_db": "#875F00",
+    "db_migration": "#875F00",
+    "小彩蛋": "#FFAF00",
+    "AioHTTP-Gemini客户端": "#5FD7FF",
+    "napcat_adapter": "#5F87AF",  # 柔和的灰蓝色，不刺眼且低调
+    "event_manager": "#5FD7AF",  # 柔和的蓝绿色，稍微醒目但不刺眼
 }
 
 DEFAULT_MODULE_ALIASES = {
@@ -755,25 +729,27 @@ DEFAULT_MODULE_ALIASES = {
     "AioHTTP-Gemini客户端": "AioHTTP-Gemini客户端",
 }
 
-RESET_COLOR = "\033[0m"
+
+# 创建全局 Rich Console 实例用于颜色渲染
+_rich_console = Console(force_terminal=True, color_system="truecolor")
 
 
 class ModuleColoredConsoleRenderer:
-    """自定义控制台渲染器，为不同模块提供不同颜色"""
+    """自定义控制台渲染器，使用 Rich 库原生支持 hex 颜色"""
 
     def __init__(self, colors=True):
         # sourcery skip: merge-duplicate-blocks, remove-redundant-if
         self._colors = colors
         self._config = LOG_CONFIG
 
-        # 日志级别颜色
-        self._level_colors = {
-            "debug": "\033[38;5;208m",  # 橙色
-            "info": "\033[38;5;117m",  # 天蓝色
-            "success": "\033[32m",  # 绿色
-            "warning": "\033[33m",  # 黄色
-            "error": "\033[31m",  # 红色
-            "critical": "\033[35m",  # 紫色
+        # 日志级别颜色 (#RRGGBB 格式)
+        self._level_colors_hex = {
+            "debug": "#D78700",  # 橙色 (ANSI 208)
+            "info": "#87D7FF",  # 天蓝色 (ANSI 117)
+            "success": "#00FF00",  # 绿色
+            "warning": "#FFFF00",  # 黄色
+            "error": "#FF0000",  # 红色
+            "critical": "#FF00FF",  # 紫色
         }
 
         # 根据配置决定是否启用颜色
@@ -796,73 +772,67 @@ class ModuleColoredConsoleRenderer:
     def __call__(self, logger, method_name, event_dict):
         # sourcery skip: merge-duplicate-blocks
         """渲染日志消息"""
+
         # 获取基本信息
         timestamp = event_dict.get("timestamp", "")
         level = event_dict.get("level", "info")
         logger_name = event_dict.get("logger_name", "")
         event = event_dict.get("event", "")
 
-        # 构建输出
+        # 构建 Rich Text 对象列表
         parts = []
 
         # 日志级别样式配置
         log_level_style = self._config.get("log_level_style", "lite")
-        level_color = self._level_colors.get(level.lower(), "") if self._colors else ""
+        level_hex_color = self._level_colors_hex.get(level.lower(), "")
 
         # 时间戳（lite模式下按级别着色）
         if timestamp:
-            if log_level_style == "lite" and level_color:
-                timestamp_part = f"{level_color}{timestamp}{RESET_COLOR}"
+            if log_level_style == "lite" and self._colors and level_hex_color:
+                parts.append(Text(timestamp, style=level_hex_color))
             else:
-                timestamp_part = timestamp
-            parts.append(timestamp_part)
+                parts.append(Text(timestamp))
 
         # 日志级别显示（根据配置样式）
         if log_level_style == "full":
             # 显示完整级别名并着色
-            level_text = level.upper()
-            if level_color:
-                level_part = f"{level_color}[{level_text:>8}]{RESET_COLOR}"
+            level_text = f"[{level.upper():>8}]"
+            if self._colors and level_hex_color:
+                parts.append(Text(level_text, style=level_hex_color))
             else:
-                level_part = f"[{level_text:>8}]"
-            parts.append(level_part)
+                parts.append(Text(level_text))
 
         elif log_level_style == "compact":
             # 只显示首字母并着色
-            level_text = level.upper()[0]
-            if level_color:
-                level_part = f"{level_color}[{level_text:>8}]{RESET_COLOR}"
+            level_text = f"[{level.upper()[0]:>8}]"
+            if self._colors and level_hex_color:
+                parts.append(Text(level_text, style=level_hex_color))
             else:
-                level_part = f"[{level_text:>8}]"
-            parts.append(level_part)
+                parts.append(Text(level_text))
 
         # lite模式不显示级别，只给时间戳着色
 
-        # 获取模块颜色，用于full模式下的整体着色
-        module_color = ""
+        # 获取模块颜色
+        module_hex_color = ""
+        meta: dict[str, str | None] = {"alias": None, "color": None}
+        if logger_name:
+            meta = get_logger_meta(logger_name)
         if self._colors and self._enable_module_colors and logger_name:
             # 动态优先，其次默认表
-            meta = get_logger_meta(logger_name)
-            module_color = meta.get("color") or DEFAULT_MODULE_COLORS.get(logger_name, "")
+            module_hex_color = meta.get("color") or DEFAULT_MODULE_COLORS.get(logger_name, "")
 
         # 模块名称（带颜色和别名支持）
         if logger_name:
             # 获取别名，如果没有别名则使用原名称
-            # 若上面条件不成立需要再次获取 meta
-            if "meta" not in locals():
-                meta = get_logger_meta(logger_name)
             display_name = meta.get("alias") or DEFAULT_MODULE_ALIASES.get(logger_name, logger_name)
 
-            if self._colors and self._enable_module_colors:
-                if module_color:
-                    module_part = f"{module_color}[{display_name}]{RESET_COLOR}"
-                else:
-                    module_part = f"[{display_name}]"
+            module_text = f"[{display_name}]"
+            if self._colors and self._enable_module_colors and module_hex_color:
+                parts.append(Text(module_text, style=module_hex_color))
             else:
-                module_part = f"[{display_name}]"
-            parts.append(module_part)
+                parts.append(Text(module_text))
 
-        # 消息内容（确保转换为字符串）
+        # 消息内容（确保转换为字符串）并支持 Rich 标记
         event_content = ""
         if isinstance(event, str):
             event_content = event
@@ -876,38 +846,56 @@ class ModuleColoredConsoleRenderer:
             # 其他类型直接转换为字符串
             event_content = str(event)
 
-        # 在full模式下为消息内容着色
+        # 在 full 模式下为消息内容着色，并支持 Rich 标记语言
         if self._colors and self._enable_full_content_colors:
-            # 检查是否包含“内心思考:”
             if "内心思考:" in event_content:
-                # 使用明亮的粉色
-                thought_color = "\033[38;5;218m"
-                # 分割消息内容
+                # 使用明亮的粉色用于"内心思考"段落
+                thought_hex_color = "#FFAFD7"
                 prefix, thought = event_content.split("内心思考:", 1)
 
-                # 前缀部分（“决定进行回复，”）使用模块颜色
-                if module_color:
-                    prefix_colored = f"{module_color}{prefix.strip()}{RESET_COLOR}"
-                else:
-                    prefix_colored = prefix.strip()
+                prefix = prefix.strip()
+                thought = thought.strip()
 
-                # “内心思考”部分换行并使用专属颜色
-                thought_colored = f"\n\n{thought_color}内心思考:{thought.strip()}{RESET_COLOR}\n"
+                # 组合为一个 Text，避免 join 时插入多余空格
+                content_text = Text()
+                if prefix:
+                    # 解析 prefix 中的 Rich 标记
+                    if module_hex_color:
+                        content_text.append(Text.from_markup(prefix, style=module_hex_color))
+                    else:
+                        content_text.append(Text.from_markup(prefix))
 
-                # 重新组合
-                # parts.append(prefix_colored + thought_colored)
-                # 将前缀和思考内容作为独立的part添加，避免它们之间出现多余的空格
-                if prefix_colored:
-                    parts.append(prefix_colored)
-                parts.append(thought_colored)
+                # 与"内心思考"段落之间插入空行
+                if prefix:
+                    content_text.append("\n\n")
 
-            elif module_color:
-                event_content = f"{module_color}{event_content}{RESET_COLOR}"
-                parts.append(event_content)
+                # "内心思考"标题+内容
+                content_text.append("内心思考:", style=thought_hex_color)
+                if thought:
+                    content_text.append(thought, style=thought_hex_color)
+
+                parts.append(content_text)
             else:
-                parts.append(event_content)
+                # 使用 Text.from_markup 解析 Rich 标记语言
+                if module_hex_color:
+                    try:
+                        parts.append(Text.from_markup(event_content, style=module_hex_color))
+                    except Exception:
+                        # 如果标记解析失败，回退到普通文本
+                        parts.append(Text(event_content, style=module_hex_color))
+                else:
+                    try:
+                        parts.append(Text.from_markup(event_content))
+                    except Exception:
+                        # 如果标记解析失败，回退到普通文本
+                        parts.append(Text(event_content))
         else:
-            parts.append(event_content)
+            # 即使在非 full 模式下，也尝试解析 Rich 标记（但不应用颜色）
+            try:
+                parts.append(Text.from_markup(event_content))
+            except Exception:
+                # 如果标记解析失败，使用普通文本
+                parts.append(Text(event_content))
 
         # 处理其他字段
         extras = []
@@ -924,15 +912,24 @@ class ModuleColoredConsoleRenderer:
 
                 # 在full模式下为额外字段着色
                 extra_field = f"{key}={value_str}"
-                if self._colors and self._enable_full_content_colors and module_color:
-                    extra_field = f"{module_color}{extra_field}{RESET_COLOR}"
-
-                extras.append(extra_field)
+                # 在full模式下为额外字段着色
+                if self._colors and self._enable_full_content_colors and module_hex_color:
+                    extras.append(Text(extra_field, style=module_hex_color))
+                else:
+                    extras.append(Text(extra_field))
 
         if extras:
-            parts.append(" ".join(extras))
+            parts.append(Text(" "))
+            parts.extend(extras)
 
-        return " ".join(parts)
+        # 使用 Rich 拼接并返回字符串
+        result = Text(" ").join(parts)
+        # 将 Rich Text 对象转换为带 ANSI 颜色码的字符串
+        from io import StringIO
+        string_io = StringIO()
+        temp_console = Console(file=string_io, force_terminal=True, color_system="truecolor", width=999)
+        temp_console.print(result, end="")
+        return string_io.getvalue()
 
 
 # 配置标准logging以支持文件输出和压缩
@@ -948,8 +945,11 @@ logging.basicConfig(
 )
 
 
-def add_logger_metadata(logger: Any, method_name: str, event_dict: dict):  # type: ignore[override]
-    """structlog 自定义处理器: 注入 color / alias 字段 (用于 JSON 输出)。"""
+def add_logger_metadata(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:  # type: ignore[override]
+    """structlog 自定义处理器: 注入 color / alias 字段 (用于 JSON 输出)。
+
+    color 使用 #RRGGBB 格式（已通过 _normalize_color 统一）。
+    """
     name = event_dict.get("logger_name")
     if name:
         meta = get_logger_meta(name)
@@ -958,7 +958,7 @@ def add_logger_metadata(logger: Any, method_name: str, event_dict: dict):  # typ
             meta["color"] = DEFAULT_MODULE_COLORS[name]
         if meta.get("alias") is None and name in DEFAULT_MODULE_ALIASES:
             meta["alias"] = DEFAULT_MODULE_ALIASES[name]
-        # 注入
+        # 注入 - color 已经是 #RRGGBB 格式
         if meta.get("color"):
             event_dict["color"] = meta["color"]
         if meta.get("alias"):

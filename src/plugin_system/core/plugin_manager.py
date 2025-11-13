@@ -14,6 +14,9 @@ from .component_registry import component_registry
 
 logger = get_logger("plugin_manager")
 
+# 全局背景任务集合
+_background_tasks = set()
+
 
 class PluginManager:
     """
@@ -94,7 +97,6 @@ class PluginManager:
         if not plugin_class:
             logger.error(f"插件 {plugin_name} 的插件类未注册或不存在")
             return False, 1
-        init_module = None  # 预先定义，避免后续条件加载导致未绑定
         try:
             # 使用记录的插件目录路径
             plugin_dir = self.plugin_paths.get(plugin_name)
@@ -143,7 +145,9 @@ class PluginManager:
                     logger.debug(f"为插件 '{plugin_name}' 调用 on_plugin_loaded 钩子")
                     try:
                         # 使用 asyncio.create_task 确保它不会阻塞加载流程
-                        asyncio.create_task(plugin_instance.on_plugin_loaded())
+                        task = asyncio.create_task(plugin_instance.on_plugin_loaded())
+                        _background_tasks.add(task)
+                        task.add_done_callback(_background_tasks.discard)
                     except Exception as e:
                         logger.error(f"调用插件 '{plugin_name}' 的 on_plugin_loaded 钩子时出错: {e}")
 
@@ -323,6 +327,33 @@ class PluginManager:
                     init_module = module_from_spec(init_spec)
                     init_spec.loader.exec_module(init_module)
 
+                    # --- 在这里进行依赖检查 ---
+                    if hasattr(init_module, "__plugin_meta__"):
+                        metadata = getattr(init_module, "__plugin_meta__")
+                        from src.plugin_system.utils.dependency_manager import get_dependency_manager
+
+                        dependency_manager = get_dependency_manager()
+
+                        # 1. 检查Python依赖
+                        if metadata.python_dependencies:
+                            success, errors = dependency_manager.check_and_install_dependencies(
+                                metadata.python_dependencies, metadata.name
+                            )
+                            if not success:
+                                error_msg = f"Python依赖检查失败: {', '.join(errors)}"
+                                self.failed_plugins[plugin_name] = error_msg
+                                logger.error(f"❌ 插件加载失败: {plugin_name} - {error_msg}")
+                                return None  # 依赖检查失败，不加载该模块
+
+                        # 2. 检查插件依赖
+                        if not self._check_plugin_dependencies(metadata):
+                            error_msg = f"插件依赖检查失败: 请确保依赖 {metadata.dependencies} 已正确安装并加载。"
+                            self.failed_plugins[plugin_name] = error_msg
+                            logger.error(f"❌ 插件加载失败: {plugin_name} - {error_msg}")
+                            return None  # 插件依赖检查失败
+
+                    # --- 依赖检查逻辑结束 ---
+
             # 然后加载 plugin.py
             spec = spec_from_file_location(module_name, plugin_file)
             if spec is None or spec.loader is None:
@@ -335,7 +366,8 @@ class PluginManager:
 
             # 将 __plugin_meta__ 从 init_module 附加到主模块
             if init_module and hasattr(init_module, "__plugin_meta__"):
-                setattr(module, "__plugin_meta__", getattr(init_module, "__plugin_meta__"))
+                metadata = getattr(init_module, "__plugin_meta__")
+                setattr(module, "__plugin_meta__", metadata)
 
             logger.debug(f"插件模块加载成功: {plugin_file} -> {plugin_name} ({plugin_dir})")
             return module
@@ -345,6 +377,20 @@ class PluginManager:
             logger.error(error_msg)
             self.failed_plugins[plugin_name if "plugin_name" in locals() else module_name] = error_msg
             return None
+
+    def _check_plugin_dependencies(self, plugin_meta: PluginMetadata) -> bool:
+        """检查插件的插件依赖"""
+        dependencies = plugin_meta.dependencies
+        if not dependencies:
+            return True
+
+        for dep_name in dependencies:
+            # 检查依赖的插件类是否已注册
+            if dep_name not in self.plugin_classes:
+                logger.error(f"插件 '{plugin_meta.name}' 缺少依赖: 插件 '{dep_name}' 未找到或加载失败。")
+                return False
+        logger.debug(f"插件 '{plugin_meta.name}' 的所有依赖都已找到。")
+        return True
 
     # == 显示统计与插件信息 ==
 
@@ -358,13 +404,14 @@ class PluginManager:
         event_handler_count = stats.get("event_handlers", 0)
         plus_command_count = stats.get("plus_command_components", 0)
         chatter_count = stats.get("chatter_components", 0)
+        prompt_count = stats.get("prompt_components", 0)
         total_components = stats.get("total_components", 0)
 
         # 📋 显示插件加载总览
         if total_registered > 0:
             logger.info("🎉 插件系统加载完成!")
             logger.info(
-                f"📊 总览: {total_registered}个插件, {total_components}个组件 (Action: {action_count}, Command: {command_count}, Tool: {tool_count}, PlusCommand: {plus_command_count}, EventHandler: {event_handler_count}, Chatter: {chatter_count})"
+                f"📊 总览: {total_registered}个插件, {total_components}个组件 (Action: {action_count}, Command: {command_count}, Tool: {tool_count}, PlusCommand: {plus_command_count}, EventHandler: {event_handler_count}, Chatter: {chatter_count}, Prompt: {prompt_count})"
             )
 
             # 显示详细的插件列表
@@ -382,6 +429,13 @@ class PluginManager:
 
                     # 组件列表
                     if plugin_info.components:
+
+                        def format_component(c):
+                            desc = c.description
+                            if len(desc) > 15:
+                                desc = desc[:15] + "..."
+                            return f"{c.name} ({desc})" if desc else c.name
+
                         action_components = [
                             c for c in plugin_info.components if c.component_type == ComponentType.ACTION
                         ]
@@ -395,29 +449,35 @@ class PluginManager:
                         plus_command_components = [
                             c for c in plugin_info.components if c.component_type == ComponentType.PLUS_COMMAND
                         ]
+                        prompt_components = [
+                            c for c in plugin_info.components if c.component_type == ComponentType.PROMPT
+                        ]
 
                         if action_components:
-                            action_names = [c.name for c in action_components]
-                            logger.info(f"    🎯 Action组件: {', '.join(action_names)}")
+                            action_details = [format_component(c) for c in action_components]
+                            logger.info(f"    🎯 Action组件: {', '.join(action_details)}")
 
                         if command_components:
-                            command_names = [c.name for c in command_components]
-                            logger.info(f"    ⚡ Command组件: {', '.join(command_names)}")
+                            command_details = [format_component(c) for c in command_components]
+                            logger.info(f"    ⚡ Command组件: {', '.join(command_details)}")
                         if tool_components:
-                            tool_names = [c.name for c in tool_components]
-                            logger.info(f"    🛠️ Tool组件: {', '.join(tool_names)}")
+                            tool_details = [format_component(c) for c in tool_components]
+                            logger.info(f"    🛠️ Tool组件: {', '.join(tool_details)}")
                         if plus_command_components:
-                            plus_command_names = [c.name for c in plus_command_components]
-                            logger.info(f"    ⚡ PlusCommand组件: {', '.join(plus_command_names)}")
+                            plus_command_details = [format_component(c) for c in plus_command_components]
+                            logger.info(f"    ⚡ PlusCommand组件: {', '.join(plus_command_details)}")
                         chatter_components = [
                             c for c in plugin_info.components if c.component_type == ComponentType.CHATTER
                         ]
                         if chatter_components:
-                            chatter_names = [c.name for c in chatter_components]
-                            logger.info(f"    🗣️ Chatter组件: {', '.join(chatter_names)}")
+                            chatter_details = [format_component(c) for c in chatter_components]
+                            logger.info(f"    🗣️ Chatter组件: {', '.join(chatter_details)}")
                         if event_handler_components:
-                            event_handler_names = [c.name for c in event_handler_components]
-                            logger.info(f"    📢 EventHandler组件: {', '.join(event_handler_names)}")
+                            event_handler_details = [format_component(c) for c in event_handler_components]
+                            logger.info(f"    📢 EventHandler组件: {', '.join(event_handler_details)}")
+                        if prompt_components:
+                            prompt_details = [format_component(c) for c in prompt_components]
+                            logger.info(f"    📝 Prompt组件: {', '.join(prompt_details)}")
 
                     # 权限节点信息
                     if plugin_instance := self.loaded_plugins.get(plugin_name):

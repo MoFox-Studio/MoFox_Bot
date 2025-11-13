@@ -27,17 +27,78 @@
 
 
 """
+from pathlib import Path
+
+
+async def file_to_stream(
+   file_path: str,
+   stream_id: str,
+   file_name: str | None = None,
+   storage_message: bool = True,
+   set_reply: bool = True
+) -> bool:
+   """向指定流发送文件
+
+   Args:
+       file_path: 文件的本地路径
+       stream_id: 聊天流ID
+       file_name: 发送到对方时显示的文件名，如果为 None 则使用原始文件名
+       storage_message: 是否存储消息到数据库
+
+   Returns:
+       bool: 是否发送成功
+   """
+   target_stream = await get_chat_manager().get_stream(stream_id)
+   if not target_stream:
+       logger.error(f"[SendAPI] 未找到聊天流: {stream_id}")
+       return False
+
+   if not file_name:
+       file_name = Path(file_path).name
+
+   params = {
+       "file": file_path,
+       "name": file_name,
+   }
+
+   action = ""
+   if target_stream.group_info and target_stream.group_info.group_id:
+       action = "upload_group_file"
+       params["group_id"] = target_stream.group_info.group_id
+   elif target_stream.user_info and target_stream.user_info.user_id:
+       action = "upload_private_file"
+       params["user_id"] = target_stream.user_info.user_id
+   else:
+       logger.error(f"[SendAPI] 无法确定文件发送目标: {stream_id}")
+       return False
+
+   response = await adapter_command_to_stream(
+       action=action,
+       params=params,
+       stream_id=stream_id,
+       timeout=300.0  # 文件上传可能需要更长时间
+   )
+
+   if response.get("status") == "ok":
+       logger.info(f"文件 {file_name} 已成功发送到 {stream_id}")
+       return True
+   else:
+       logger.error(f"文件 {file_name} 发送到 {stream_id} 失败: {response.get('message')}")
+       return False
 
 import asyncio
 import time
 import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from maim_message import Seg, UserInfo
 
+if TYPE_CHECKING:
+    from src.common.data_models.database_data_model import DatabaseMessages
+
 # 导入依赖
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
-from src.chat.message_receive.message import MessageRecv, MessageSending
+from src.chat.message_receive.message import MessageSending
 from src.chat.message_receive.uni_message_sender import HeartFCSender
 from src.common.logger import get_logger
 from src.config.config import global_config
@@ -49,57 +110,53 @@ logger = get_logger("send_api")
 _adapter_response_pool: dict[str, asyncio.Future] = {}
 
 
-def message_dict_to_message_recv(message_dict: dict[str, Any]) -> MessageRecv | None:
-    """查找要回复的消息
+def message_dict_to_db_message(message_dict: dict[str, Any]) -> "DatabaseMessages | None":
+    """从消息字典构建 DatabaseMessages 对象
 
     Args:
-        message_dict: 消息字典
+        message_dict: 消息字典或 DatabaseMessages 对象
 
     Returns:
-        Optional[MessageRecv]: 找到的消息，如果没找到则返回None
+        Optional[DatabaseMessages]: 构建的消息对象，如果构建失败则返回None
     """
-    # 构建MessageRecv对象
-    user_info = {
-        "platform": message_dict.get("user_platform", ""),
-        "user_id": message_dict.get("user_id", ""),
-        "user_nickname": message_dict.get("user_nickname", ""),
-        "user_cardname": message_dict.get("user_cardname", ""),
-    }
+    from src.common.data_models.database_data_model import DatabaseMessages
 
-    group_info = {}
-    if message_dict.get("chat_info_group_id"):
-        group_info = {
-            "platform": message_dict.get("chat_info_group_platform", ""),
-            "group_id": message_dict.get("chat_info_group_id", ""),
-            "group_name": message_dict.get("chat_info_group_name", ""),
-        }
+    # 如果已经是 DatabaseMessages，直接返回
+    if isinstance(message_dict, DatabaseMessages):
+        return message_dict
 
-    format_info = {"content_format": "", "accept_format": ""}
-    template_info = {"template_items": {}}
+    # 从字典提取信息
+    user_platform = message_dict.get("user_platform", "")
+    user_id = message_dict.get("user_id", "")
+    user_nickname = message_dict.get("user_nickname", "")
+    user_cardname = message_dict.get("user_cardname", "")
+    chat_info_group_id = message_dict.get("chat_info_group_id")
+    chat_info_group_platform = message_dict.get("chat_info_group_platform", "")
+    chat_info_group_name = message_dict.get("chat_info_group_name", "")
+    chat_info_platform = message_dict.get("chat_info_platform", "")
+    message_id = message_dict.get("message_id") or message_dict.get("chat_info_message_id") or message_dict.get("id")
+    time_val = message_dict.get("time", time.time())
+    additional_config = message_dict.get("additional_config")
+    processed_plain_text = message_dict.get("processed_plain_text", "")
 
-    message_info = {
-        "platform": message_dict.get("chat_info_platform", ""),
-        "message_id": message_dict.get("message_id")
-        or message_dict.get("chat_info_message_id")
-        or message_dict.get("id"),
-        "time": message_dict.get("time"),
-        "group_info": group_info,
-        "user_info": user_info,
-        "additional_config": message_dict.get("additional_config"),
-        "format_info": format_info,
-        "template_info": template_info,
-    }
+    # DatabaseMessages 使用扁平参数构造
+    db_message = DatabaseMessages(
+        message_id=message_id or "temp_reply_id",
+        time=time_val,
+        user_id=user_id,
+        user_nickname=user_nickname,
+        user_cardname=user_cardname,
+        user_platform=user_platform,
+        chat_info_group_id=chat_info_group_id,
+        chat_info_group_name=chat_info_group_name,
+        chat_info_group_platform=chat_info_group_platform,
+        chat_info_platform=chat_info_platform,
+        processed_plain_text=processed_plain_text,
+        additional_config=additional_config
+    )
 
-    new_message_dict = {
-        "message_info": message_info,
-        "raw_message": message_dict.get("processed_plain_text"),
-        "processed_plain_text": message_dict.get("processed_plain_text"),
-    }
-
-    message_recv = MessageRecv(new_message_dict)
-
-    logger.info(f"[SendAPI] 找到匹配的回复消息，发送者: {message_dict.get('user_nickname', '')}")
-    return message_recv
+    logger.info(f"[SendAPI] 构建回复消息对象，发送者: {user_nickname}")
+    return db_message
 
 
 def put_adapter_response(request_id: str, response_data: dict) -> None:
@@ -119,10 +176,10 @@ async def wait_adapter_response(request_id: str, timeout: float = 30.0) -> dict:
         response = await asyncio.wait_for(future, timeout=timeout)
         return response
     except asyncio.TimeoutError:
-        await _adapter_response_pool.pop(request_id, None)
+        _adapter_response_pool.pop(request_id, None)
         return {"status": "error", "message": "timeout"}
     except Exception as e:
-        await _adapter_response_pool.pop(request_id, None)
+        _adapter_response_pool.pop(request_id, None)
         return {"status": "error", "message": str(e)}
 
 
@@ -180,7 +237,7 @@ async def _send_to_target(
 
         # 构建机器人用户信息
         bot_user_info = UserInfo(
-            user_id=global_config.bot.qq_account,
+            user_id=str(global_config.bot.qq_account),
             user_nickname=global_config.bot.nickname,
             platform=target_stream.platform,
         )
@@ -189,12 +246,34 @@ async def _send_to_target(
         message_segment = Seg(type=message_type, data=content)  # type: ignore
 
         # 处理回复消息
-        if reply_to_message:
-            anchor_message = message_dict_to_message_recv(message_dict=reply_to_message)
-            anchor_message.update_chat_stream(target_stream)
-            reply_to_platform_id = (
-                f"{anchor_message.message_info.platform}:{anchor_message.message_info.user_info.user_id}"
-            )
+        if reply_to:
+            # 优先使用 reply_to 字符串构建 anchor_message
+            # 解析 "发送者(ID)" 格式
+            import re
+            match = re.match(r"(.+)\((\d+)\)", reply_to)
+            if match:
+                sender_name, sender_id = match.groups()
+                temp_message_dict = {
+                    "user_nickname": sender_name,
+                    "user_id": sender_id,
+                    "chat_info_platform": target_stream.platform,
+                    "message_id": "temp_reply_id", # 临时ID
+                    "time": time.time()
+                }
+                anchor_message = message_dict_to_db_message(message_dict=temp_message_dict)
+            else:
+                 anchor_message = None
+            reply_to_platform_id = f"{target_stream.platform}:{sender_id}" if anchor_message else None
+
+        elif reply_to_message:
+            anchor_message = message_dict_to_db_message(message_dict=reply_to_message)
+            if anchor_message:
+                # DatabaseMessages 不需要 update_chat_stream，它是纯数据对象
+                reply_to_platform_id = (
+                    f"{anchor_message.chat_info.platform}:{anchor_message.user_info.user_id}"
+                )
+            else:
+                reply_to_platform_id = None
         else:
             anchor_message = None
             reply_to_platform_id = None
@@ -423,6 +502,9 @@ async def adapter_command_to_stream(
                 logger.debug(f"[SendAPI] 创建临时虚拟聊天流: {stream_id}")
 
                 # 创建临时的用户信息和聊天流
+                if not platform:
+                    logger.error("[SendAPI] 创建临时聊天流失败: platform 未提供")
+                    return {"status": "error", "message": "platform 未提供"}
 
                 temp_user_info = UserInfo(user_id="system", user_nickname="System", platform=platform)
 
@@ -444,7 +526,7 @@ async def adapter_command_to_stream(
 
         # 构建机器人用户信息
         bot_user_info = UserInfo(
-            user_id=global_config.bot.qq_account,
+            user_id=str(global_config.bot.qq_account),
             user_nickname=global_config.bot.nickname,
             platform=target_stream.platform,
         )

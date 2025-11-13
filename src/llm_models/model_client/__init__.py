@@ -6,5 +6,3 @@ if "openai" in used_client_types:
     from . import openai_client  # noqa: F401
 if "aiohttp_gemini" in used_client_types:
     from . import aiohttp_gemini_client  # noqa: F401
-if "mcp_sse" in used_client_types:
-    from . import mcp_sse_client  # noqa: F401

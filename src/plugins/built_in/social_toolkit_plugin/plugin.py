@@ -6,6 +6,7 @@ from typing import ClassVar
 from dateutil.parser import parse as parse_datetime
 
 from src.chat.message_receive.chat_stream import ChatStream
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.manager.async_task_manager import AsyncTask, async_task_manager
 from src.person_info.person_info import get_person_info_manager
@@ -139,35 +140,34 @@ class PokeAction(BaseAction):
 
     # === 基本信息（必须填写）===
     action_name = "poke_user"
-    action_description = """可以让你戳其他用户：
-    1. **关键**: 这是一个高消耗的动作，请仅在绝对必要时使用，例如用户明确要求或作为提醒的关键部分。请极其谨慎地使用。
-    2. **用户请求**: 用户明确要求使用戳一戳。
-    4. **上下文需求**: 上下文明确需要你戳一个或多个人。
-    5. **频率限制**: 如果最近已经戳过，或者用户情绪不高，请绝对不要使用。
-    6.  **核心原则**：
+    action_description = """可以让你戳其他用户，为互动增添一份小小的乐趣。
+    判定条件：
+    1. **互动时机**: 这是一个有趣的互动方式，可以在想提醒某人，或者单纯想开个玩笑时使用。
+    2. **用户请求**: 当用户明确要求使用戳一戳时。
+    3. **上下文需求**: 当上下文明确需要你戳一个或多个人时。
+    4. **频率与情绪**: 如果最近已经戳过，或者感觉对方情绪不高，请避免使用，不要打扰到别人哦。
 
-    请严格根据上述规则，回答“是”或“否"""
+    请根据上述规则，回答“是”或“否”。"""
     activation_type = ActionActivationType.ALWAYS
     parallel_action = True
 
     # === 功能描述（必须填写）===
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "user_name": "需要戳一戳的用户的名字 (可选)",
         "user_id": "需要戳一戳的用户的ID (可选，优先级更高)",
         "times": "需要戳一戳的次数 (默认为 1)",
     }
-    action_require = ["当需要戳某个用户时使用", "当你想提醒特定用户时使用"]
+    action_require: ClassVar[list] = ["当需要戳某个用户时使用", "当你想提醒特定用户时使用"]
     llm_judge_prompt = """
     判定是否需要使用戳一戳动作的条件：
-    1. **关键**: 这是一个高消耗的动作，请仅在绝对必要时使用，例如用户明确要求或作为提醒的关键部分。请极其谨慎地使用。
-    2. **用户请求**: 用户明确要求使用戳一戳。
-    4. **上下文需求**: 上下文明确需要你戳一个或多个人。
-    5. **频率限制**: 如果最近已经戳过，或者用户情绪不高，请绝对不要使用。
-    6.  **核心原则**：
+    1. **互动时机**: 这是一个有趣的互动方式，可以在想提醒某人，或者单纯想开个玩笑时使用。
+    2. **用户请求**: 当用户明确要求使用戳一戳时。
+    3. **上下文需求**: 当上下文明确需要你戳一个或多个人时。
+    4. **频率与情绪**: 如果最近已经戳过，或者感觉对方情绪不高，请避免使用，不要打扰到别人哦。
 
-    请严格根据上述规则，回答“是”或“否”。
+    请根据上述规则，回答“是”或“否”。
     """
-    associated_types = ["text"]
+    associated_types: ClassVar[list[str]] = ["text"]
 
     async def execute(self) -> tuple[bool, str]:
         """执行戳一戳的动作"""
@@ -225,10 +225,10 @@ class SetEmojiLikeAction(BaseAction):
     parallel_action = True
 
     # === 功能描述（必须填写）===
-    action_parameters = {
+    action_parameters: ClassVar[dict] = {
         "set": "是否设置回应 (True/False)",
     }
-    action_require = [
+    action_require: ClassVar[list] = [
         "当需要对一个已存在消息进行‘贴表情’回应时使用",
         "这是一个对旧消息的操作，而不是发送新消息",
     ]
@@ -240,10 +240,10 @@ class SetEmojiLikeAction(BaseAction):
 
     请回答"是"或"否"。
     """
-    associated_types = ["text"]
+    associated_types: ClassVar[list[str]] = ["text"]
 
     # 重新启用完整的表情库
-    emoji_options = []
+    emoji_options: ClassVar[list] = []
     for name in qq_face.values():
         match = re.search(r"\[表情：(.+?)\]", name)
         if match:
@@ -254,18 +254,18 @@ class SetEmojiLikeAction(BaseAction):
         message_id = None
         set_like = self.action_data.get("set", True)
 
-        if self.has_action_message and isinstance(self.action_message, dict):
-            message_id = self.action_message.get("message_id")
-            logger.info(f"获取到的消息ID: {message_id}")
-        else:
+        if self.has_action_message:
+            if isinstance(self.action_message, DatabaseMessages):
+                message_id = self.action_message.message_id
+                logger.info(f"获取到的消息ID: {message_id}")
+            elif isinstance(self.action_message, dict):
+                message_id = self.action_message.get("message_id")
+                logger.info(f"获取到的消息ID: {message_id}")
+
+        if not message_id:
             logger.error("未提供有效的消息或消息ID")
             await self.store_action_info(action_prompt_display="贴表情失败: 未提供消息ID", action_done=False)
             return False, "未提供消息ID"
-
-        if not message_id:
-            logger.error("消息ID为空")
-            await self.store_action_info(action_prompt_display="贴表情失败: 消息ID为空", action_done=False)
-            return False, "消息ID为空"
 
         available_models = llm_api.get_available_models()
         if "utils_small" not in available_models:
@@ -274,7 +274,12 @@ class SetEmojiLikeAction(BaseAction):
 
         model_to_use = available_models["utils_small"]
 
-        context_text = self.action_message.get("processed_plain_text", "")
+        # 统一处理 DatabaseMessages 和字典
+        if isinstance(self.action_message, DatabaseMessages):
+            context_text = self.action_message.processed_plain_text or ""
+        else:
+            context_text = self.action_message.get("processed_plain_text", "")
+
         if not context_text:
             logger.error("无法找到动作选择的原始消息文本")
             return False, "无法找到动作选择的原始消息文本"
@@ -354,14 +359,14 @@ class RemindAction(BaseAction):
     action_name = "set_reminder"
     action_description = "根据用户的对话内容，智能地设置一个未来的提醒事项。"
     activation_type = ActionActivationType.KEYWORD
-    activation_keywords = ["提醒", "叫我", "记得", "别忘了"]
+    activation_keywords: ClassVar[list[str]] = ["提醒", "叫我", "记得", "别忘了"]
     chat_type_allow = ChatType.ALL
     parallel_action = True
 
     # === LLM 判断与参数提取 ===
     llm_judge_prompt = ""
-    action_parameters = {}
-    action_require = [
+    action_parameters: ClassVar[dict] = {}
+    action_require: ClassVar[list] = [
         "当用户请求在未来的某个时间点提醒他/她或别人某件事时使用",
         "适用于包含明确时间信息和事件描述的对话",
         "例如：'10分钟后提醒我收快递'、'明天早上九点喊一下李四参加晨会'",
@@ -460,22 +465,31 @@ class RemindAction(BaseAction):
 
             # 2. 包含匹配
             if not user_info:
-                for person_id, name in person_manager.person_name_list.items():
-                    if user_name in name:
-                        user_info = await person_manager.get_values(person_id, ["user_id", "user_nickname"])
+                # 使用数据库查询获取所有用户进行包含匹配
+                from src.common.database.api.crud import CRUDBase
+                from src.common.database.core.models import PersonInfo
+                crud = CRUDBase(PersonInfo)
+                all_records = await crud.get_multi(limit=1000)  # 限制数量避免性能问题
+                for record in all_records:
+                    if record.person_name and user_name in record.person_name:
+                        user_info = await person_manager.get_values(record.person_id, ["user_id", "user_nickname"])
                         break
 
             # 3. 模糊匹配 (此处简化为字符串相似度)
             if not user_info:
                 best_match = None
                 highest_similarity = 0
-                for person_id, name in person_manager.person_name_list.items():
-                    import difflib
+                import difflib
 
-                    similarity = difflib.SequenceMatcher(None, user_name, name).ratio()
-                    if similarity > highest_similarity:
-                        highest_similarity = similarity
-                        best_match = person_id
+                # 使用数据库查询获取所有用户进行模糊匹配
+                crud = CRUDBase(PersonInfo)
+                all_records = await crud.get_multi(limit=1000)  # 限制数量避免性能问题
+                for record in all_records:
+                    if record.person_name:
+                        similarity = difflib.SequenceMatcher(None, user_name, record.person_name).ratio()
+                        if similarity > highest_similarity:
+                            highest_similarity = similarity
+                            best_match = record.person_id
 
                 if best_match and highest_similarity > 0.6:  # 相似度阈值
                     user_info = await person_manager.get_values(best_match, ["user_id", "user_nickname"])
@@ -540,12 +554,12 @@ class SetEmojiLikePlugin(BasePlugin):
     # 插件基本信息
     plugin_name: str = "social_toolkit_plugin"  # 内部标识符
     enable_plugin: bool = True
-    dependencies: list[str] = []  # 插件依赖列表
-    python_dependencies: list[str] = []  # Python包依赖列表，现在使用内置API
+    dependencies: ClassVar[list[str]] = []  # 插件依赖列表
+    python_dependencies: ClassVar[list[str]] = []  # Python包依赖列表，现在使用内置API
     config_file_name: str = "config.toml"  # 配置文件名
 
     # 配置节描述
-    config_section_descriptions = {"plugin": "插件基本信息", "components": "插件组件"}
+    config_section_descriptions: ClassVar[dict] = {"plugin": "插件基本信息", "components": "插件组件"}
 
     # 配置Schema定义
     config_schema: ClassVar[dict] = {

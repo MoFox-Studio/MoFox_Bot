@@ -7,7 +7,7 @@ from src.config.config_base import ValidatedConfigBase
 """
 须知：
 1. 本文件中记录了所有的配置项
-2. 重要的配置类继承自ValidatedConfigBase进行Pydantic验证
+2. 所有配置类必须继承自ValidatedConfigBase进行Pydantic验证
 3. 所有新增的class都应在config.py中的Config类中添加字段
 4. 对于新增的字段，若为可选项，则应在其后添加field()并设置default_factory或default
 """
@@ -30,7 +30,7 @@ class DatabaseConfig(ValidatedConfigBase):
     )
     mysql_ssl_ca: str = Field(default="", description="SSL CA证书路径")
     mysql_ssl_cert: str = Field(default="", description="SSL客户端证书路径")
-    mysql_ssl_key: str = Field(default="", description="SSL客户端密钥路径")
+    mysql_ssl_key: str = Field(default="", description="SSL密钥路径")
     mysql_autocommit: bool = Field(default=True, description="自动提交事务")
     mysql_sql_mode: str = Field(default="TRADITIONAL", description="SQL模式")
     connection_pool_size: int = Field(default=10, ge=1, description="连接池大小")
@@ -40,6 +40,16 @@ class DatabaseConfig(ValidatedConfigBase):
     batch_action_storage_enabled: bool = Field(
         default=True, description="是否启用批量保存动作记录（开启后将多个动作一次性写入数据库，提升性能）"
     )
+
+    # 数据库缓存配置
+    enable_database_cache: bool = Field(default=True, description="是否启用数据库查询缓存系统")
+    cache_l1_max_size: int = Field(default=1000, ge=100, le=50000, description="L1缓存最大条目数（热数据，内存占用约1-5MB）")
+    cache_l1_ttl: int = Field(default=300, ge=10, le=3600, description="L1缓存生存时间（秒）")
+    cache_l2_max_size: int = Field(default=10000, ge=1000, le=100000, description="L2缓存最大条目数（温数据，内存占用约10-50MB）")
+    cache_l2_ttl: int = Field(default=1800, ge=60, le=7200, description="L2缓存生存时间（秒）")
+    cache_cleanup_interval: int = Field(default=60, ge=30, le=600, description="缓存清理任务执行间隔（秒）")
+    cache_max_memory_mb: int = Field(default=100, ge=10, le=1000, description="缓存最大内存占用（MB），超过此值将触发强制清理")
+    cache_max_item_size_mb: int = Field(default=1, ge=1, le=100, description="单个缓存条目最大大小（MB），超过此值将不缓存")
 
 
 class BotConfig(ValidatedConfigBase):
@@ -64,7 +74,6 @@ class PersonalityConfig(ValidatedConfigBase):
         default_factory=list, description="安全与互动底线，Bot在任何情况下都必须遵守的原则"
     )
     reply_style: str = Field(default="", description="表达风格")
-    prompt_mode: Literal["s4u", "normal"] = Field(default="s4u", description="Prompt模式")
     compress_personality: bool = Field(default=True, description="是否压缩人格")
     compress_identity: bool = Field(default=True, description="是否压缩身份")
 
@@ -99,46 +108,30 @@ class PersonalityConfig(ValidatedConfigBase):
     )
 
 
-class RelationshipConfig(ValidatedConfigBase):
-    """关系配置类"""
-
-    enable_relationship: bool = Field(default=True, description="是否启用关系")
-    relation_frequency: float = Field(default=1.0, description="关系频率")
-
 
 class ChatConfig(ValidatedConfigBase):
     """聊天配置类"""
 
     max_context_size: int = Field(default=18, description="最大上下文大小")
-    replyer_random_probability: float = Field(default=0.5, description="回复者随机概率")
     thinking_timeout: int = Field(default=40, description="思考超时时间")
-    talk_frequency: float = Field(default=1.0, description="聊天频率")
     mentioned_bot_inevitable_reply: bool = Field(default=False, description="提到机器人的必然回复")
     at_bot_inevitable_reply: bool = Field(default=False, description="@机器人的必然回复")
     allow_reply_self: bool = Field(default=False, description="是否允许回复自己说的话")
-    focus_value: float = Field(default=1.0, description="专注值")
-    focus_mode_quiet_groups: list[str] = Field(
-        default_factory=list,
-        description='专注模式下需要保持安静的群组列表, 格式: ["platform:group_id1", "platform:group_id2"]',
-    )
-    force_reply_private: bool = Field(default=False, description="强制回复私聊")
-    group_chat_mode: Literal["auto", "normal", "focus"] = Field(default="auto", description="群聊模式")
     timestamp_display_mode: Literal["normal", "normal_no_YMD", "relative"] = Field(
         default="normal_no_YMD", description="时间戳显示模式"
     )
+    # 消息缓存系统配置
+    enable_message_cache: bool = Field(
+        default=True, description="是否启用消息缓存系统（启用后，处理中收到的消息会被缓存，处理完成后统一刷新到未读列表）"
+    )
     # 消息打断系统配置 - 线性概率模型
     interruption_enabled: bool = Field(default=True, description="是否启用消息打断系统")
+    allow_reply_interruption: bool = Field(
+        default=False, description="是否允许在正在生成回复时打断（True=允许打断回复，False=回复期间不允许打断）"
+    )
     interruption_max_limit: int = Field(default=10, ge=0, description="每个聊天流的最大打断次数")
     interruption_min_probability: float = Field(
         default=0.1, ge=0.0, le=1.0, description="最低打断概率（即使达到较高打断次数，也保证有此概率的打断机会）"
-    )
-    interruption_afc_reduction: float = Field(default=0.05, ge=0.0, le=1.0, description="每次连续打断降低的afc阈值数值")
-
-    # DEPRECATED: interruption_probability_factor (已废弃的配置项)
-    # 新的线性概率模型不再需要复杂的概率因子
-    # 保留此字段是为了向后兼容，现有配置文件不会报错
-    interruption_probability_factor: float = Field(
-        default=0.8, ge=0.0, le=1.0, description="[已废弃] 打断概率因子，新线性概率模型不再使用此参数"
     )
 
     # 动态消息分发系统配置
@@ -148,6 +141,19 @@ class ChatConfig(ValidatedConfigBase):
     dynamic_distribution_max_interval: float = Field(default=30.0, ge=5.0, le=300.0, description="最大分发间隔（秒）")
     dynamic_distribution_jitter_factor: float = Field(default=0.2, ge=0.0, le=0.5, description="分发间隔随机扰动因子")
     max_concurrent_distributions: int = Field(default=10, ge=1, le=100, description="最大并发处理的消息流数量")
+    enable_decision_history: bool = Field(default=True, description="是否启用决策历史功能")
+    decision_history_length: int = Field(
+        default=3, ge=1, le=10, description="决策历史记录的长度，用于增强语言模型的上下文连续性"
+    )
+    # 多重回复控制配置
+    enable_multiple_replies: bool = Field(
+        default=True, description="是否允许多重回复（True=允许多个回复动作，False=只保留一个回复动作）"
+    )
+    multiple_replies_strategy: Literal["keep_first", "keep_best", "keep_last"] = Field(
+        default="keep_first", description="多重回复处理策略：keep_first(保留第一个)，keep_best(保留最佳)，keep_last(保留最后一个)"
+    )
+    # 表情包回复配置
+    allow_reply_to_emoji: bool = Field(default=True, description="是否允许回复表情包消息")
 
 
 class MessageReceiveConfig(ValidatedConfigBase):
@@ -155,10 +161,20 @@ class MessageReceiveConfig(ValidatedConfigBase):
 
     ban_words: list[str] = Field(default_factory=lambda: [], description="禁用词列表")
     ban_msgs_regex: list[str] = Field(default_factory=lambda: [], description="禁用消息正则列表")
+    mute_group_list: list[str] = Field(
+        default_factory=list, description="静默群组列表，在这些群组中，只有在被@或回复时才会响应"
+    )
 
 
-class NormalChatConfig(ValidatedConfigBase):
-    """普通聊天配置类"""
+class NoticeConfig(ValidatedConfigBase):
+    """Notice消息配置类"""
+
+    enable_notice_trigger_chat: bool = Field(default=True, description="是否允许notice消息触发聊天流程")
+    notice_in_prompt: bool = Field(default=True, description="是否在提示词中展示最近的notice消息")
+    notice_prompt_limit: int = Field(default=5, ge=1, le=20, description="在提示词中展示的最大notice数量")
+    notice_time_window: int = Field(default=3600, ge=60, le=86400, description="notice时间窗口(秒)")
+    max_notices_per_chat: int = Field(default=30, ge=10, le=100, description="每个聊天保留的notice数量上限")
+    notice_retention_time: int = Field(default=86400, ge=3600, le=604800, description="notice保留时间(秒)")
 
 
 class ExpressionRule(ValidatedConfigBase):
@@ -174,6 +190,14 @@ class ExpressionRule(ValidatedConfigBase):
 class ExpressionConfig(ValidatedConfigBase):
     """表达配置类"""
 
+    mode: Literal["classic", "exp_model"] = Field(
+        default="classic",
+        description="表达方式选择模式: classic=经典LLM评估, exp_model=机器学习模型预测"
+    )
+    expiration_days: int = Field(
+        default=90,
+        description="表达方式过期天数，超过此天数未激活的表达方式将被清理"
+    )
     rules: list[ExpressionRule] = Field(default_factory=list, description="表达学习规则")
 
     @staticmethod
@@ -251,6 +275,7 @@ class VoiceConfig(ValidatedConfigBase):
     """语音识别配置类"""
 
     enable_asr: bool = Field(default=False, description="启用语音识别")
+    asr_provider: str = Field(default="api", description="语音识别提供商")
 
 
 class EmojiConfig(ValidatedConfigBase):
@@ -309,10 +334,12 @@ class MemoryConfig(ValidatedConfigBase):
     enable_vector_memory_storage: bool = Field(default=True, description="启用Vector DB记忆存储")
     enable_llm_instant_memory: bool = Field(default=True, description="启用基于LLM的瞬时记忆")
     enable_vector_instant_memory: bool = Field(default=True, description="启用基于向量的瞬时记忆")
+    instant_memory_max_collections: int = Field(default=100, ge=1, description="瞬时记忆最大集合数")
+    instant_memory_retention_hours: int = Field(
+        default=0, ge=0, description="瞬时记忆保留时间（小时），0表示不基于时间清理"
+    )
 
     # Vector DB配置
-    vector_db_memory_collection: str = Field(default="unified_memory_v2", description="Vector DB记忆集合名称")
-    vector_db_metadata_collection: str = Field(default="memory_metadata_v2", description="Vector DB元数据集合名称")
     vector_db_similarity_threshold: float = Field(
         default=0.5, description="Vector DB相似度阈值（推荐0.5-0.6，过高会导致检索不到结果）"
     )
@@ -384,6 +411,85 @@ class MemoryConfig(ValidatedConfigBase):
     memory_build_throttling: bool = Field(default=True, description="启用记忆构建节流")
     memory_priority_queue_enabled: bool = Field(default=True, description="启用记忆优先级队列")
 
+    # === 记忆图系统配置 (Memory Graph System) ===
+    # 新一代记忆系统的配置项
+    enable: bool = Field(default=True, description="启用记忆图系统")
+    data_dir: str = Field(default="data/memory_graph", description="记忆数据存储目录")
+
+    # 向量存储配置
+    vector_collection_name: str = Field(default="memory_nodes", description="向量集合名称")
+    vector_db_path: str = Field(default="data/memory_graph/chroma_db", description="向量数据库路径")
+
+    # 检索配置
+    search_top_k: int = Field(default=10, description="默认检索返回数量")
+    search_min_importance: float = Field(default=0.3, description="最小重要性阈值")
+    search_similarity_threshold: float = Field(default=0.5, description="向量相似度阈值")
+    search_max_expand_depth: int = Field(default=2, description="检索时图扩展深度（0-3）")
+    search_expand_semantic_threshold: float = Field(default=0.3, description="图扩展时语义相似度阈值（建议0.3-0.5，过低可能引入无关记忆，过高无法扩展）")
+    enable_query_optimization: bool = Field(default=True, description="启用查询优化")
+    
+    # 路径扩展配置 (新算法)
+    enable_path_expansion: bool = Field(default=False, description="启用路径评分扩展算法（实验性功能）")
+    path_expansion_max_hops: int = Field(default=2, description="路径扩展最大跳数")
+    path_expansion_damping_factor: float = Field(default=0.85, description="路径分数衰减因子")
+    path_expansion_max_branches: int = Field(default=10, description="每节点最大分叉数")
+    path_expansion_merge_strategy: str = Field(default="weighted_geometric", description="路径合并策略: weighted_geometric, max_bonus")
+    path_expansion_pruning_threshold: float = Field(default=0.9, description="路径剪枝阈值")
+    path_expansion_path_score_weight: float = Field(default=0.50, description="路径分数在最终评分中的权重")
+    path_expansion_importance_weight: float = Field(default=0.30, description="重要性在最终评分中的权重")
+    path_expansion_recency_weight: float = Field(default=0.20, description="时效性在最终评分中的权重")
+
+    # 🆕 路径扩展 - 记忆去重配置
+    enable_memory_deduplication: bool = Field(default=True, description="启用检索结果去重（合并相似记忆）")
+    memory_deduplication_threshold: float = Field(default=0.85, description="记忆相似度阈值（0.85表示85%相似即合并）")
+
+    # 检索权重配置 (记忆图系统)
+    search_vector_weight: float = Field(default=0.4, description="向量相似度权重")
+    search_graph_distance_weight: float = Field(default=0.2, description="图距离权重")
+    search_importance_weight: float = Field(default=0.2, description="重要性权重")
+    search_recency_weight: float = Field(default=0.2, description="时效性权重")
+
+    # 记忆整合配置
+    consolidation_enabled: bool = Field(default=False, description="是否启用记忆整合")
+    consolidation_interval_hours: float = Field(default=2.0, description="整合任务执行间隔（小时）")
+    consolidation_deduplication_threshold: float = Field(default=0.93, description="相似记忆去重阈值")
+    consolidation_time_window_hours: float = Field(default=2.0, description="整合时间窗口（小时）- 统一用于去重和关联")
+    consolidation_max_batch_size: int = Field(default=30, description="单次最多处理的记忆数量")
+
+    # 记忆关联配置（整合功能的子模块）
+    consolidation_linking_enabled: bool = Field(default=True, description="是否启用记忆关联建立")
+    consolidation_linking_max_candidates: int = Field(default=10, description="每个记忆最多关联的候选数")
+    consolidation_linking_max_memories: int = Field(default=20, description="单次最多处理的记忆总数")
+    consolidation_linking_min_importance: float = Field(default=0.5, description="最低重要性阈值")
+    consolidation_linking_pre_filter_threshold: float = Field(default=0.7, description="向量相似度预筛选阈值")
+    consolidation_linking_max_pairs_for_llm: int = Field(default=5, description="最多发送给LLM分析的候选对数")
+    consolidation_linking_min_confidence: float = Field(default=0.7, description="LLM分析最低置信度阈值")
+    consolidation_linking_llm_temperature: float = Field(default=0.2, description="LLM分析温度参数")
+    consolidation_linking_llm_max_tokens: int = Field(default=1500, description="LLM分析最大输出长度")
+
+    # 遗忘配置 (记忆图系统)
+    forgetting_enabled: bool = Field(default=True, description="是否启用自动遗忘")
+    forgetting_activation_threshold: float = Field(default=0.1, description="激活度阈值")
+    forgetting_min_importance: float = Field(default=0.8, description="最小保护重要性")
+
+    # 激活配置
+    activation_decay_rate: float = Field(default=0.9, description="激活度衰减率")
+    activation_propagation_strength: float = Field(default=0.5, description="激活传播强度")
+    activation_propagation_depth: int = Field(default=2, description="激活传播深度")
+
+    # 记忆激活配置（强制执行）
+    auto_activate_base_strength: float = Field(default=0.1, description="记忆被检索时自动激活的基础强度")
+    auto_activate_max_count: int = Field(default=5, description="单次搜索最多自动激活的记忆数量")
+
+    # 性能配置
+    max_memory_nodes_per_memory: int = Field(default=10, description="每个记忆最多包含的节点数")
+    max_related_memories: int = Field(default=5, description="相关记忆最大数量")
+
+    # 节点去重合并配置
+    node_merger_similarity_threshold: float = Field(default=0.85, description="节点去重相似度阈值")
+    node_merger_context_match_required: bool = Field(default=True, description="节点合并是否要求上下文匹配")
+    node_merger_merge_batch_size: int = Field(default=50, description="节点合并批量处理大小")
+
 
 class MoodConfig(ValidatedConfigBase):
     """情绪配置类"""
@@ -392,32 +498,31 @@ class MoodConfig(ValidatedConfigBase):
     mood_update_threshold: float = Field(default=1.0, description="情绪更新阈值")
 
 
-class KeywordRuleConfig(ValidatedConfigBase):
-    """关键词规则配置类"""
+class ReactionRuleConfig(ValidatedConfigBase):
+    """反应规则配置类"""
 
-    keywords: list[str] = Field(default_factory=lambda: [], description="关键词列表")
-    regex: list[str] = Field(default_factory=lambda: [], description="正则表达式列表")
-    reaction: str = Field(default="", description="反应内容")
+    chat_stream_id: str = Field(default="", description='聊天流ID，格式为 "platform:id:type"，空字符串表示全局')
+    rule_type: Literal["keyword", "regex"] = Field(..., description='规则类型，必须是 "keyword" 或 "regex"')
+    patterns: list[str] = Field(..., description="关键词或正则表达式列表")
+    reaction: str = Field(..., description="触发后的回复内容")
 
     def __post_init__(self):
         import re
 
-        if not self.keywords and not self.regex:
-            raise ValueError("关键词规则必须至少包含keywords或regex中的一个")
-        if not self.reaction:
-            raise ValueError("关键词规则必须包含reaction")
-        for pattern in self.regex:
-            try:
-                re.compile(pattern)
-            except re.error as e:
-                raise ValueError(f"无效的正则表达式 '{pattern}': {e!s}") from e
+        if not self.patterns:
+            raise ValueError("patterns 列表不能为空")
+        if self.rule_type == "regex":
+            for pattern in self.patterns:
+                try:
+                    re.compile(pattern)
+                except re.error as e:
+                    raise ValueError(f"无效的正则表达式 '{pattern}': {e!s}") from e
 
 
-class KeywordReactionConfig(ValidatedConfigBase):
-    """关键词配置类"""
+class ReactionConfig(ValidatedConfigBase):
+    """反应规则系统配置"""
 
-    keyword_rules: list[KeywordRuleConfig] = Field(default_factory=lambda: [], description="关键词规则列表")
-    regex_rules: list[KeywordRuleConfig] = Field(default_factory=lambda: [], description="正则表达式规则列表")
+    rules: list[ReactionRuleConfig] = Field(default_factory=list, description="反应规则列表")
 
 
 class CustomPromptConfig(ValidatedConfigBase):
@@ -426,6 +531,16 @@ class CustomPromptConfig(ValidatedConfigBase):
     image_prompt: str = Field(default="", description="图片提示词")
     planner_custom_prompt_enable: bool = Field(default=False, description="启用规划器自定义提示词")
     planner_custom_prompt_content: str = Field(default="", description="规划器自定义提示词内容")
+
+
+class AttentionOptimizationConfig(ValidatedConfigBase):
+    """注意力优化配置类 - 防止提示词过度相似导致LLM注意力退化"""
+
+    enable_noise: bool = Field(default=True, description="启用轻量级噪声注入（空白字符调整）")
+    enable_semantic_variants: bool = Field(default=False, description="启用语义变体替换（实验性功能）")
+    noise_strength: Literal["light", "medium", "heavy"] = Field(
+        default="light", description="噪声强度: light(轻量) | medium(中等) | heavy(强力)"
+    )
 
 
 class ResponsePostProcessConfig(ValidatedConfigBase):
@@ -483,11 +598,13 @@ class LPMMKnowledgeConfig(ValidatedConfigBase):
     """LPMM知识库配置类"""
 
     enable: bool = Field(default=True, description="启用")
+    enable_summary: bool = Field(default=True, description="是否启用知识库总结")
     rag_synonym_search_top_k: int = Field(default=10, description="RAG同义词搜索Top K")
     rag_synonym_threshold: float = Field(default=0.8, description="RAG同义词阈值")
     info_extraction_workers: int = Field(default=3, description="信息提取工作线程数")
     qa_relation_search_top_k: int = Field(default=10, description="QA关系搜索Top K")
     qa_relation_threshold: float = Field(default=0.75, description="QA关系阈值")
+    qa_paragraph_threshold: float = Field(default=0.3, description="QA段落阈值")
     qa_paragraph_search_top_k: int = Field(default=1000, description="QA段落搜索Top K")
     qa_paragraph_node_weight: float = Field(default=0.05, description="QA段落节点权重")
     qa_ent_filter_top_k: int = Field(default=10, description="QA实体过滤Top K")
@@ -559,90 +676,40 @@ class WebSearchConfig(ValidatedConfigBase):
     exa_api_keys: list[str] = Field(default_factory=lambda: [], description="exa API密钥列表，支持轮询机制")
     searxng_instances: list[str] = Field(default_factory=list, description="SearXNG 实例 URL 列表")
     searxng_api_keys: list[str] = Field(default_factory=list, description="SearXNG 实例 API 密钥列表")
+    serper_api_keys: list[str] = Field(default_factory=list, description="serper API 密钥列表")
     enabled_engines: list[str] = Field(default_factory=lambda: ["ddg"], description="启用的搜索引擎")
     search_strategy: Literal["fallback", "single", "parallel"] = Field(default="single", description="搜索策略")
 
 
-class AntiPromptInjectionConfig(ValidatedConfigBase):
-    """LLM反注入系统配置类"""
-
-    enabled: bool = Field(default=True, description="启用")
-    enabled_LLM: bool = Field(default=True, description="启用LLM")
-    enabled_rules: bool = Field(default=True, description="启用规则")
-    process_mode: str = Field(default="lenient", description="处理模式")
-    whitelist: list[list[str]] = Field(default_factory=list, description="白名单")
-    llm_detection_enabled: bool = Field(default=True, description="启用LLM检测")
-    llm_model_name: str = Field(default="anti_injection", description="LLM模型名称")
-    llm_detection_threshold: float = Field(default=0.7, description="LLM检测阈值")
-    cache_enabled: bool = Field(default=True, description="启用缓存")
-    cache_ttl: int = Field(default=3600, description="缓存TTL")
-    max_message_length: int = Field(default=4096, description="最大消息长度")
-    stats_enabled: bool = Field(default=True, description="启用统计信息")
-    auto_ban_enabled: bool = Field(default=True, description="启用自动禁用")
-    auto_ban_violation_threshold: int = Field(default=3, description="自动禁用违规阈值")
-    auto_ban_duration_hours: int = Field(default=2, description="自动禁用持续时间（小时）")
-    shield_prefix: str = Field(default="🛡️ ", description="保护前缀")
-    shield_suffix: str = Field(default=" 🛡️", description="保护后缀")
-
-
-class SleepSystemConfig(ValidatedConfigBase):
-    """睡眠系统配置类"""
-
-    enable: bool = Field(default=True, description="是否启用睡眠系统")
-    sleep_by_schedule: bool = Field(default=True, description="是否根据日程表进行睡觉")
-    fixed_sleep_time: str = Field(default="23:00", description="固定的睡觉时间")
-    fixed_wake_up_time: str = Field(default="07:00", description="固定的起床时间")
-    sleep_time_offset_minutes: int = Field(
-        default=15, ge=0, le=60, description="睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机"
-    )
-    wake_up_time_offset_minutes: int = Field(
-        default=15, ge=0, le=60, description="起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机"
-    )
-    wakeup_threshold: float = Field(default=15.0, ge=1.0, description="唤醒阈值，达到此值时会被唤醒")
-    private_message_increment: float = Field(default=3.0, ge=0.1, description="私聊消息增加的唤醒度")
-    group_mention_increment: float = Field(default=2.0, ge=0.1, description="群聊艾特增加的唤醒度")
-    decay_rate: float = Field(default=0.2, ge=0.0, description="每次衰减的唤醒度数值")
-    decay_interval: float = Field(default=30.0, ge=1.0, description="唤醒度衰减间隔(秒)")
-    angry_duration: float = Field(default=300.0, ge=10.0, description="愤怒状态持续时间(秒)")
-    angry_prompt: str = Field(default="你被人吵醒了非常生气，说话带着怒气", description="被吵醒后的愤怒提示词")
-    re_sleep_delay_minutes: int = Field(
-        default=5, ge=1, description="被唤醒后，如果多久没有新消息则尝试重新入睡（分钟）"
-    )
-
-    # --- 失眠机制相关参数 ---
-    enable_insomnia_system: bool = Field(default=True, description="是否启用失眠系统")
-    insomnia_trigger_delay_minutes: list[int] = Field(
-        default_factory=lambda: [30, 60], description="入睡后触发失眠判定的延迟时间范围（分钟）"
-    )
-    insomnia_duration_minutes: list[int] = Field(
-        default_factory=lambda: [15, 45], description="单次失眠状态的持续时间范围（分钟）"
-    )
-    sleep_pressure_threshold: float = Field(default=30.0, description="触发“压力不足型失眠”的睡眠压力阈值")
-    deep_sleep_threshold: float = Field(default=80.0, description="进入“深度睡眠”的睡眠压力阈值")
-    insomnia_chance_low_pressure: float = Field(default=0.6, ge=0.0, le=1.0, description="压力不足时的失眠基础概率")
-    insomnia_chance_normal_pressure: float = Field(default=0.1, ge=0.0, le=1.0, description="压力正常时的失眠基础概率")
-    sleep_pressure_increment: float = Field(default=1.5, ge=0.0, description="每次AI执行动作后，增加的睡眠压力值")
-    sleep_pressure_decay_rate: float = Field(default=1.5, ge=0.0, description="睡眠时，每分钟衰减的睡眠压力值")
-
-    # --- 弹性睡眠与睡前消息 ---
-    enable_flexible_sleep: bool = Field(default=True, description="是否启用弹性睡眠")
-    flexible_sleep_pressure_threshold: float = Field(
-        default=40.0, description="触发弹性睡眠的睡眠压力阈值，低于该值可能延迟入睡"
-    )
-    max_sleep_delay_minutes: int = Field(default=60, description="单日最大延迟入睡分钟数")
-    enable_pre_sleep_notification: bool = Field(default=True, description="是否启用睡前消息")
-    pre_sleep_prompt: str = Field(
-        default="我准备睡觉了，请生成一句简短自然的晚安问候。", description="用于生成睡前消息的提示"
-    )
-
-
 class ContextGroup(ValidatedConfigBase):
-    """上下文共享组配置"""
+    """
+    上下文共享组配置
 
-    name: str = Field(..., description="共享组的名称")
+    定义了一个聊天上下文的共享范围和规则。
+    """
+
+    name: str = Field(..., description="共享组的名称，用于唯一标识一个共享组")
+    mode: Literal["whitelist", "blacklist"] = Field(
+        default="whitelist",
+        description="共享模式。'whitelist'表示仅共享chat_ids中列出的聊天；'blacklist'表示共享除chat_ids中列出的所有聊天。",
+    )
+    default_limit: int = Field(
+        default=5,
+        description="在'blacklist'模式下，对于未明确指定数量的聊天，默认获取的消息条数。",
+    )
     chat_ids: list[list[str]] = Field(
         ...,
-        description='属于该组的聊天ID列表，格式为 [["type", "chat_id"], ...]，例如 [["group", "123456"], ["private", "789012"]]',
+        description='定义组内成员的列表。格式为 [["type", "id", "limit"(可选)]]。type为"group"或"private"，id为群号或用户ID，limit为可选的消息条数。',
+    )
+
+
+class MaizoneContextGroup(ValidatedConfigBase):
+    """QQ空间专用互通组配置"""
+
+    name: str = Field(..., description="QQ空间互通组的名称")
+    chat_ids: list[list[str]] = Field(
+        ...,
+        description='定义组内成员的列表。格式为 [["type", "id"]]。type为"group"或"private"，id为群号或用户ID。',
     )
 
 
@@ -650,13 +717,41 @@ class CrossContextConfig(ValidatedConfigBase):
     """跨群聊上下文共享配置"""
 
     enable: bool = Field(default=False, description="是否启用跨群聊上下文共享功能")
+
+    # --- Normal模式: 共享组配置 ---
     groups: list[ContextGroup] = Field(default_factory=list, description="上下文共享组列表")
+    # --- S4U模式: 用户中心上下文检索 ---
+    s4u_mode: Literal["whitelist", "blacklist"] = Field(
+        default="whitelist",
+        description="S4U模式的白名单/黑名单模式",
+    )
+    s4u_limit: int = Field(default=5, description="S4U模式下，每个聊天获取的消息条数")
+    s4u_stream_limit: int = Field(default=3, description="S4U模式下，最多检索多少个不同的聊天流")
+    s4u_whitelist_chats: list[str] = Field(
+        default_factory=list,
+        description='S4U模式的白名单列表。格式: ["platform:type:id", ...]',
+    )
+    s4u_blacklist_chats: list[str] = Field(
+        default_factory=list,
+        description='S4U模式的黑名单列表。格式: ["platform:type:id", ...]',
+    )
+
+    # --- QQ空间专用互通组 ---
+    maizone_context_group: list[MaizoneContextGroup] = Field(default_factory=list, description="QQ空间专用互通组列表")
 
 
 class CommandConfig(ValidatedConfigBase):
     """命令系统配置类"""
 
     command_prefixes: list[str] = Field(default_factory=lambda: ["/", "!", ".", "#"], description="支持的命令前缀列表")
+
+
+class MasterPromptConfig(ValidatedConfigBase):
+    """主人身份提示词配置"""
+
+    enable: bool = Field(default=False, description="是否启用主人提示词注入功能")
+    master_hint: str = Field(default="", description="对主人注入的额外提示词内容")
+    non_master_hint: str = Field(default="", description="对非主人注入的额外提示词内容")
 
 
 class PermissionConfig(ValidatedConfigBase):
@@ -666,10 +761,16 @@ class PermissionConfig(ValidatedConfigBase):
     master_users: list[list[str]] = Field(
         default_factory=list, description="Master用户列表，格式: [[platform, user_id], ...]"
     )
+    master_prompt: MasterPromptConfig = Field(
+        default_factory=MasterPromptConfig, description="主人身份提示词配置"
+    )
 
 
 class AffinityFlowConfig(ValidatedConfigBase):
     """亲和流配置类（兴趣度评分和人物关系系统）"""
+
+    # Normal模式开关
+    enable_normal_mode: bool = Field(default=True, description="是否启用自动Normal模式切换")
 
     # 兴趣评分系统参数
     reply_action_interest_threshold: float = Field(default=0.4, description="回复动作兴趣阈值")
@@ -688,6 +789,12 @@ class AffinityFlowConfig(ValidatedConfigBase):
     reply_cooldown_reduction: int = Field(default=2, description="回复后减少的不回复计数")
     max_no_reply_count: int = Field(default=5, description="最大不回复计数次数")
 
+    # 回复后连续对话机制参数
+    enable_post_reply_boost: bool = Field(default=True, description="是否启用回复后阈值降低机制，使bot在回复后更容易进行连续对话")
+    post_reply_threshold_reduction: float = Field(default=0.15, description="回复后初始阈值降低值（建议0.1-0.2）")
+    post_reply_boost_max_count: int = Field(default=3, description="回复后阈值降低的最大持续次数（建议2-5）")
+    post_reply_boost_decay_rate: float = Field(default=0.5, description="每次回复后阈值降低衰减率（0-1，建议0.3-0.7）")
+
     # 综合评分权重
     keyword_match_weight: float = Field(default=0.4, description="兴趣关键词匹配度权重")
     mention_bot_weight: float = Field(default=0.3, description="提及bot分数权重")
@@ -695,9 +802,10 @@ class AffinityFlowConfig(ValidatedConfigBase):
 
     # 提及bot相关参数
     mention_bot_adjustment_threshold: float = Field(default=0.3, description="提及bot后的调整阈值")
-    mention_bot_interest_score: float = Field(default=0.6, description="提及bot的兴趣分")
+    mention_bot_interest_score: float = Field(default=0.6, description="提及bot的兴趣分（已弃用，改用strong/weak_mention）")
+    strong_mention_interest_score: float = Field(default=2.5, description="强提及的兴趣分（被@、被回复、私聊）")
+    weak_mention_interest_score: float = Field(default=1.5, description="弱提及的兴趣分（文本匹配bot名字或别名）")
     base_relationship_score: float = Field(default=0.5, description="基础人物关系分")
-
 
 class ProactiveThinkingConfig(ValidatedConfigBase):
     """主动思考（主动发起对话）功能配置"""
@@ -705,28 +813,57 @@ class ProactiveThinkingConfig(ValidatedConfigBase):
     # --- 总开关 ---
     enable: bool = Field(default=False, description="是否启用主动发起对话功能")
 
-    # --- 触发时机 ---
-    interval: int = Field(default=1500, description="基础触发间隔（秒），AI会围绕这个时间点主动发起对话")
-    interval_sigma: int = Field(
-        default=120, description="间隔随机化标准差（秒），让触发时间更自然。设为0则为固定间隔。"
+    # --- 间隔配置 ---
+    base_interval: int = Field(default=1800, ge=60, description="基础触发间隔（秒），默认30分钟")
+    min_interval: int = Field(default=600, ge=60, description="最小触发间隔（秒），默认10分钟。兴趣分数高时会接近此值")
+    max_interval: int = Field(default=7200, ge=60, description="最大触发间隔（秒），默认2小时。兴趣分数低时会接近此值")
+
+    # --- 新增：动态调整配置 ---
+    use_interest_score: bool = Field(default=True, description="是否根据兴趣分数动态调整间隔。关闭则使用固定base_interval")
+    interest_score_factor: float = Field(default=2.0, ge=1.0, le=3.0, description="兴趣分数影响因子。公式: interval = base * (factor - score)")
+
+    # --- 新增：黑白名单配置 ---
+    whitelist_mode: bool = Field(default=False, description="是否启用白名单模式。启用后只对白名单中的聊天流生效")
+    blacklist_mode: bool = Field(default=False, description="是否启用黑名单模式。启用后排除黑名单中的聊天流")
+
+    whitelist_private: list[str] = Field(
+        default_factory=list,
+        description='私聊白名单，格式: ["platform:user_id:private", "qq:12345:private"]'
     )
-    talk_frequency_adjust: list[list[str]] = Field(
-        default_factory=lambda: [["", "8:00,1", "12:00,1.2", "18:00,1.5", "01:00,0.6"]],
-        description='每日活跃度调整，格式：[["", "HH:MM,factor", ...], ["stream_id", ...]]',
+    whitelist_group: list[str] = Field(
+        default_factory=list,
+        description='群聊白名单，格式: ["platform:group_id:group", "qq:123456:group"]'
     )
 
-    # --- 作用范围 ---
-    enable_in_private: bool = Field(default=True, description="是否允许在私聊中主动发起对话")
-    enable_in_group: bool = Field(default=True, description="是否允许在群聊中主动发起对话")
-    enabled_private_chats: list[str] = Field(
-        default_factory=list, description='私聊白名单，为空则对所有私聊生效。格式: ["platform:user_id", ...]'
+    blacklist_private: list[str] = Field(
+        default_factory=list,
+        description='私聊黑名单，格式: ["platform:user_id:private", "qq:12345:private"]'
     )
-    enabled_group_chats: list[str] = Field(
-        default_factory=list, description='群聊白名单，为空则对所有群聊生效。格式: ["platform:group_id", ...]'
+    blacklist_group: list[str] = Field(
+        default_factory=list,
+        description='群聊黑名单，格式: ["platform:group_id:group", "qq:123456:group"]'
     )
 
-    # --- 冷启动配置 (针对私聊) ---
-    enable_cold_start: bool = Field(default=True, description="对于白名单中不活跃的私聊，是否允许进行一次“冷启动”问候")
-    cold_start_cooldown: int = Field(
-        default=86400, description="冷启动后，该私聊的下一次主动思考需要等待的最小时间（秒）"
-    )
+    # --- 新增：兴趣分数阈值 ---
+    min_interest_score: float = Field(default=0.0, ge=0.0, le=1.0, description="最低兴趣分数阈值，低于此值不会主动思考")
+    max_interest_score: float = Field(default=1.0, ge=0.0, le=1.0, description="最高兴趣分数阈值，高于此值不会主动思考（用于限制过度活跃）")
+
+    # --- 新增：时间策略配置 ---
+    enable_time_strategy: bool = Field(default=False, description="是否启用时间策略（根据时段调整频率）")
+    quiet_hours_start: str = Field(default="00:00", description='安静时段开始时间，格式: "HH:MM"')
+    quiet_hours_end: str = Field(default="07:00", description='安静时段结束时间，格式: "HH:MM"')
+    active_hours_multiplier: float = Field(default=0.7, ge=0.1, le=2.0, description="活跃时段间隔倍数，<1表示更频繁，>1表示更稀疏")
+
+    # --- 新增：冷却与限制 ---
+    reply_reset_enabled: bool = Field(default=True, description="bot回复后是否重置定时器（避免回复后立即又主动发言）")
+    topic_throw_cooldown: int = Field(default=3600, ge=0, description="抛出话题后的冷却时间（秒），期间暂停主动思考")
+    max_daily_proactive: int = Field(default=0, ge=0, description="每个聊天流每天最多主动发言次数，0表示不限制")
+
+    # --- 新增：决策权重配置 ---
+    do_nothing_weight: float = Field(default=0.4, ge=0.0, le=1.0, description="do_nothing动作的基础权重")
+    simple_bubble_weight: float = Field(default=0.3, ge=0.0, le=1.0, description="simple_bubble动作的基础权重")
+    throw_topic_weight: float = Field(default=0.3, ge=0.0, le=1.0, description="throw_topic动作的基础权重")
+
+    # --- 新增：调试与监控 ---
+    enable_statistics: bool = Field(default=True, description="是否启用统计功能（记录触发次数、决策分布等）")
+    log_decisions: bool = Field(default=False, description="是否记录每次决策的详细日志（用于调试）")

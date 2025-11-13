@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, TypedDict
 
+from src.common.database.api.crud import CRUDBase
 from src.common.logger import get_logger
 from src.config.config import global_config
 
@@ -191,24 +192,33 @@ class RecencyEnergyCalculator(EnergyCalculator):
 
 
 class RelationshipEnergyCalculator(EnergyCalculator):
-    """关系能量计算器"""
+    """关系能量计算器 - 基于聊天流兴趣度"""
 
     async def calculate(self, context: dict[str, Any]) -> float:
-        """基于关系计算能量"""
-        user_id = context.get("user_id")
-        if not user_id:
+        """基于聊天流兴趣度计算能量"""
+        stream_id = context.get("stream_id")
+        if not stream_id:
             return 0.3
 
-        # 使用统一的评分API获取关系分
+        # 从数据库获取聊天流兴趣分数
         try:
-            from src.plugin_system.apis.scoring_api import scoring_api
 
-            relationship_score = await scoring_api.get_user_relationship_score(user_id)
-            logger.debug(f"使用统一评分API计算关系分: {relationship_score:.3f}")
-            return relationship_score
+            from src.common.database.core.models import ChatStreams
+
+            # 使用CRUD进行查询（已有缓存）
+            crud = CRUDBase(ChatStreams)
+            stream = await crud.get_by(stream_id=stream_id)
+
+            if stream and stream.stream_interest_score is not None:
+                interest_score = float(stream.stream_interest_score)
+                logger.debug(f"使用聊天流兴趣度计算关系能量: {interest_score:.3f}")
+                return interest_score
+            else:
+                logger.debug(f"聊天流 {stream_id} 无兴趣分数，使用默认值")
+                return 0.3
 
         except Exception as e:
-            logger.warning(f"关系分计算失败，使用默认值: {e}")
+            logger.warning(f"获取聊天流兴趣度失败，使用默认值: {e}")
             return 0.3  # 默认基础分
 
     def get_weight(self) -> float:

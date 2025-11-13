@@ -1,10 +1,11 @@
+from typing import ClassVar
+
+from src.common.logger import get_logger
 from src.plugin_system import BaseEventHandler
 from src.plugin_system.base.base_event import HandlerResult
 
-from .src.send_handler import send_handler
 from .event_types import NapcatEvent
-
-from src.common.logger import get_logger
+from .src.send_handler import send_handler
 
 logger = get_logger("napcat_adapter")
 
@@ -14,7 +15,7 @@ class SetProfileHandler(BaseEventHandler):
     handler_description: str = "设置账号信息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.SET_PROFILE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.SET_PROFILE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -49,7 +50,7 @@ class GetOnlineClientsHandler(BaseEventHandler):
     handler_description: str = "获取当前账号在线客户端列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_ONLINE_CLIENTS]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_ONLINE_CLIENTS]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -72,7 +73,7 @@ class SetOnlineStatusHandler(BaseEventHandler):
     handler_description: str = "设置在线状态"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.SET_ONLINE_STATUS]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.SET_ONLINE_STATUS]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -103,7 +104,7 @@ class GetFriendsWithCategoryHandler(BaseEventHandler):
     handler_description: str = "获取好友分组列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_FRIENDS_WITH_CATEGORY]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_FRIENDS_WITH_CATEGORY]
 
     async def execute(self, params: dict):
         payload = {}
@@ -120,7 +121,7 @@ class SetAvatarHandler(BaseEventHandler):
     handler_description: str = "设置头像"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.SET_AVATAR]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.SET_AVATAR]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -147,7 +148,7 @@ class SendLikeHandler(BaseEventHandler):
     handler_description: str = "点赞"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.SEND_LIKE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.SEND_LIKE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -176,7 +177,7 @@ class SetFriendAddRequestHandler(BaseEventHandler):
     handler_description: str = "处理好友请求"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.SET_FRIEND_ADD_REQUEST]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.SET_FRIEND_ADD_REQUEST]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -207,7 +208,7 @@ class SetSelfLongnickHandler(BaseEventHandler):
     handler_description: str = "设置个性签名"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.SET_SELF_LONGNICK]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.SET_SELF_LONGNICK]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -240,7 +241,7 @@ class GetLoginInfoHandler(BaseEventHandler):
     handler_description: str = "获取登录号信息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_LOGIN_INFO]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_LOGIN_INFO]
 
     async def execute(self, params: dict):
         payload = {}
@@ -257,7 +258,7 @@ class GetRecentContactHandler(BaseEventHandler):
     handler_description: str = "最近消息列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_RECENT_CONTACT]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_RECENT_CONTACT]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -280,7 +281,7 @@ class GetStrangerInfoHandler(BaseEventHandler):
     handler_description: str = "获取(指定)账号信息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_STRANGER_INFO]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_STRANGER_INFO]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -307,7 +308,7 @@ class GetFriendListHandler(BaseEventHandler):
     handler_description: str = "获取好友列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_FRIEND_LIST]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_FRIEND_LIST]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -330,7 +331,7 @@ class GetProfileLikeHandler(BaseEventHandler):
     handler_description: str = "获取点赞列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_PROFILE_LIKE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_PROFILE_LIKE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -360,7 +361,7 @@ class DeleteFriendHandler(BaseEventHandler):
     handler_description: str = "删除好友"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.DELETE_FRIEND]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.DELETE_FRIEND]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -395,7 +396,7 @@ class GetUserStatusHandler(BaseEventHandler):
     handler_description: str = "获取(指定)用户状态"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_USER_STATUS]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_USER_STATUS]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -422,7 +423,7 @@ class GetStatusHandler(BaseEventHandler):
     handler_description: str = "获取状态"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_STATUS]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_STATUS]
 
     async def execute(self, params: dict):
         payload = {}
@@ -439,7 +440,7 @@ class GetMiniAppArkHandler(BaseEventHandler):
     handler_description: str = "获取小程序卡片"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.GET_MINI_APP_ARK]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.GET_MINI_APP_ARK]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -486,7 +487,7 @@ class SetDiyOnlineStatusHandler(BaseEventHandler):
     handler_description: str = "设置自定义在线状态"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.ACCOUNT.SET_DIY_ONLINE_STATUS]
+    init_subscribe: ClassVar[list] = [NapcatEvent.ACCOUNT.SET_DIY_ONLINE_STATUS]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -518,7 +519,7 @@ class SendPrivateMsgHandler(BaseEventHandler):
     handler_description: str = "发送私聊消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.SEND_PRIVATE_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.SEND_PRIVATE_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -547,7 +548,7 @@ class SendPokeHandler(BaseEventHandler):
     handler_description: str = "发送戳一戳"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.SEND_POKE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.SEND_POKE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -579,7 +580,7 @@ class DeleteMsgHandler(BaseEventHandler):
     handler_description: str = "撤回消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.DELETE_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.DELETE_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -606,7 +607,7 @@ class GetGroupMsgHistoryHandler(BaseEventHandler):
     handler_description: str = "获取群历史消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.GET_GROUP_MSG_HISTORY]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.GET_GROUP_MSG_HISTORY]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -644,7 +645,7 @@ class GetMsgHandler(BaseEventHandler):
     handler_description: str = "获取消息详情"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.GET_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.GET_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -671,7 +672,7 @@ class GetForwardMsgHandler(BaseEventHandler):
     handler_description: str = "获取合并转发消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.GET_FORWARD_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.GET_FORWARD_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -698,7 +699,7 @@ class SetMsgEmojiLikeHandler(BaseEventHandler):
     handler_description: str = "贴表情"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.SET_MSG_EMOJI_LIKE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.SET_MSG_EMOJI_LIKE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -729,7 +730,7 @@ class GetFriendMsgHistoryHandler(BaseEventHandler):
     handler_description: str = "获取好友历史消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.GET_FRIEND_MSG_HISTORY]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.GET_FRIEND_MSG_HISTORY]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -767,7 +768,7 @@ class FetchEmojiLikeHandler(BaseEventHandler):
     handler_description: str = "获取贴表情详情"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.FETCH_EMOJI_LIKE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.FETCH_EMOJI_LIKE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -805,7 +806,7 @@ class SendForwardMsgHandler(BaseEventHandler):
     handler_description: str = "发送合并转发消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.SEND_FORWARD_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.SEND_FORWARD_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -849,7 +850,7 @@ class SendGroupAiRecordHandler(BaseEventHandler):
     handler_description: str = "发送群AI语音"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.MESSAGE.SEND_GROUP_AI_RECORD]
+    init_subscribe: ClassVar[list] = [NapcatEvent.MESSAGE.SEND_GROUP_AI_RECORD]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -881,7 +882,7 @@ class GetGroupInfoHandler(BaseEventHandler):
     handler_description: str = "获取群信息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_INFO]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_INFO]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -908,7 +909,7 @@ class SetGroupAddOptionHandler(BaseEventHandler):
     handler_description: str = "设置群添加选项"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_ADD_OPTION]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_ADD_OPTION]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -946,7 +947,7 @@ class SetGroupKickMembersHandler(BaseEventHandler):
     handler_description: str = "批量踢出群成员"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_KICK_MEMBERS]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_KICK_MEMBERS]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -977,7 +978,7 @@ class SetGroupRemarkHandler(BaseEventHandler):
     handler_description: str = "设置群备注"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_REMARK]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_REMARK]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1006,7 +1007,7 @@ class SetGroupKickHandler(BaseEventHandler):
     handler_description: str = "群踢人"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_KICK]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_KICK]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1037,7 +1038,7 @@ class GetGroupSystemMsgHandler(BaseEventHandler):
     handler_description: str = "获取群系统消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_SYSTEM_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_SYSTEM_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1064,7 +1065,7 @@ class SetGroupBanHandler(BaseEventHandler):
     handler_description: str = "群禁言"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_BAN]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_BAN]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1095,7 +1096,7 @@ class GetEssenceMsgListHandler(BaseEventHandler):
     handler_description: str = "获取群精华消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_ESSENCE_MSG_LIST]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_ESSENCE_MSG_LIST]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1122,7 +1123,7 @@ class SetGroupWholeBanHandler(BaseEventHandler):
     handler_description: str = "全体禁言"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_WHOLE_BAN]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_WHOLE_BAN]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1151,7 +1152,7 @@ class SetGroupPortraitHandler(BaseEventHandler):
     handler_description: str = "设置群头像"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_PORTRAINT]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_PORTRAINT]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1180,7 +1181,7 @@ class SetGroupAdminHandler(BaseEventHandler):
     handler_description: str = "设置群管理"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_ADMIN]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_ADMIN]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1211,7 +1212,7 @@ class SetGroupCardHandler(BaseEventHandler):
     handler_description: str = "设置群成员名片"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_CARD]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_CARD]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1245,7 +1246,7 @@ class SetEssenceMsgHandler(BaseEventHandler):
     handler_description: str = "设置群精华消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_ESSENCE_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_ESSENCE_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1272,7 +1273,7 @@ class SetGroupNameHandler(BaseEventHandler):
     handler_description: str = "设置群名"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_NAME]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_NAME]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1301,7 +1302,7 @@ class DeleteEssenceMsgHandler(BaseEventHandler):
     handler_description: str = "删除群精华消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.DELETE_ESSENCE_MSG]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.DELETE_ESSENCE_MSG]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1328,7 +1329,7 @@ class SetGroupLeaveHandler(BaseEventHandler):
     handler_description: str = "退群"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_LEAVE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_LEAVE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1355,7 +1356,7 @@ class SendGroupNoticeHandler(BaseEventHandler):
     handler_description: str = "发送群公告"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SEND_GROUP_NOTICE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SEND_GROUP_NOTICE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1389,7 +1390,7 @@ class SetGroupSpecialTitleHandler(BaseEventHandler):
     handler_description: str = "设置群头衔"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_SPECIAL_TITLE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_SPECIAL_TITLE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1423,7 +1424,7 @@ class GetGroupNoticeHandler(BaseEventHandler):
     handler_description: str = "获取群公告"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_NOTICE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_NOTICE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1450,7 +1451,7 @@ class SetGroupAddRequestHandler(BaseEventHandler):
     handler_description: str = "处理加群请求"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_ADD_REQUEST]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_ADD_REQUEST]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1484,7 +1485,7 @@ class GetGroupListHandler(BaseEventHandler):
     handler_description: str = "获取群列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_LIST]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_LIST]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1507,7 +1508,7 @@ class DeleteGroupNoticeHandler(BaseEventHandler):
     handler_description: str = "删除群公告"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.DELETE_GROUP_NOTICE]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.DELETE_GROUP_NOTICE]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1536,7 +1537,7 @@ class GetGroupMemberInfoHandler(BaseEventHandler):
     handler_description: str = "获取群成员信息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_MEMBER_INFO]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_MEMBER_INFO]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1567,7 +1568,7 @@ class GetGroupMemberListHandler(BaseEventHandler):
     handler_description: str = "获取群成员列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_MEMBER_LIST]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_MEMBER_LIST]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1596,7 +1597,7 @@ class GetGroupHonorInfoHandler(BaseEventHandler):
     handler_description: str = "获取群荣誉"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_HONOR_INFO]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_HONOR_INFO]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1628,7 +1629,7 @@ class GetGroupInfoExHandler(BaseEventHandler):
     handler_description: str = "获取群信息ex"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_INFO_EX]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_INFO_EX]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1655,7 +1656,7 @@ class GetGroupAtAllRemainHandler(BaseEventHandler):
     handler_description: str = "获取群 @全体成员 剩余次数"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_AT_ALL_REMAIN]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_AT_ALL_REMAIN]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1682,7 +1683,7 @@ class GetGroupShutListHandler(BaseEventHandler):
     handler_description: str = "获取群禁言列表"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_SHUT_LIST]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_SHUT_LIST]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1709,7 +1710,7 @@ class GetGroupIgnoredNotifiesHandler(BaseEventHandler):
     handler_description: str = "获取群过滤系统消息"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.GET_GROUP_IGNORED_NOTIFIES]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.GET_GROUP_IGNORED_NOTIFIES]
 
     async def execute(self, params: dict):
         payload = {}
@@ -1726,7 +1727,7 @@ class SetGroupSignHandler(BaseEventHandler):
     handler_description: str = "群打卡"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.GROUP.SET_GROUP_SIGN]
+    init_subscribe: ClassVar[list] = [NapcatEvent.GROUP.SET_GROUP_SIGN]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})
@@ -1754,7 +1755,7 @@ class SetInputStatusHandler(BaseEventHandler):
     handler_description: str = "设置输入状态"
     weight: int = 100
     intercept_message: bool = False
-    init_subscribe = [NapcatEvent.PERSONAL.SET_INPUT_STATUS]
+    init_subscribe: ClassVar[list] = [NapcatEvent.PERSONAL.SET_INPUT_STATUS]
 
     async def execute(self, params: dict):
         raw = params.get("raw", {})

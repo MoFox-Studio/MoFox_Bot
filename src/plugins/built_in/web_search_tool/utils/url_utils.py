@@ -32,8 +32,4 @@ def validate_urls(urls: list[str]) -> list[str]:
     """
     验证URL格式，返回有效的URL列表
     """
-    valid_urls = []
-    for url in urls:
-        if url.startswith(("http://", "https://")):
-            valid_urls.append(url)
-    return valid_urls
+    return [url for url in urls if url.startswith(("http://", "https://"))]

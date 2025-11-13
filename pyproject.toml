@@ -1,31 +1,32 @@
 [project]
-name = "MaiBot"
-version = "0.8.1"
-description = "MaiCore 是一个基于大语言模型的可交互智能体"
-requires-python = ">=3.11"
+name = "MoFox-Bot"
+version = "0.12.0"
+description = "MoFox-Bot 是一个基于大语言模型的可交互智能体"
+requires-python = ">=3.11,<=3.13"
 dependencies = [
     "aiohttp>=3.12.14",
     "aiohttp-cors>=0.8.1",
+    "aiofiles>=23.1.0",
     "apscheduler>=3.11.0",
-    "asyncddgs>=0.1.0a1",
     "asyncio>=4.0.0",
     "beautifulsoup4>=4.13.4",
-    "chromadb>=0.5.0",
+    "chromadb>=1.2.0",
     "colorama>=0.4.6",
-    "cryptography>=45.0.5",
+    "cryptography>=46.0.3",
     "customtkinter>=5.2.2",
     "dotenv>=0.9.9",
     "exa-py>=1.14.20",
     "faiss-cpu>=1.11.0",
     "fastapi>=0.116.0",
     "google>=3.0.0",
+    "filetype>=1.2.0",
     "google-genai>=1.29.0",
     "httpx>=0.28.1",
     "jieba>=0.42.1",
     "json-repair>=0.47.6",
     "json5>=0.12.1",
     "jsonlines>=4.0.0",
-    "langfuse==2.46.2",
+    "langfuse==3.7.0",
     "lunar-python>=1.4.4",
     "lxml>=6.0.0",
     "maim-message>=0.3.8",
@@ -33,16 +34,16 @@ dependencies = [
     "networkx>=3.4.2",
     "orjson>=3.10",
     "numpy>=2.2.6",
-    "openai>=1.95.0",
+    "openai>=2.5.0",
     "opencv-python>=4.11.0.86",
-    "packaging>=23.2",
+    "packaging>=25.0",
     "pandas>=2.3.1",
     "peewee>=3.18.2",
-    "pillow>=11.3.0",
+    "pillow>=12.0.0",
     "pip-check-reqs>=2.5.5",
     "psutil>=7.0.0",
-    "pyarrow>=20.0.0",
-    "pydantic>=2.11.7",
+    "pyarrow>=21.0.0",
+    "pydantic>=2.12.3",
     "pygments>=2.19.2",
     "pymongo>=4.13.2",
     "pymysql>=1.1.1",
@@ -76,8 +77,7 @@ dependencies = [
     "aiosqlite>=0.21.0",
     "inkfox>=0.1.1",
     "rjieba>=0.1.13",
-    "mcp>=0.9.0",
-    "sse-starlette>=2.2.1",
+    "fastmcp>=2.13.0",
 ]
 
 [[tool.uv.index]]
@@ -114,6 +114,7 @@ ignore = [
     "RUF001", # ambiguous-unicode-character-string
     "RUF002", # ambiguous-unicode-character-docstring
     "RUF003", # ambiguous-unicode-character-comment
+    "PERF203", # try-except-in-loop (我们需要单独处理每个项的错误)
 ]
 
 

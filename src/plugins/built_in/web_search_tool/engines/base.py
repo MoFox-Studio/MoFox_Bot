@@ -24,6 +24,12 @@ class BaseSearchEngine(ABC):
         """
         pass
 
+    async def read_url(self, url: str) -> str | None:
+        """
+        读取URL内容，如果引擎不支持则返回None
+        """
+        return None
+
     @abstractmethod
     def is_available(self) -> bool:
         """

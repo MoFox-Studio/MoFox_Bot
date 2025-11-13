@@ -2,12 +2,11 @@
 事件管理器 - 实现Event和EventHandler的单例管理
 提供统一的事件注册、管理和触发接口
 """
-
+import asyncio
 from threading import Lock
 from typing import Any, Optional
 
 from src.common.logger import get_logger
-from src.plugin_system import BaseEventHandler
 from src.plugin_system.base.base_event import BaseEvent, HandlerResultsCollection
 from src.plugin_system.base.base_events_handler import BaseEventHandler
 from src.plugin_system.base.component_types import EventType
@@ -38,8 +37,9 @@ class EventManager:
             return
 
         self._events: dict[str, BaseEvent] = {}
-        self._event_handlers: dict[str, type[BaseEventHandler]] = {}
+        self._event_handlers: dict[str, BaseEventHandler] = {}
         self._pending_subscriptions: dict[str, list[str]] = {}  # 缓存失败的订阅
+        self._scheduler_callback: Any | None = None  # scheduler 回调函数
         self._initialized = True
         logger.info("EventManager 单例初始化完成")
 
@@ -62,16 +62,17 @@ class EventManager:
             allowed_triggers = []
         if allowed_subscribers is None:
             allowed_subscribers = []
-        if event_name in self._events:
-            logger.warning(f"事件 {event_name} 已存在，跳过注册")
+        _event_name = event_name.value if isinstance(event_name, EventType) else event_name
+        if _event_name in self._events:
+            logger.warning(f"事件 {_event_name} 已存在，跳过注册")
             return False
 
-        event = BaseEvent(event_name, allowed_subscribers, allowed_triggers)
-        self._events[event_name] = event
-        logger.debug(f"事件 {event_name} 注册成功")
+        event = BaseEvent(_event_name, allowed_subscribers, allowed_triggers)
+        self._events[_event_name] = event
+        logger.debug(f"事件 {_event_name} 注册成功")
 
         # 检查是否有缓存的订阅需要处理
-        self._process_pending_subscriptions(event_name)
+        self._process_pending_subscriptions(_event_name)
 
         return True
 
@@ -84,7 +85,8 @@ class EventManager:
         Returns:
             BaseEvent: 事件实例，不存在返回None
         """
-        return self._events.get(event_name)
+        _event_name = event_name.value if isinstance(event_name, EventType) else event_name
+        return self._events.get(_event_name)
 
     def get_all_events(self) -> dict[str, BaseEvent]:
         """获取所有已注册的事件
@@ -175,10 +177,11 @@ class EventManager:
 
         # 处理init_subscribe，缓存失败的订阅
         if self._event_handlers[handler_name].init_subscribe:
-            failed_subscriptions = []
+            failed_subscriptions: list[str] = []
             for event_name in self._event_handlers[handler_name].init_subscribe:
                 if not self.subscribe_handler_to_event(handler_name, event_name):
-                    failed_subscriptions.append(event_name)
+                    _event_name = event_name.value if isinstance(event_name, EventType) else event_name
+                    failed_subscriptions.append(_event_name)
 
             # 缓存失败的订阅
             if failed_subscriptions:
@@ -188,22 +191,22 @@ class EventManager:
         logger.info(f"事件处理器 {handler_name} 注册成功")
         return True
 
-    def get_event_handler(self, handler_name: str) -> type[BaseEventHandler] | None:
+    def get_event_handler(self, handler_name: str) -> BaseEventHandler | None:
         """获取指定事件处理器实例
 
         Args:
             handler_name (str): 处理器名称
 
         Returns:
-            Type[BaseEventHandler]: 处理器实例，不存在返回None
+            BaseEventHandler: 处理器实例，不存在返回None
         """
         return self._event_handlers.get(handler_name)
 
-    def get_all_event_handlers(self) -> dict[str, type[BaseEventHandler]]:
+    def get_all_event_handlers(self) -> dict[str, BaseEventHandler]:
         """获取所有已注册的事件处理器
 
         Returns:
-            Dict[str, Type[BaseEventHandler]]: 所有处理器的字典
+            Dict[str, BaseEventHandler]: 所有处理器的字典
         """
         return self._event_handlers.copy()
 
@@ -317,7 +320,29 @@ class EventManager:
             logger.warning(f"插件 {permission_group} 没有权限触发事件 {event_name}，已拒绝触发！")
             return None
 
+        # 🔧 修复：异步通知 scheduler，避免阻塞当前事件流程
+        if hasattr(self, "_scheduler_callback") and self._scheduler_callback:
+            try:
+                # 使用 create_task 异步执行，避免死锁
+                asyncio.create_task(self._scheduler_callback(event_name, params))
+            except Exception as e:
+                logger.error(f"调用 scheduler 回调时出错: {e}", exc_info=True)
+
         return await event.activate(params)
+
+    def register_scheduler_callback(self, callback) -> None:
+        """注册 scheduler 回调函数
+
+        Args:
+            callback: async callable，接收 (event_name, params) 参数
+        """
+        self._scheduler_callback = callback
+        logger.info("Scheduler 回调已注册")
+
+    def unregister_scheduler_callback(self) -> None:
+        """取消注册 scheduler 回调"""
+        self._scheduler_callback = None
+        logger.info("Scheduler 回调已取消注册")
 
     def init_default_events(self) -> None:
         """初始化默认事件"""
@@ -362,7 +387,7 @@ class EventManager:
             "pending_subscriptions": len(self._pending_subscriptions),
         }
 
-    def _process_pending_subscriptions(self, event_name: EventType | str) -> None:
+    def _process_pending_subscriptions(self, event_name: str) -> None:
         """处理指定事件的缓存订阅
 
         Args:

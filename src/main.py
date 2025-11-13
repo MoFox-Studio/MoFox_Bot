@@ -4,6 +4,7 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import Callable, Coroutine
 from functools import partial
 from random import choices
 from typing import Any
@@ -12,18 +13,21 @@ from maim_message import MessageServer
 from rich.traceback import install
 
 from src.chat.emoji_system.emoji_manager import get_emoji_manager
-from src.chat.memory_system.memory_manager import memory_manager
 from src.chat.message_receive.bot import chat_bot
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.chat.utils.statistic import OnlineTimeRecordTask, StatisticOutputTask
 from src.common.logger import get_logger
 from src.common.message import get_global_api
+
+# 全局背景任务集合
+_background_tasks = set()
 from src.common.remote import TelemetryHeartBeatTask
 from src.common.server import Server, get_global_server
 from src.config.config import global_config
 from src.individuality.individuality import Individuality, get_individuality
 from src.manager.async_task_manager import async_task_manager
 from src.mood.mood_manager import mood_manager
+from src.plugin_system.base.base_interest_calculator import BaseInterestCalculator
 from src.plugin_system.base.component_types import EventType
 from src.plugin_system.core.event_manager import event_manager
 from src.plugin_system.core.plugin_manager import plugin_manager
@@ -71,8 +75,6 @@ class MainSystem:
     """主系统类，负责协调所有组件"""
 
     def __init__(self) -> None:
-        # 使用增强记忆系统
-        self.memory_manager = memory_manager
         self.individuality: Individuality = get_individuality()
 
         # 使用消息API替代直接的FastAPI实例
@@ -173,6 +175,11 @@ class MainSystem:
 
                     logger.info(f"成功获取 {calc_name} 的组件类: {component_class.__name__}")
 
+                    # 确保组件是 BaseInterestCalculator 的子类
+                    if not issubclass(component_class, BaseInterestCalculator):
+                        logger.warning(f"{calc_name} 不是 BaseInterestCalculator 的有效子类")
+                        continue
+
                     # 创建组件实例
                     calculator_instance = component_class()
 
@@ -211,13 +218,17 @@ class MainSystem:
 
         cleanup_tasks = []
 
-        # 停止数据库服务
+        # 停止消息批处理器
         try:
-            from src.common.database.database import stop_database
+            from src.chat.message_receive.storage import get_message_storage_batcher, get_message_update_batcher
 
-            cleanup_tasks.append(("数据库服务", stop_database()))
+            storage_batcher = get_message_storage_batcher()
+            cleanup_tasks.append(("消息存储批处理器", storage_batcher.stop()))
+
+            update_batcher = get_message_update_batcher()
+            cleanup_tasks.append(("消息更新批处理器", update_batcher.stop()))
         except Exception as e:
-            logger.error(f"准备停止数据库服务时出错: {e}")
+            logger.error(f"准备停止消息批处理器时出错: {e}")
 
         # 停止消息管理器
         try:
@@ -236,11 +247,13 @@ class MainSystem:
             logger.error(f"准备停止消息重组器时出错: {e}")
 
         # 停止增强记忆系统
+        # 停止统一调度器
         try:
-            if global_config.memory.enable_memory:
-                cleanup_tasks.append(("增强记忆系统", self.memory_manager.shutdown()))
+            from src.plugin_system.apis.unified_scheduler import shutdown_scheduler
+
+            cleanup_tasks.append(("统一调度器", shutdown_scheduler()))
         except Exception as e:
-            logger.error(f"准备停止增强记忆系统时出错: {e}")
+            logger.error(f"准备停止统一调度器时出错: {e}")
 
         # 触发停止事件
         try:
@@ -270,9 +283,7 @@ class MainSystem:
         # 停止应用
         try:
             if self.app:
-                if hasattr(self.app, "shutdown"):
-                    cleanup_tasks.append(("应用", self.app.shutdown()))
-                elif hasattr(self.app, "stop"):
+                if hasattr(self.app, "stop"):
                     cleanup_tasks.append(("应用", self.app.stop()))
         except Exception as e:
             logger.error(f"准备停止应用时出错: {e}")
@@ -303,6 +314,18 @@ class MainSystem:
                 logger.error(f"执行清理任务时发生错误: {e}")
         else:
             logger.warning("没有需要清理的任务")
+
+        # 停止数据库服务 (在所有其他任务完成后最后停止)
+        try:
+            from src.common.database.core import close_engine as stop_database
+
+            logger.info("正在停止数据库服务...")
+            await asyncio.wait_for(stop_database(), timeout=15.0)
+            logger.info("🛑 数据库服务已停止")
+        except asyncio.TimeoutError:
+            logger.error("停止数据库服务超时")
+        except Exception as e:
+            logger.error(f"停止数据库服务时出错: {e}")
 
     def _cleanup(self) -> None:
         """同步清理资源（向后兼容）"""
@@ -377,7 +400,7 @@ MoFox_Bot(第三方修改版)
         base_init_tasks = [
             async_task_manager.add_task(OnlineTimeRecordTask()),
             async_task_manager.add_task(StatisticOutputTask()),
-            async_task_manager.add_task(TelemetryHeartBeatTask()),
+            #async_task_manager.add_task(TelemetryHeartBeatTask()),
         ]
 
         await asyncio.gather(*base_init_tasks, return_exceptions=True)
@@ -400,12 +423,23 @@ MoFox_Bot(第三方修改版)
 
         # 注册API路由
         try:
+            from src.api.memory_visualizer_router import router as visualizer_router
             from src.api.message_router import router as message_router
+            from src.api.statistic_router import router as llm_statistic_router
 
             self.server.register_router(message_router, prefix="/api")
+            self.server.register_router(llm_statistic_router, prefix="/api")
+            self.server.register_router(visualizer_router, prefix="/visualizer")
             logger.info("API路由注册成功")
         except Exception as e:
             logger.error(f"注册API路由失败: {e}")
+        # 初始化统一调度器
+        try:
+            from src.plugin_system.apis.unified_scheduler import initialize_scheduler
+
+            await initialize_scheduler()
+        except Exception as e:
+            logger.error(f"统一调度器初始化失败: {e}")
 
         # 加载所有插件
         plugin_manager.load_all_plugins()
@@ -413,45 +447,25 @@ MoFox_Bot(第三方修改版)
         # 处理所有缓存的事件订阅（插件加载完成后）
         event_manager.process_all_pending_subscriptions()
 
-        # 初始化MCP工具提供器
-        try:
-            mcp_config = global_config.get("mcp_servers", [])
-            if mcp_config:
-                from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
+        # 初始化表情管理器
+        get_emoji_manager().initialize()
+        logger.info("表情包管理器初始化成功")
 
-                await mcp_tool_provider.initialize(mcp_config)
-                logger.info("MCP工具提供器初始化成功")
-        except Exception as e:
-            logger.info(f"MCP工具提供器未配置或初始化失败: {e}")
-
-        # 并行初始化其他管理器
-        manager_init_tasks = []
-
-        # 表情管理器
-        manager_init_tasks.append(self._safe_init("表情包管理器", get_emoji_manager().initialize)())
-
-        # 情绪管理器
-        manager_init_tasks.append(self._safe_init("情绪管理器", mood_manager.start)())
-
-        # 聊天管理器
-        manager_init_tasks.append(self._safe_init("聊天管理器", get_chat_manager()._initialize)())
-
-        # 等待所有管理器初始化完成
-        results = await asyncio.gather(*manager_init_tasks, return_exceptions=True)
-
-        # 检查初始化结果
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"组件初始化失败: {result}")
+        # 启动情绪管理器
+        await mood_manager.start()
+        logger.info("情绪管理器初始化成功")
 
         # 启动聊天管理器的自动保存任务
-        asyncio.create_task(get_chat_manager()._auto_save_task())
+        task = asyncio.create_task(get_chat_manager()._auto_save_task())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
-        # 初始化增强记忆系统
-        if global_config.memory.enable_memory:
-            await self._safe_init("增强记忆系统", self.memory_manager.initialize)()
-        else:
-            logger.info("记忆系统已禁用，跳过初始化")
+        # 初始化记忆图系统
+        try:
+            from src.memory_graph.manager_singleton import initialize_memory_manager
+            await self._safe_init("记忆图系统", initialize_memory_manager)()
+        except Exception as e:
+            logger.error(f"记忆图系统初始化失败: {e}")
 
         # 初始化消息兴趣值计算组件
         await self._initialize_interest_calculator()
@@ -476,6 +490,20 @@ MoFox_Bot(第三方修改版)
             logger.info("消息重组器已启动")
         except Exception as e:
             logger.error(f"启动消息重组器失败: {e}")
+
+        # 启动消息存储批处理器
+        try:
+            from src.chat.message_receive.storage import get_message_storage_batcher, get_message_update_batcher
+
+            storage_batcher = get_message_storage_batcher()
+            await storage_batcher.start()
+            logger.info("消息存储批处理器已启动")
+
+            update_batcher = get_message_update_batcher()
+            await update_batcher.start()
+            logger.info("消息更新批处理器已启动")
+        except Exception as e:
+            logger.error(f"启动消息批处理器失败: {e}")
 
         # 启动消息管理器
         try:
@@ -519,7 +547,7 @@ MoFox_Bot(第三方修改版)
             except Exception as e:
                 logger.error(f"日程表管理器初始化失败: {e}")
 
-    def _safe_init(self, component_name: str, init_func) -> callable:
+    def _safe_init(self, component_name: str, init_func) -> "Callable[[], Coroutine[Any, Any, bool]]":
         """安全初始化组件，捕获异常"""
 
         async def wrapper():

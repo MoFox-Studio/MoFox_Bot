@@ -1,21 +1,16 @@
-import time
-import json
 import asyncio
+import orjson
+import time
+from typing import ClassVar, Optional, Tuple
+
 import websockets as Server
-from typing import Tuple, Optional
+from maim_message import BaseMessageInfo, FormatInfo, GroupInfo, MessageBase, Seg, UserInfo
 
 from src.common.logger import get_logger
-
-logger = get_logger("napcat_adapter")
-
 from src.plugin_system.apis import config_api
-from ..database import BanUser, napcat_db, is_identical
-from . import NoticeType, ACCEPT_FORMAT
-from .message_sending import message_send_instance
-from .message_handler import message_handler
-from maim_message import FormatInfo, UserInfo, GroupInfo, Seg, BaseMessageInfo, MessageBase
-from ..websocket_manager import websocket_manager
 
+from ...CONSTS import PLUGIN_NAME, QQ_FACE
+from ..database import BanUser, is_identical, napcat_db
 from ..utils import (
     get_group_info,
     get_member_info,
@@ -23,16 +18,20 @@ from ..utils import (
     get_stranger_info,
     read_ban_list,
 )
+from ..websocket_manager import websocket_manager
+from . import ACCEPT_FORMAT, NoticeType
+from .message_handler import message_handler
+from .message_sending import message_send_instance
 
-from ...CONSTS import PLUGIN_NAME, QQ_FACE
+logger = get_logger("napcat_adapter")
 
 notice_queue: asyncio.Queue[MessageBase] = asyncio.Queue(maxsize=100)
 unsuccessful_notice_queue: asyncio.Queue[MessageBase] = asyncio.Queue(maxsize=3)
 
 
 class NoticeHandler:
-    banned_list: list[BanUser] = []  # 当前仍在禁言中的用户列表
-    lifted_list: list[BanUser] = []  # 已经自然解除禁言
+    banned_list: ClassVar[list[BanUser]] = []  # 当前仍在禁言中的用户列表
+    lifted_list: ClassVar[list[BanUser]] = []  # 已经自然解除禁言
 
     def __init__(self):
         self.server_connection: Server.ServerConnection | None = None
@@ -100,6 +99,7 @@ class NoticeHandler:
         # message_time: int = raw_message.get("time")
         message_time: float = time.time()  # 应可乐要求，现在是float了
 
+        self_id = raw_message.get("self_id")
         group_id = raw_message.get("group_id")
         user_id = raw_message.get("user_id")
         target_id = raw_message.get("target_id")
@@ -130,6 +130,7 @@ class NoticeHandler:
                             logger.warning("戳一戳消息被禁用，取消戳一戳处理")
                     case NoticeType.Notify.input_status:
                         from src.plugin_system.core.event_manager import event_manager
+
                         from ...event_types import NapcatEvent
 
                         await event_manager.trigger_event(NapcatEvent.ON_RECEIVED.FRIEND_INPUT, permission_group=PLUGIN_NAME)
@@ -159,6 +160,14 @@ class NoticeHandler:
                         system_notice = True
                     case _:
                         logger.warning(f"不支持的group_ban类型: {notice_type}.{sub_type}")
+            case NoticeType.group_upload:
+                logger.info("群文件上传")
+                if user_id == self_id:
+                    logger.info("检测到机器人自己上传文件，忽略此通知")
+                    return None
+                if not await message_handler.check_allow_to_chat(user_id, group_id, False, False):
+                    return None
+                handled_message, user_info = await self.handle_group_upload_notify(raw_message, group_id, user_id, self_id)
             case _:
                 logger.warning(f"不支持的notice类型: {notice_type}")
                 return None
@@ -166,10 +175,10 @@ class NoticeHandler:
             logger.warning("notice处理失败或不支持")
             return None
 
-        group_info: GroupInfo = None
+        group_info: GroupInfo | None = None
         if group_id:
             fetched_group_info = await get_group_info(self.get_server_connection(), group_id)
-            group_name: str = None
+            group_name: str | None = None
             if fetched_group_info:
                 group_name = fetched_group_info.get("group_name")
             else:
@@ -180,6 +189,41 @@ class NoticeHandler:
                 group_name=group_name,
             )
 
+        # 准备additional_config，包含notice标志
+        notice_config = {
+            "is_notice": system_notice,  # 禁言/解禁是系统通知
+            "is_public_notice": False,  # 群内notice，非公共
+            "target_id": target_id,  # 在这里塞了一个target_id，方便mmc那边知道被戳的人是谁
+        }
+        
+        # 根据notice_type设置notice_type字段
+        if system_notice:
+            sub_type = raw_message.get("sub_type")
+            if notice_type == NoticeType.group_ban:
+                if sub_type == NoticeType.GroupBan.ban:
+                    user_id_in_ban = raw_message.get("user_id")
+                    if user_id_in_ban == 0:
+                        notice_config["notice_type"] = "group_whole_ban"
+                    else:
+                        notice_config["notice_type"] = "group_ban"
+                elif sub_type == NoticeType.GroupBan.lift_ban:
+                    user_id_in_ban = raw_message.get("user_id")
+                    if user_id_in_ban == 0:
+                        notice_config["notice_type"] = "group_whole_lift_ban"
+                    else:
+                        notice_config["notice_type"] = "group_lift_ban"
+        elif notice_type == NoticeType.notify:
+            sub_type = raw_message.get("sub_type")
+            if sub_type == NoticeType.Notify.poke:
+                notice_config["notice_type"] = "poke"
+                notice_config["is_notice"] = True  # 戳一戳也是notice
+        elif notice_type == NoticeType.group_msg_emoji_like:
+            notice_config["notice_type"] = "emoji_like"
+            notice_config["is_notice"] = True  # 表情回复也是notice
+        elif notice_type == NoticeType.group_upload:
+            notice_config["notice_type"] = "group_upload"
+            notice_config["is_notice"] = True  # 文件上传也是notice
+        
         message_info: BaseMessageInfo = BaseMessageInfo(
             platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
             message_id="notice",
@@ -191,13 +235,13 @@ class NoticeHandler:
                 content_format=["text", "notify"],
                 accept_format=ACCEPT_FORMAT,
             ),
-            additional_config={"target_id": target_id},  # 在这里塞了一个target_id，方便mmc那边知道被戳的人是谁
+            additional_config=notice_config,  # 字典而不是JSON字符串
         )
 
         message_base: MessageBase = MessageBase(
             message_info=message_info,
             message_segment=handled_message,
-            raw_message=json.dumps(raw_message),
+            raw_message=orjson.dumps(raw_message).decode('utf-8'),
         )
 
         if system_notice:
@@ -313,6 +357,7 @@ class NoticeHandler:
             logger.debug("无法获取表情回复对方的用户昵称")
         
         from src.plugin_system.core.event_manager import event_manager
+
         from ...event_types import NapcatEvent
 
         target_message = await event_manager.trigger_event(NapcatEvent.MESSAGE.GET_MSG,message_id=raw_message.get("message_id",""))
@@ -340,6 +385,38 @@ class NoticeHandler:
                         emoji_id=like_emoji_id
                         )     
         seg_data = Seg(type="text",data=f"{user_name}使用Emoji表情{QQ_FACE.get(like_emoji_id,"")}回复了你的消息[{target_message_text}]")
+        return seg_data, user_info
+
+    async def handle_group_upload_notify(self, raw_message: dict, group_id: int, user_id: int, self_id: int):
+        if not group_id:
+            logger.error("群ID不能为空，无法处理群文件上传通知")
+            return None, None
+
+        user_qq_info: dict = await get_member_info(self.get_server_connection(), group_id, user_id)
+        if user_qq_info:
+            user_name = user_qq_info.get("nickname")
+            user_cardname = user_qq_info.get("card")
+        else:
+            user_name = "QQ用户"
+            user_cardname = "QQ用户"
+            logger.debug("无法获取上传文件的用户昵称")
+
+        file_info = raw_message.get("file")
+        if not file_info:
+            logger.error("群文件上传通知中缺少文件信息")
+            return None, None
+
+        user_info: UserInfo = UserInfo(
+            platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
+            user_id=user_id,
+            user_nickname=user_name,
+            user_cardname=user_cardname,
+        )
+
+        file_name = file_info.get("name", "未知文件")
+        file_size = file_info.get("size", 0)
+        
+        seg_data = Seg(type="text", data=f"{user_name} 上传了文件: {file_name} (大小: {file_size} 字节)")
         return seg_data, user_info
     
     async def handle_ban_notify(self, raw_message: dict, group_id: int) -> Tuple[Seg, UserInfo] | Tuple[None, None]:
@@ -504,6 +581,13 @@ class NoticeHandler:
                     group_name=group_name,
                 )
 
+                # 准备notice标志
+                notice_config = {
+                    "is_notice": True,
+                    "is_public_notice": False,
+                    "notice_type": "group_lift_ban" if user_id != 0 else "group_whole_lift_ban",
+                }
+
                 message_info: BaseMessageInfo = BaseMessageInfo(
                     platform=config_api.get_plugin_config(self.plugin_config, "maibot_server.platform_name", "qq"),
                     message_id="notice",
@@ -512,12 +596,13 @@ class NoticeHandler:
                     group_info=group_info,
                     template_info=None,
                     format_info=None,
+                    additional_config=notice_config,  # 字典而不是JSON字符串
                 )
 
                 message_base: MessageBase = MessageBase(
                     message_info=message_info,
                     message_segment=seg_message,
-                    raw_message=json.dumps(
+                    raw_message=orjson.dumps(
                         {
                             "post_type": "notice",
                             "notice_type": "group_ban",
@@ -526,7 +611,7 @@ class NoticeHandler:
                             "user_id": user_id,
                             "operator_id": None,  # 自然解除禁言没有操作者
                         }
-                    ),
+                    ).decode('utf-8'),
                 )
 
                 await self.put_notice(message_base)

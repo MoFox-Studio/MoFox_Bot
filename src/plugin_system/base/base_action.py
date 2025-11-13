@@ -1,12 +1,18 @@
 # Todo: 重构Action,这里现在只剩下了报错。
 import asyncio
+import random
 import time
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, ClassVar
 
 from src.chat.message_receive.chat_stream import ChatStream
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.plugin_system.apis import database_api, message_api, send_api
 from src.plugin_system.base.component_types import ActionActivationType, ActionInfo, ChatMode, ChatType, ComponentType
+
+if TYPE_CHECKING:
+    from src.llm_models.utils_model import LLMRequest
 
 logger = get_logger("base_action")
 
@@ -16,15 +22,52 @@ class BaseAction(ABC):
 
     Action是插件的一种组件类型，用于处理聊天中的动作逻辑
 
-    子类可以通过类属性定义激活条件，这些会在实例化时转换为实例属性：
+    ==================================================================================
+    新的激活机制 (推荐使用)
+    ==================================================================================
+    推荐通过重写 go_activate() 方法来自定义激活逻辑：
+
+    示例 1 - 关键词激活：
+        async def go_activate(self, llm_judge_model=None) -> bool:
+            return await self._keyword_match(["你好", "hello"])
+
+    示例 2 - LLM 判断激活：
+        async def go_activate(self, llm_judge_model=None) -> bool:
+            return await self._llm_judge_activation(
+                "当用户询问天气信息时激活",
+                llm_judge_model
+            )
+
+    示例 3 - 组合多种条件：
+        async def go_activate(self, llm_judge_model=None) -> bool:
+            # 30% 随机概率，或者匹配关键词
+            if await self._random_activation(0.3):
+                return True
+            return await self._keyword_match(["表情", "emoji"])
+
+    提供的工具函数：
+    - _random_activation(probability): 随机激活
+    - _keyword_match(keywords, case_sensitive): 关键词匹配（自动获取聊天内容）
+    - _llm_judge_activation(judge_prompt, llm_judge_model): LLM 判断（自动获取聊天内容）
+
+    注意：聊天内容会自动从实例属性中获取，无需手动传入。
+
+    ==================================================================================
+    旧的激活机制 (已废弃，但仍然兼容)
+    ==================================================================================
+    子类可以通过类属性定义激活条件（已废弃，但 go_activate() 的默认实现会使用这些）：
     - focus_activation_type: 专注模式激活类型
     - normal_activation_type: 普通模式激活类型
     - activation_keywords: 激活关键词列表
     - keyword_case_sensitive: 关键词是否区分大小写
-    - mode_enable: 启用的聊天模式
-    - parallel_action: 是否允许并行执行
     - random_activation_probability: 随机激活概率
     - llm_judge_prompt: LLM判断提示词
+
+    ==================================================================================
+    其他类属性
+    ==================================================================================
+    - mode_enable: 启用的聊天模式
+    - parallel_action: 是否允许并行执行
 
     二步Action相关属性：
     - is_two_step_action: 是否为二步Action
@@ -37,7 +80,7 @@ class BaseAction(ABC):
     """是否为二步Action。如果为True，Action将分两步执行：第一步选择操作，第二步执行具体操作"""
     step_one_description: str = ""
     """第一步的描述，用于向LLM展示Action的基本功能"""
-    sub_actions: list[tuple[str, str, dict[str, str]]] = []
+    sub_actions: ClassVar[list[tuple[str, str, dict[str, str]]] ] = []
     """子Action列表，格式为[(子Action名, 子Action描述, 子Action参数)]。仅在二步Action中使用"""
 
     def __init__(
@@ -67,7 +110,7 @@ class BaseAction(ABC):
             **kwargs: 其他参数
         """
         if plugin_config is None:
-            plugin_config = {}
+            plugin_config: ClassVar = {}
         self.action_data = action_data
         self.reasoning = reasoning
         self.cycle_timers = cycle_timers
@@ -138,11 +181,18 @@ class BaseAction(ABC):
 
         if self.has_action_message:
             if self.action_name != "no_reply":
-                self.group_id = str(self.action_message.get("chat_info_group_id", None))
-                self.group_name = self.action_message.get("chat_info_group_name", None)
+                # 统一处理 DatabaseMessages 对象和字典
+                if isinstance(self.action_message, DatabaseMessages):
+                    self.group_id = str(self.action_message.group_info.group_id if self.action_message.group_info else None)
+                    self.group_name = self.action_message.group_info.group_name if self.action_message.group_info else None
+                    self.user_id = str(self.action_message.user_info.user_id)
+                    self.user_nickname = self.action_message.user_info.user_nickname
+                else:
+                    self.group_id = str(self.action_message.get("chat_info_group_id", None))
+                    self.group_name = self.action_message.get("chat_info_group_name", None)
+                    self.user_id = str(self.action_message.get("user_id", None))
+                    self.user_nickname = self.action_message.get("user_nickname", None)
 
-                self.user_id = str(self.action_message.get("user_id", None))
-                self.user_nickname = self.action_message.get("user_nickname", None)
                 if self.group_id:
                     self.is_group = True
                     self.target_id = self.group_id
@@ -439,7 +489,7 @@ class BaseAction(ABC):
 
             plugin_config = component_registry.get_plugin_config(component_info.plugin_name)
             # 3. 实例化被调用的Action
-            action_params = {
+            action_params: ClassVar = {
                 "action_data": called_action_data,
                 "reasoning": f"Called by {self.action_name}",
                 "cycle_timers": self.cycle_timers,
@@ -558,6 +608,247 @@ class BaseAction(ABC):
 
         # 子类需要重写此方法来实现具体的第二步逻辑
         return False, f"二步Action必须实现execute_step_two方法来处理操作: {sub_action_name}"
+
+    # =============================================================================
+    # 新的激活机制 - go_activate 和工具函数
+    # =============================================================================
+
+    def _get_chat_content(self) -> str:
+        """获取聊天内容用于激活判断
+
+        从实例属性中获取聊天内容。子类可以重写此方法来自定义获取逻辑。
+
+        Returns:
+            str: 聊天内容
+        """
+        # 尝试从不同的实例属性中获取聊天内容
+        # 优先级：_activation_chat_content > action_data['chat_content'] > ""
+
+        # 1. 如果有专门设置的激活用聊天内容（由 ActionModifier 设置）
+        if hasattr(self, "_activation_chat_content"):
+            return getattr(self, "_activation_chat_content", "")
+
+        # 2. 尝试从 action_data 中获取
+        if hasattr(self, "action_data") and isinstance(self.action_data, dict):
+            return self.action_data.get("chat_content", "")
+
+        # 3. 默认返回空字符串
+        return ""
+
+    async def go_activate(
+        self,
+        llm_judge_model: "LLMRequest | None" = None,
+    ) -> bool:
+        """判断此 Action 是否应该被激活
+
+        这是新的激活机制的核心方法。子类可以重写此方法来实现自定义的激活逻辑，
+        也可以使用提供的工具函数来简化常见的激活判断。
+
+        默认实现会检查类属性中的激活类型配置，提供向后兼容支持。
+
+        聊天内容会自动从实例属性中获取，不需要手动传入。
+
+        Args:
+            llm_judge_model: LLM 判断模型，如果需要使用 LLM 判断
+
+        Returns:
+            bool: True 表示应该激活，False 表示不激活
+
+        Example:
+            >>> # 简单的关键词激活
+            >>> async def go_activate(self, llm_judge_model=None) -> bool:
+            >>>     return await self._keyword_match(["你好", "hello"])
+            >>>
+            >>> # LLM 判断激活
+            >>> async def go_activate(self, llm_judge_model=None) -> bool:
+            >>>     return await self._llm_judge_activation(
+            >>>         "当用户询问天气信息时激活",
+            >>>         llm_judge_model
+            >>>     )
+            >>>
+            >>> # 组合多种条件
+            >>> async def go_activate(self, llm_judge_model=None) -> bool:
+            >>>     # 随机 30% 概率，或者匹配关键词
+            >>>     if await self._random_activation(0.3):
+            >>>         return True
+            >>>     return await self._keyword_match(["天气"])
+        """
+        # 默认实现：向后兼容旧的激活类型系统
+        activation_type = getattr(self, "activation_type", ActionActivationType.ALWAYS)
+
+        if activation_type == ActionActivationType.ALWAYS:
+            return True
+
+        elif activation_type == ActionActivationType.NEVER:
+            return False
+
+        elif activation_type == ActionActivationType.RANDOM:
+            probability = getattr(self, "random_activation_probability", 0.0)
+            return await self._random_activation(probability)
+
+        elif activation_type == ActionActivationType.KEYWORD:
+            keywords = getattr(self, "activation_keywords", [])
+            case_sensitive = getattr(self, "keyword_case_sensitive", False)
+            return await self._keyword_match(keywords, case_sensitive)
+
+        elif activation_type == ActionActivationType.LLM_JUDGE:
+            prompt = getattr(self, "llm_judge_prompt", "")
+            return await self._llm_judge_activation(
+                judge_prompt=prompt,
+                llm_judge_model=llm_judge_model,
+            )
+
+        # 未知类型，默认不激活
+        logger.warning(f"{self.log_prefix} 未知的激活类型: {activation_type}")
+        return False
+
+    async def _random_activation(self, probability: float) -> bool:
+        """随机激活工具函数
+
+        Args:
+            probability: 激活概率，范围 0.0 到 1.0
+
+        Returns:
+            bool: 是否激活
+        """
+        result = random.random() < probability
+        logger.debug(f"{self.log_prefix} 随机激活判断: 概率={probability}, 结果={'激活' if result else '不激活'}")
+        return result
+
+    async def _keyword_match(
+        self,
+        keywords: list[str],
+        case_sensitive: bool = False,
+    ) -> bool:
+        """关键词匹配工具函数
+
+        聊天内容会自动从实例属性中获取。
+
+        Args:
+            keywords: 关键词列表
+            case_sensitive: 是否区分大小写
+
+        Returns:
+            bool: 是否匹配到关键词
+        """
+        if not keywords:
+            logger.warning(f"{self.log_prefix} 关键词列表为空，默认不激活")
+            return False
+
+        # 自动获取聊天内容
+        chat_content = self._get_chat_content()
+
+        search_text = chat_content
+        if not case_sensitive:
+            search_text = search_text.lower()
+
+        matched_keywords: ClassVar = []
+        for keyword in keywords:
+            check_keyword = keyword if case_sensitive else keyword.lower()
+            if check_keyword in search_text:
+                matched_keywords.append(keyword)
+
+        if matched_keywords:
+            logger.debug(f"{self.log_prefix} 匹配到关键词: {matched_keywords}")
+            return True
+        else:
+            logger.debug(f"{self.log_prefix} 未匹配到任何关键词: {keywords}")
+            return False
+
+    async def _llm_judge_activation(
+        self,
+        judge_prompt: str = "",
+        llm_judge_model: "LLMRequest | None" = None,
+        action_description: str = "",
+        action_require: list[str] | None = None,
+    ) -> bool:
+        """LLM 判断激活工具函数
+
+        使用 LLM 来判断是否应该激活此 Action。
+        会自动构建完整的判断提示词，只需要提供核心判断逻辑即可。
+
+        聊天内容会自动从实例属性中获取。
+
+        Args:
+            judge_prompt: 自定义判断提示词（核心判断逻辑）
+            llm_judge_model: LLM 判断模型实例，如果为 None 则会创建默认的小模型
+            action_description: Action 描述，如果不提供则使用类属性
+            action_require: Action 使用场景，如果不提供则使用类属性
+
+        Returns:
+            bool: 是否应该激活
+
+        Example:
+            >>> # 最简单的用法
+            >>> result = await self._llm_judge_activation(
+            >>>     "当用户询问天气信息时激活"
+            >>> )
+            >>>
+            >>> # 提供详细信息
+            >>> result = await self._llm_judge_activation(
+            >>>     judge_prompt="当用户表达情绪或需要情感支持时激活",
+            >>>     action_description="发送安慰表情包",
+            >>>     action_require=["用户情绪低落", "需要情感支持"]
+            >>> )
+        """
+        try:
+            # 自动获取聊天内容
+            chat_content = self._get_chat_content()
+
+            # 如果没有提供 LLM 模型，创建一个默认的
+            if llm_judge_model is None:
+                from src.config.config import model_config
+                from src.llm_models.utils_model import LLMRequest
+
+                llm_judge_model = LLMRequest(
+                    model_set=model_config.model_task_config.utils_small,
+                    request_type="action.judge",
+                )
+
+            # 使用类属性作为默认值
+            if not action_description:
+                action_description = getattr(self, "action_description", "Action 动作")
+
+            if action_require is None:
+                action_require = getattr(self, "action_require", [])
+
+            # 构建完整的判断提示词
+            prompt = f"""你需要判断在当前聊天情况下，是否应该激活名为"{self.action_name}"的动作。
+
+动作描述：{action_description}
+"""
+
+            if action_require:
+                prompt += "\n动作使用场景：\n"
+                for req in action_require:
+                    prompt += f"- {req}\n"
+
+            if judge_prompt:
+                prompt += f"\n额外判定条件：\n{judge_prompt}\n"
+
+            if chat_content:
+                prompt += f"\n当前聊天记录：\n{chat_content}\n"
+
+            prompt += """
+请根据以上信息判断是否应该激活这个动作。
+只需要回答"是"或"否"，不要有其他内容。
+"""
+
+            # 调用 LLM 进行判断
+            response, _ = await llm_judge_model.generate_response_async(prompt=prompt)
+            response = response.strip().lower()
+
+            should_activate = "是" in response or "yes" in response or "true" in response
+
+            logger.debug(
+                f"{self.log_prefix} LLM 判断结果: 响应='{response}', 结果={'激活' if should_activate else '不激活'}"
+            )
+            return should_activate
+
+        except Exception as e:
+            logger.error(f"{self.log_prefix} LLM 判断激活时出错: {e}")
+            # 出错时默认不激活
+            return False
 
     @abstractmethod
     async def execute(self) -> tuple[bool, str]:

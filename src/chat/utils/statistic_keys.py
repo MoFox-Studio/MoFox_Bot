@@ -1,0 +1,62 @@
+# -*- coding: utf-8 -*-
+"""
+该模块用于存放统计数据相关的常量键名。
+"""
+
+# 统计数据的键
+TOTAL_REQ_CNT = "total_requests"
+TOTAL_COST = "total_cost"
+REQ_CNT_BY_TYPE = "requests_by_type"
+REQ_CNT_BY_USER = "requests_by_user"
+REQ_CNT_BY_MODEL = "requests_by_model"
+REQ_CNT_BY_MODULE = "requests_by_module"
+IN_TOK_BY_TYPE = "in_tokens_by_type"
+IN_TOK_BY_USER = "in_tokens_by_user"
+IN_TOK_BY_MODEL = "in_tokens_by_model"
+IN_TOK_BY_MODULE = "in_tokens_by_module"
+OUT_TOK_BY_TYPE = "out_tokens_by_type"
+OUT_TOK_BY_USER = "out_tokens_by_user"
+OUT_TOK_BY_MODEL = "out_tokens_by_model"
+OUT_TOK_BY_MODULE = "out_tokens_by_module"
+TOTAL_TOK_BY_TYPE = "tokens_by_type"
+TOTAL_TOK_BY_USER = "tokens_by_user"
+TOTAL_TOK_BY_MODEL = "tokens_by_model"
+TOTAL_TOK_BY_MODULE = "tokens_by_module"
+COST_BY_TYPE = "costs_by_type"
+COST_BY_USER = "costs_by_user"
+COST_BY_MODEL = "costs_by_model"
+COST_BY_MODULE = "costs_by_module"
+ONLINE_TIME = "online_time"
+TOTAL_MSG_CNT = "total_messages"
+MSG_CNT_BY_CHAT = "messages_by_chat"
+TIME_COST_BY_TYPE = "time_costs_by_type"
+TIME_COST_BY_USER = "time_costs_by_user"
+TIME_COST_BY_MODEL = "time_costs_by_model"
+TIME_COST_BY_MODULE = "time_costs_by_module"
+AVG_TIME_COST_BY_TYPE = "avg_time_costs_by_type"
+AVG_TIME_COST_BY_USER = "avg_time_costs_by_user"
+AVG_TIME_COST_BY_MODEL = "avg_time_costs_by_model"
+AVG_TIME_COST_BY_MODULE = "avg_time_costs_by_module"
+STD_TIME_COST_BY_TYPE = "std_time_costs_by_type"
+STD_TIME_COST_BY_USER = "std_time_costs_by_user"
+STD_TIME_COST_BY_MODEL = "std_time_costs_by_model"
+STD_TIME_COST_BY_MODULE = "std_time_costs_by_module"
+
+# 新增模型性能指标
+TPS_BY_MODEL = "tps_by_model"  # Tokens Per Second
+COST_PER_KTOK_BY_MODEL = "cost_per_ktok_by_model"
+AVG_TOK_BY_MODEL = "avg_tok_by_model"
+
+# 新增按供应商统计
+REQ_CNT_BY_PROVIDER = "requests_by_provider"
+COST_BY_PROVIDER = "costs_by_provider"
+TOTAL_TOK_BY_PROVIDER = "tokens_by_provider"
+TPS_BY_PROVIDER = "tps_by_provider"
+COST_PER_KTOK_BY_PROVIDER = "cost_per_ktok_by_provider"
+TIME_COST_BY_PROVIDER = "time_cost_by_provider"
+
+# 新增饼图和条形图数据
+PIE_CHART_COST_BY_PROVIDER = "pie_chart_cost_by_provider"
+PIE_CHART_REQ_BY_PROVIDER = "pie_chart_req_by_provider"
+BAR_CHART_COST_BY_MODEL = "bar_chart_cost_by_model"
+BAR_CHART_REQ_BY_MODEL = "bar_chart_req_by_model"

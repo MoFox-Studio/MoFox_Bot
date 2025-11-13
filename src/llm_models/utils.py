@@ -4,7 +4,8 @@ from datetime import datetime
 
 from PIL import Image
 
-from src.common.database.sqlalchemy_models import LLMUsage, get_db_session
+from src.common.database.core import get_db_session
+from src.common.database.core.models import LLMUsage
 from src.common.logger import get_logger
 from src.config.api_ada_configs import ModelInfo
 
@@ -157,7 +158,7 @@ class LLMUsageRecorder:
     ):
         input_cost = (model_usage.prompt_tokens / 1000000) * model_info.price_in
         output_cost = (model_usage.completion_tokens / 1000000) * model_info.price_out
-        round(input_cost + output_cost, 6)
+        total_cost = round(input_cost + output_cost, 6)
 
         session = None
         try:
@@ -173,7 +174,7 @@ class LLMUsageRecorder:
                     prompt_tokens=model_usage.prompt_tokens or 0,
                     completion_tokens=model_usage.completion_tokens or 0,
                     total_tokens=model_usage.total_tokens or 0,
-                    cost=1.0,
+                    cost=total_cost,
                     time_cost=round(time_cost or 0.0, 3),
                     status="success",
                     timestamp=datetime.now(),  # SQLAlchemy 会处理 DateTime 字段

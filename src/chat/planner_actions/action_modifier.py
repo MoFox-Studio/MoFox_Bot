@@ -2,20 +2,19 @@ import asyncio
 import hashlib
 import random
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
-from src.chat.message_receive.chat_stream import get_chat_manager
+from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.planner_actions.action_manager import ChatterActionManager
 from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
-from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
-from src.plugin_system.base.component_types import ActionActivationType, ActionInfo
+from src.plugin_system.base.component_types import ActionInfo
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
 
 if TYPE_CHECKING:
-    pass
+    from src.common.data_models.message_manager_data_model import StreamContext
 
 logger = get_logger("action_manager")
 
@@ -32,7 +31,7 @@ class ActionModifier:
         """初始化动作处理器"""
         self.chat_id = chat_id
         # chat_stream 和 log_prefix 将在异步方法中初始化
-        self.chat_stream = None  # type: ignore
+        self.chat_stream: ChatStream | None = None
         self.log_prefix = f"[{chat_id}]"
 
         self.action_manager = action_manager
@@ -111,7 +110,7 @@ class ActionModifier:
                 logger.debug(f"{self.log_prefix} - 移除 {action_name}: {reason}")
 
         message_list_before_now_half = await get_raw_msg_before_timestamp_with_chat(
-            chat_id=self.chat_stream.stream_id,
+            chat_id=self.chat_id,
             timestamp=time.time(),
             limit=min(int(global_config.chat.max_context_size * 0.33), 10),
         )
@@ -137,7 +136,10 @@ class ActionModifier:
                     logger.debug(f"{self.log_prefix}阶段一移除动作: {disabled_action_name}，原因: 用户自行禁用")
 
         # === 第二阶段：检查动作的关联类型 ===
-        chat_context = self.chat_stream.stream_context
+        if not self.chat_stream:
+            logger.error(f"{self.log_prefix} chat_stream 未初始化，无法执行第二阶段")
+            return
+        chat_context = self.chat_stream.context_manager.context
         current_actions_s2 = self.action_manager.get_using_actions()
         type_mismatched_actions = self._check_action_associated_types(current_actions_s2, chat_context)
 
@@ -179,7 +181,7 @@ class ActionModifier:
 
         logger.info(f"{self.log_prefix} 当前可用动作: {available_actions_text}||移除: {removals_summary}")
 
-    def _check_action_associated_types(self, all_actions: dict[str, ActionInfo], chat_context: StreamContext):
+    def _check_action_associated_types(self, all_actions: dict[str, ActionInfo], chat_context: "StreamContext"):
         type_mismatched_actions: list[tuple[str, str]] = []
         for action_name, action_info in all_actions.items():
             if action_info.associated_types and not chat_context.check_types(action_info.associated_types):
@@ -197,6 +199,8 @@ class ActionModifier:
         """
         根据激活类型过滤，返回需要停用的动作列表及原因
 
+        新的实现：调用每个 Action 类的 go_activate 方法来判断是否激活
+
         Args:
             actions_with_info: 带完整信息的动作字典
             chat_content: 聊天内容
@@ -206,55 +210,71 @@ class ActionModifier:
         """
         deactivated_actions = []
 
-        # 分类处理不同激活类型的actions
-        llm_judge_actions = {}
+        # 获取 Action 类注册表
+        from src.plugin_system.base.base_action import BaseAction
+        from src.plugin_system.base.component_types import ComponentType
+        from src.plugin_system.core.component_registry import component_registry
 
         actions_to_check = list(actions_with_info.items())
         random.shuffle(actions_to_check)
 
+        # 创建并行任务列表
+        activation_tasks = []
+        task_action_names = []
+
         for action_name, action_info in actions_to_check:
-            activation_type = action_info.activation_type or action_info.focus_activation_type
+            # 获取 Action 类
+            action_class = component_registry.get_component_class(action_name, ComponentType.ACTION)
+            if not action_class:
+                logger.warning(f"{self.log_prefix}未找到 Action 类: {action_name}，默认不激活")
+                deactivated_actions.append((action_name, "未找到 Action 类"))
+                continue
 
-            if activation_type == ActionActivationType.ALWAYS:
-                continue  # 总是激活，无需处理
+            # 创建一个临时实例来调用 go_activate 方法
+            # 注意：这里只是为了调用 go_activate，不需要完整的初始化
+            try:
+                # 创建一个最小化的实例
+                action_instance = object.__new__(action_class)
+                # 使用 cast 来“欺骗”类型检查器
+                action_instance = cast(BaseAction, action_instance)
+                # 设置必要的属性
+                action_instance.log_prefix = self.log_prefix
+                # 强制注入 chat_content 以供 go_activate 内部的辅助函数使用
+                setattr(action_instance, "_activation_chat_content", chat_content)
+                # 调用 go_activate 方法
+                task = action_instance.go_activate(
+                    llm_judge_model=self.llm_judge
+                )
+                activation_tasks.append(task)
+                task_action_names.append(action_name)
 
-            elif activation_type == ActionActivationType.RANDOM:
-                probability = action_info.random_activation_probability
-                probability = action_info.random_activation_probability
-                if random.random() >= probability:
-                    reason = f"RANDOM类型未触发（概率{probability}）"
-                    deactivated_actions.append((action_name, reason))
-                    logger.debug(f"{self.log_prefix}未激活动作: {action_name}，原因: {reason}")
+            except Exception as e:
+                logger.error(f"{self.log_prefix}创建 Action 实例 {action_name} 失败: {e}")
+                deactivated_actions.append((action_name, f"创建实例失败: {e}"))
 
-            elif activation_type == ActionActivationType.KEYWORD:
-                if not self._check_keyword_activation(action_name, action_info, chat_content):
-                    keywords = action_info.activation_keywords
-                    reason = f"关键词未匹配（关键词: {keywords}）"
-                    deactivated_actions.append((action_name, reason))
-                    logger.debug(f"{self.log_prefix}未激活动作: {action_name}，原因: {reason}")
+        # 并行执行所有激活判断
+        if activation_tasks:
+            logger.debug(f"{self.log_prefix}并行执行激活判断，任务数: {len(activation_tasks)}")
+            try:
+                task_results = await asyncio.gather(*activation_tasks, return_exceptions=True)
 
-            elif activation_type == ActionActivationType.LLM_JUDGE:
-                llm_judge_actions[action_name] = action_info
+                # 处理结果
+                for action_name, result in zip(task_action_names, task_results, strict=False):
+                    if isinstance(result, Exception):
+                        logger.error(f"{self.log_prefix}激活判断 {action_name} 时出错: {result}")
+                        deactivated_actions.append((action_name, f"激活判断出错: {result}"))
+                    elif not result:
+                        # go_activate 返回 False，不激活
+                        deactivated_actions.append((action_name, "go_activate 返回 False"))
+                        logger.debug(f"{self.log_prefix}未激活动作: {action_name}，原因: go_activate 返回 False")
+                    else:
+                        # go_activate 返回 True，激活
+                        logger.debug(f"{self.log_prefix}激活动作: {action_name}")
 
-            elif activation_type == ActionActivationType.NEVER:
-                reason = "激活类型为never"
-                deactivated_actions.append((action_name, reason))
-                logger.debug(f"{self.log_prefix}未激活动作: {action_name}，原因: 激活类型为never")
-
-            else:
-                logger.warning(f"{self.log_prefix}未知的激活类型: {activation_type}，跳过处理")
-
-        # 并行处理LLM_JUDGE类型
-        if llm_judge_actions:
-            llm_results = await self._process_llm_judge_actions_parallel(
-                llm_judge_actions,
-                chat_content,
-            )
-            for action_name, should_activate in llm_results.items():
-                if not should_activate:
-                    reason = "LLM判定未激活"
-                    deactivated_actions.append((action_name, reason))
-                    logger.debug(f"{self.log_prefix}未激活动作: {action_name}，原因: {reason}")
+            except Exception as e:
+                logger.error(f"{self.log_prefix}并行激活判断失败: {e}")
+                # 如果并行执行失败，为所有任务默认不激活
+                deactivated_actions.extend((action_name, f"并行判断失败: {e}") for action_name in task_action_names)
 
         return deactivated_actions
 

@@ -120,7 +120,13 @@ def _convert_messages(messages: list[Message]) -> tuple[list[dict], list[str] | 
 
 def _convert_tool_options(tool_options: list[ToolOption]) -> list[dict]:
     """
-    转换工具选项格式 - 将工具选项转换为Gemini REST API所需的格式
+    转换工具选项格式 - 将内部 ToolOption 对象列表转换为 Gemini REST API 所需的格式。
+
+    Args:
+        tool_options: 要转换的 ToolOption 对象列表。
+
+    Returns:
+        一个列表，其中每个字典都代表一个 Gemini API 的工具声明。
     """
 
     def _convert_tool_param(param: ToolParam) -> dict[str, Any]:
@@ -159,7 +165,22 @@ def _build_generation_config(
     response_format: RespFormat | None = None,
     extra_params: dict | None = None,
 ) -> dict:
-    """构建生成配置"""
+    """
+    构建并返回 Gemini API 的 `generationConfig` 字典。
+
+    此函数整合了多个参数，如最大输出 token 数、温度、思考预算、响应格式和
+    其他自定义参数，以创建一个符合 Gemini API 规范的配置对象。
+
+    Args:
+        max_tokens: 生成内容的最大 token 数。
+        temperature: 控制生成文本的随机性，值越高越随机。
+        thinking_budget: 模型的思考预算。
+        response_format: 指定响应的格式，例如 JSON 对象或遵循特定 schema。
+        extra_params: 一个包含其他要合并到配置中的参数的字典。
+
+    Returns:
+        一个包含完整 `generationConfig` 的字典。
+    """
     config = {
         "maxOutputTokens": max_tokens,
         "temperature": temperature,
@@ -189,16 +210,26 @@ def _build_generation_config(
 
 
 class AiohttpGeminiStreamParser:
-    """流式响应解析器"""
+    """
+    用于处理和解析来自 Gemini API 的流式（server-sent events）响应的专用解析器。
+
+    该类会累积流式数据块，并从中提取内容、思考过程、工具调用和使用情况统计。
+    """
 
     def __init__(self):
-        self.content_buffer = io.StringIO()
-        self.reasoning_buffer = io.StringIO()
-        self.tool_calls_buffer = []
-        self.usage_record = None
+        """初始化解析器，创建用于存储解析数据的缓冲区。"""
+        self.content_buffer = io.StringIO()  # 用于累积文本内容
+        self.reasoning_buffer = io.StringIO()  # 用于累积思考过程内容
+        self.tool_calls_buffer = []  # 用于存储工具调用信息
+        self.usage_record = None  # 用于存储最终的使用情况统计
 
     def parse_chunk(self, chunk_text: str):
-        """解析单个流式数据块"""
+        """
+        解析单个流式数据块（通常是一行 SSE 数据）。
+
+        Args:
+            chunk_text: 从流式响应中接收到的原始文本数据块。
+        """
         try:
             if not chunk_text.strip():
                 return
@@ -245,7 +276,15 @@ class AiohttpGeminiStreamParser:
             logger.error(f"处理流式数据块时出错: {e}")
 
     def get_response(self) -> APIResponse:
-        """获取最终响应"""
+        """
+        在所有数据块处理完毕后，获取最终的、结构化的 APIResponse 对象。
+
+        此方法会整合所有缓冲区中的数据，并将其封装到一个 APIResponse 对象中。
+        调用此方法后，内部缓冲区将被清理。
+
+        Returns:
+            一个包含从流中解析出的所有信息的 APIResponse 对象。
+        """
         response = APIResponse()
 
         if self.content_buffer.tell() > 0:
@@ -270,7 +309,23 @@ async def _default_stream_response_handler(
     response: aiohttp.ClientResponse,
     interrupt_flag: asyncio.Event | None,
 ) -> tuple[APIResponse, tuple[int, int, int] | None]:
-    """默认流式响应处理器"""
+    """
+    默认的流式响应处理器。
+
+    此异步函数迭代处理 aiohttp 响应的每一行，使用 AiohttpGeminiStreamParser
+    来解析它们，并处理中断信号。
+
+    Args:
+        response: aiohttp 的 ClientResponse 对象。
+        interrupt_flag: 一个 asyncio.Event，用于发出中断请求的信号。
+
+    Returns:
+        一个元组，包含最终的 APIResponse 和使用情况记录。
+
+    Raises:
+        ReqAbortException: 如果请求被中断。
+        RespParseException: 如果流式响应解析失败。
+    """
     parser = AiohttpGeminiStreamParser()
 
     try:
@@ -294,7 +349,20 @@ async def _default_stream_response_handler(
 def _default_normal_response_parser(
     response_data: dict,
 ) -> tuple[APIResponse, tuple[int, int, int] | None]:
-    """默认普通响应解析器"""
+    """
+    默认的非流式（普通）响应解析器。
+
+    此函数解析一个完整的 JSON 响应体，并从中提取内容、工具调用和使用情况统计。
+
+    Args:
+        response_data: 已解析为字典的 JSON 响应数据。
+
+    Returns:
+        一个元组，包含最终的 APIResponse 和使用情况记录。
+
+    Raises:
+        RespParseException: 如果响应解析失败。
+    """
     api_response = APIResponse()
 
     try:
@@ -304,10 +372,7 @@ def _default_normal_response_parser(
 
             # 解析文本内容
             if "content" in candidate and "parts" in candidate["content"]:
-                content_parts = []
-                for part in candidate["content"]["parts"]:
-                    if "text" in part:
-                        content_parts.append(part["text"])
+                content_parts = [part["text"] for part in candidate["content"]["parts"] if "text" in part]
 
                 if content_parts:
                     api_response.content = "".join(content_parts)
@@ -338,14 +403,26 @@ def _default_normal_response_parser(
 
 @client_registry.register_client_class("aiohttp_gemini")
 class AiohttpGeminiClient(BaseClient):
-    """使用aiohttp的Gemini客户端"""
+    """
+    一个使用 aiohttp 库与 Google Gemini API 进行异步通信的客户端。
+
+    该客户端实现了 BaseClient 接口，提供了获取对话响应、处理流式数据、
+    管理 API key 和端点等功能。它被设计为无状态的，每次请求都创建一个
+    新的 aiohttp.ClientSession，以增强健壮性。
+    """
 
     def __init__(self, api_provider: APIProvider):
+        """
+        初始化 AiohttpGeminiClient。
+
+        Args:
+            api_provider: 包含 API key 和可选的 base_url 的 APIProvider 对象。
+        """
         super().__init__(api_provider)
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
-        self.session: aiohttp.ClientSession | None = None
+        self.session: aiohttp.ClientSession | None = None  # 注意：此 session 不再被全局使用
 
-        # 如果提供了自定义base_url，使用它
+        # 如果 API provider 中提供了自定义的 base_url，则覆盖默认值
         if api_provider.base_url:
             self.base_url = api_provider.base_url.rstrip("/")
 
@@ -389,29 +466,63 @@ class AiohttpGeminiClient(BaseClient):
     async def _make_request(
         self, method: str, endpoint: str, data: dict | None = None, stream: bool = False
     ) -> aiohttp.ClientResponse:
-        """发起HTTP请求（每次都用 with aiohttp.ClientSession() as session）"""
+        """
+        向 Gemini API 发起一个 HTTP 请求，并增加了重试逻辑。
+
+        此方法封装了 aiohttp 的请求逻辑，包括 URL 构建、认证、超时和错误处理。
+        - 对于网络连接相关的 `aiohttp.ClientError`，它会最多重试3次。
+        - 对于 HTTP 状态码错误（如 4xx, 5xx），它会立即失败，不会重试。
+        为了健壮性，它在每次调用时都会创建一个新的 aiohttp.ClientSession。
+
+        Args:
+            method: HTTP 请求方法 (例如, "POST")。
+            endpoint: API 的目标端点 (例如, "models/gemini-pro:generateContent")。
+            data: 要作为 JSON 发送到请求体的数据。
+            stream: 如果为 True，则请求一个流式响应。
+
+        Returns:
+            一个 aiohttp.ClientResponse 对象。
+
+        Raises:
+            RespNotOkException: 如果 HTTP 响应状态码表示错误。
+            NetworkConnectionError: 如果在所有重试尝试后仍然发生 aiohttp 客户端错误。
+        """
         api_key = self.api_provider.get_api_key()
         url = f"{self.base_url}/{endpoint}?key={api_key}"
-        try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=300),
-                headers={"Content-Type": "application/json", "User-Agent": "MMC-AioHTTP-Gemini-Client/1.0"},
-            ) as session:
-                if method.upper() == "POST":
-                    response = await session.post(
-                        url, json=data, headers={"Accept": "text/event-stream" if stream else "application/json"}
-                    )
-                else:
-                    response = await session.get(url)
 
-                # 检查HTTP状态码
-                if response.status >= 400:
-                    error_text = await response.text()
-                    raise RespNotOkException(response.status, error_text)
+        max_retries = 3
+        last_exception = None
 
-                return response
-        except aiohttp.ClientError as e:
-            raise NetworkConnectionError() from e
+        for attempt in range(max_retries):
+            try:
+                async with aiohttp.ClientSession(
+                    timeout=aiohttp.ClientTimeout(total=300),
+                    headers={
+                        "Content-Type": "application/json",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.113 Safari/537.36",
+                    },
+                ) as session:
+                    if method.upper() == "POST":
+                        response = await session.post(
+                            url, json=data, headers={"Accept": "text/event-stream" if stream else "application/json"}
+                        )
+                    else:
+                        response = await session.get(url)
+
+                    # 检查HTTP状态码 - 如果是错误，立即失败，不重试
+                    if response.status >= 400:
+                        error_text = await response.text()
+                        raise RespNotOkException(response.status, error_text)
+
+                    # 成功，返回响应
+                    return response
+
+            except aiohttp.ClientError as e:
+                last_exception = e
+                await asyncio.sleep(1)  # 等待1秒后重试
+
+        # 如果所有重试都失败了
+        raise NetworkConnectionError() from last_exception
 
     async def get_response(
         self,
@@ -431,7 +542,30 @@ class AiohttpGeminiClient(BaseClient):
         extra_params: dict[str, Any] | None = None,
     ) -> APIResponse:
         """
-        获取对话响应
+        获取一个完整的对话响应，支持流式和非流式模式。
+
+        这是客户端的核心方法，它负责：
+        1. 转换输入消息和工具选项。
+        2. 构建请求体，包括生成配置。
+        3. 根据模型信息决定是使用流式还是非流式端点。
+        4. 发起请求并处理中断。
+        5. 使用适当的处理器/解析器处理响应。
+        6. 格式化最终的 APIResponse 对象，包括使用情况统计。
+
+        Args:
+            model_info: 包含模型标识符和配置的模型信息。
+            message_list: 对话消息列表。
+            tool_options: 可用的工具选项列表。
+            max_tokens: 最大生成 token 数。
+            temperature: 生成温度。
+            response_format: 响应格式。
+            stream_response_handler: 用于处理流式响应的可调用对象。
+            async_response_parser: 用于解析非流式响应的可调用对象。
+            interrupt_flag: 用于中断请求的 asyncio.Event。
+            extra_params: 包含额外参数的字典，例如 'thinking_budget'。
+
+        Returns:
+            一个包含模型响应的 APIResponse 对象。
         """
         if stream_response_handler is None:
             stream_response_handler = _default_stream_response_handler
@@ -533,7 +667,23 @@ class AiohttpGeminiClient(BaseClient):
         extra_params: dict[str, Any] | None = None,
     ) -> APIResponse:
         """
-        获取音频转录
+        使用 Gemini 模型获取音频文件的转录。
+
+        此方法将 base64 编码的音频数据和预设的提示词发送到 Gemini API，
+        并返回生成的文本转录。
+
+        Args:
+            model_info: 要使用的模型的信息。
+            audio_base64: Base64 编码的 WAV 音频数据。
+            extra_params: 传递给生成配置的额外参数。
+
+        Returns:
+            一个 APIResponse 对象，其 `content` 字段包含音频转录。
+
+        Raises:
+            NetworkConnectionError: 如果发生网络问题。
+            RespNotOkException: 如果 API 返回错误状态码。
+            RespParseException: 如果响应解析失败。
         """
         # 构建包含音频的内容
         contents = [

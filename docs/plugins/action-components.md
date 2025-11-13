@@ -1,5 +1,9 @@
 # ⚡ Action组件详解
 
+> **🎉 新功能：更灵活的激活机制！**  
+> MoFox-Bot 现在支持通过 `go_activate()` 方法自定义 Action 激活逻辑！  
+> 详见：[Action 激活机制重构指南](./action-activation-guide.md)
+
 ## 📖 什么是Action
 
 Action是给MoFox_Bot在回复之外提供额外功能的智能组件，**由MoFox_Bot的决策系统自主选择是否使用**，具有随机性和拟人化的调用特点。Action不是直接响应用户命令，而是让MoFox_Bot根据聊天情境智能地选择合适的动作，使其行为更加自然和真实。
@@ -43,7 +47,7 @@ class ExampleAction(BaseAction):
 
 这部分由Adapter传递给处理器。
 
-以 MaiBot-Napcat-Adapter 为例，可选项目如下：
+以 MoFox-Bot-Napcat-Adapter 为例，可选项目如下：
 | 类型 | 说明 | 格式 |
 | --- | --- | --- |
 | text | 文本消息 | str |
@@ -72,11 +76,55 @@ Action采用**两层决策机制**来优化性能和决策质量：
 
 **第一层：激活控制（Activation Control）**
 
-激活决定MoFox-Bot是否 **“知道”** 这个Action的存在，即这个Action是否进入决策候选池。不被激活的ActionMoFox-Bot永远不会选择。
+激活决定MoFox-Bot是否 **"知道"** 这个Action的存在，即这个Action是否进入决策候选池。不被激活的ActionMoFox-Bot永远不会选择。
 
 **第二层：使用决策（Usage Decision）**
 
-在Action被激活后，使用条件决定MoFox-Bot什么时候会 **“选择”** 使用这个Action。
+在Action被激活后，使用条件决定MoFox-Bot什么时候会 **"选择"** 使用这个Action。
+
+---
+
+## 🆕 新的激活机制（推荐）
+
+从现在开始，推荐使用 **`go_activate()` 方法** 来自定义 Action 的激活逻辑。这种方式更灵活、更强大！
+
+### 快速示例
+
+```python
+class MyAction(BaseAction):
+    action_name = "my_action"
+    action_description = "我的自定义 Action"
+    
+    async def go_activate(self, llm_judge_model=None) -> bool:
+        """判断是否激活此 Action
+        
+        注意：聊天内容会自动从实例属性中获取，无需手动传入
+        """
+        # 关键词激活
+        if await self._keyword_match(["你好", "hello"]):
+            return True
+        
+        # 或者随机 10% 概率激活
+        return await self._random_activation(0.1)
+    
+    async def execute(self) -> tuple[bool, str]:
+        await self.send_text("Hello!")
+        return True, "发送成功"
+```
+
+**提供的工具函数：**
+- `_random_activation(probability)` - 随机激活
+- `_keyword_match(keywords)` - 关键词匹配（自动获取聊天内容）
+- `_llm_judge_activation(judge_prompt, llm_judge_model)` - LLM 智能判断（自动获取聊天内容）
+
+**📚 完整指南：** 查看 [Action 激活机制重构指南](./action-activation-guide.md) 了解详情和更多示例。
+
+---
+
+## 📜 旧的激活机制（已废弃但仍然兼容）
+
+> ⚠️ **注意：** 以下激活类型配置方式已废弃，但仍然兼容。  
+> 推荐使用新的 `go_activate()` 方法来实现更灵活的激活逻辑。
 
 ### 决策参数详解 🔧
 

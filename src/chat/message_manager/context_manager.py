@@ -6,30 +6,32 @@
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.chat.energy_system import energy_manager
 from src.common.data_models.database_data_model import DatabaseMessages
-from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.base.component_types import ChatType
 
-from .distribution_manager import stream_loop_manager
+if TYPE_CHECKING:
+    from src.common.data_models.message_manager_data_model import StreamContext
 
 logger = get_logger("context_manager")
+
+# 全局背景任务集合（用于异步初始化等后台任务）
+_background_tasks = set()
 
 
 class SingleStreamContextManager:
     """单流上下文管理器 - 每个实例只管理一个 stream 的上下文"""
 
-    def __init__(self, stream_id: str, context: StreamContext, max_context_size: int | None = None):
+    def __init__(self, stream_id: str, context: "StreamContext", max_context_size: int | None = None):
         self.stream_id = stream_id
         self.context = context
 
         # 配置参数
         self.max_context_size = max_context_size or getattr(global_config.chat, "max_context_size", 100)
-        self.context_ttl = getattr(global_config.chat, "context_ttl", 24 * 3600)  # 24小时
 
         # 元数据
         self.created_time = time.time()
@@ -37,9 +39,17 @@ class SingleStreamContextManager:
         self.access_count = 0
         self.total_messages = 0
 
+        # 标记是否已初始化历史消息
+        self._history_initialized = False
+
         logger.debug(f"单流上下文管理器初始化: {stream_id}")
 
-    def get_context(self) -> StreamContext:
+        # 异步初始化历史消息（不阻塞构造函数）
+        task = asyncio.create_task(self._initialize_history_from_db())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+    def get_context(self) -> "StreamContext":
         """获取流上下文"""
         self._update_access_stats()
         return self.context
@@ -49,71 +59,46 @@ class SingleStreamContextManager:
 
         Args:
             message: 消息对象
-                skip_energy_update: 是否跳过能量更新（兼容参数，当前忽略）
+            skip_energy_update: 是否跳过能量更新（兼容参数，当前忽略）
 
         Returns:
             bool: 是否成功添加
         """
         try:
-            # 使用MessageManager的内置缓存系统
-            try:
-                from .message_manager import message_manager
+            # 检查并配置StreamContext的缓存系统
+            cache_enabled = global_config.chat.enable_message_cache
+            if cache_enabled and not self.context.is_cache_enabled:
+                self.context.enable_cache(True)
+                logger.debug(f"为StreamContext {self.stream_id} 启用缓存系统")
 
-                # 如果MessageManager正在运行，使用缓存系统
-                if message_manager.is_running:
-                    # 先计算兴趣值（需要在缓存前计算）
-                    await self._calculate_message_interest(message)
-                    message.is_read = False
-
-                    # 添加到缓存而不是直接添加到未读消息
-                    cache_success = message_manager.add_message_to_cache(self.stream_id, message)
-
-                    if cache_success:
-                        # 自动检测和更新chat type
-                        self._detect_chat_type(message)
-
-                        self.total_messages += 1
-                        self.last_access_time = time.time()
-
-                        # 检查当前是否正在处理消息
-                        is_processing = message_manager.get_stream_processing_status(self.stream_id)
-
-                        if not is_processing:
-                            # 如果当前没有在处理，立即刷新缓存到未读消息
-                            cached_messages = message_manager.flush_cached_messages(self.stream_id)
-                            for cached_msg in cached_messages:
-                                self.context.unread_messages.append(cached_msg)
-                            logger.debug(f"立即刷新缓存到未读消息: stream={self.stream_id}, 数量={len(cached_messages)}")
-                        else:
-                            logger.debug(f"消息已缓存，等待当前处理完成: stream={self.stream_id}")
-
-                        # 启动流的循环任务（如果还未启动）
-                        asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
-                        logger.debug(f"添加消息到缓存系统: {self.stream_id}")
-                        return True
-                    else:
-                        logger.warning(f"消息缓存系统添加失败，回退到直接添加: {self.stream_id}")
-
-            except ImportError:
-                logger.debug("MessageManager不可用，使用直接添加模式")
-            except Exception as e:
-                logger.warning(f"消息缓存系统异常，回退到直接添加: {self.stream_id}, error={e}")
-
-            # 回退方案：直接添加到未读消息
-            message.is_read = False
-            self.context.unread_messages.append(message)
-
-            # 自动检测和更新chat type
-            self._detect_chat_type(message)
-
-            # 在上下文管理器中计算兴趣值
+            # 先计算兴趣值（需要在缓存前计算）
             await self._calculate_message_interest(message)
-            self.total_messages += 1
-            self.last_access_time = time.time()
-            # 启动流的循环任务（如果还未启动）
-            asyncio.create_task(stream_loop_manager.start_stream_loop(self.stream_id))
-            logger.debug(f"添加消息{message.processed_plain_text}到单流上下文: {self.stream_id}")
-            return True
+            message.is_read = False
+
+            # 使用StreamContext的智能缓存功能
+            success = self.context.add_message_with_cache_check(message, force_direct=not cache_enabled)
+
+            if success:
+                # 自动检测和更新chat type
+                self._detect_chat_type(message)
+
+                self.total_messages += 1
+                self.last_access_time = time.time()
+
+                # 如果使用了缓存系统，输出调试信息
+                if cache_enabled and self.context.is_cache_enabled:
+                    if self.context.is_chatter_processing:
+                        logger.debug(f"消息已缓存到StreamContext，等待处理完成: stream={self.stream_id}")
+                    else:
+                        logger.debug(f"消息直接添加到StreamContext未读列表: stream={self.stream_id}")
+                else:
+                    logger.debug(f"消息添加到StreamContext（缓存禁用）: {self.stream_id}")
+
+                return True
+            else:
+                logger.error(f"StreamContext消息添加失败: {self.stream_id}")
+                return False
+
         except Exception as e:
             logger.error(f"添加消息到单流上下文失败 {self.stream_id}: {e}", exc_info=True)
             return False
@@ -129,9 +114,9 @@ class SingleStreamContextManager:
             bool: 是否成功更新
         """
         try:
-            # 直接在未读消息中查找并更新
+            # 直接在未读消息中查找并更新（统一转字符串比较）
             for message in self.context.unread_messages:
-                if message.message_id == message_id:
+                if str(message.message_id) == str(message_id):
                     if "interest_value" in updates:
                         message.interest_value = updates["interest_value"]
                     if "actions" in updates:
@@ -140,9 +125,9 @@ class SingleStreamContextManager:
                         message.should_reply = updates["should_reply"]
                     break
 
-            # 在历史消息中查找并更新
+            # 在历史消息中查找并更新（统一转字符串比较）
             for message in self.context.history_messages:
-                if message.message_id == message_id:
+                if str(message.message_id) == str(message_id):
                     if "interest_value" in updates:
                         message.interest_value = updates["interest_value"]
                     if "actions" in updates:
@@ -206,14 +191,15 @@ class SingleStreamContextManager:
                 return False
 
             marked_count = 0
+            failed_ids = []
             for message_id in message_ids:
                 try:
                     self.context.mark_message_as_read(message_id)
                     marked_count += 1
                 except Exception as e:
+                    failed_ids.append(str(message_id)[:8])
                     logger.warning(f"标记消息已读失败 {message_id}: {e}")
 
-            logger.debug(f"标记消息为已读: {self.stream_id} ({marked_count}/{len(message_ids)}条)")
             return marked_count > 0
 
         except Exception as e:
@@ -235,7 +221,7 @@ class SingleStreamContextManager:
                     else:
                         setattr(self.context, attr, time.time())
             await self._update_stream_energy()
-            logger.info(f"清空单流上下文: {self.stream_id}")
+            logger.debug(f"清空单流上下文: {self.stream_id}")
             return True
         except Exception as e:
             logger.error(f"清空单流上下文失败 {self.stream_id}: {e}", exc_info=True)
@@ -250,7 +236,7 @@ class SingleStreamContextManager:
             unread_messages = getattr(self.context, "unread_messages", [])
             history_messages = getattr(self.context, "history_messages", [])
 
-            return {
+            stats = {
                 "stream_id": self.stream_id,
                 "context_type": type(self.context).__name__,
                 "total_messages": len(history_messages) + len(unread_messages),
@@ -266,9 +252,46 @@ class SingleStreamContextManager:
                 "uptime_seconds": uptime,
                 "idle_seconds": current_time - self.last_access_time,
             }
+
+            # 添加缓存统计信息
+            if hasattr(self.context, "get_cache_stats"):
+                stats["cache_stats"] = self.context.get_cache_stats()
+
+            return stats
         except Exception as e:
             logger.error(f"获取单流统计失败 {self.stream_id}: {e}", exc_info=True)
             return {}
+
+    def flush_cached_messages(self) -> list[DatabaseMessages]:
+        """
+        刷新StreamContext中的缓存消息到未读列表
+
+        Returns:
+            list[DatabaseMessages]: 刷新的消息列表
+        """
+        try:
+            if hasattr(self.context, "flush_cached_messages"):
+                cached_messages = self.context.flush_cached_messages()
+                if cached_messages:
+                    logger.debug(f"从StreamContext刷新缓存消息: stream={self.stream_id}, 数量={len(cached_messages)}")
+                return cached_messages
+            else:
+                logger.debug(f"StreamContext不支持缓存刷新: stream={self.stream_id}")
+                return []
+        except Exception as e:
+            logger.error(f"刷新StreamContext缓存失败: stream={self.stream_id}, error={e}")
+            return []
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """获取StreamContext的缓存统计信息"""
+        try:
+            if hasattr(self.context, "get_cache_stats"):
+                return self.context.get_cache_stats()
+            else:
+                return {"error": "StreamContext不支持缓存统计"}
+        except Exception as e:
+            logger.error(f"获取StreamContext缓存统计失败: stream={self.stream_id}, error={e}")
+            return {"error": str(e)}
 
     def validate_integrity(self) -> bool:
         """验证上下文完整性"""
@@ -297,6 +320,62 @@ class SingleStreamContextManager:
         """更新访问统计"""
         self.last_access_time = time.time()
         self.access_count += 1
+
+    async def _initialize_history_from_db(self):
+        """从数据库初始化历史消息到context中"""
+        if self._history_initialized:
+            logger.debug(f"历史消息已初始化，跳过: {self.stream_id}, 当前历史消息数: {len(self.context.history_messages)}")
+            return
+
+        # 立即设置标志，防止并发重复加载
+        logger.info(f"🔄 [历史加载] 开始从数据库加载历史消息: {self.stream_id}")
+        self._history_initialized = True
+
+        try:
+            logger.debug(f"开始从数据库加载历史消息: {self.stream_id}")
+
+            from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat
+
+            # 加载历史消息（限制数量为max_context_size的2倍，用于丰富上下文）
+            db_messages = await get_raw_msg_before_timestamp_with_chat(
+                chat_id=self.stream_id,
+                timestamp=time.time(),
+                limit=self.max_context_size * 2,
+            )
+
+            if db_messages:
+                logger.info(f"📥 [历史加载] 从数据库获取到 {len(db_messages)} 条消息")
+                # 将数据库消息转换为 DatabaseMessages 对象并添加到历史
+                loaded_count = 0
+                for msg_dict in db_messages:
+                    try:
+                        # 使用 ** 解包字典作为关键字参数
+                        db_msg = DatabaseMessages(**msg_dict)
+
+                        # 标记为已读
+                        db_msg.is_read = True
+
+                        # 添加到历史消息
+                        self.context.history_messages.append(db_msg)
+                        loaded_count += 1
+
+                    except Exception as e:
+                        logger.warning(f"转换历史消息失败 (message_id={msg_dict.get('message_id', 'unknown')}): {e}")
+                        continue
+
+                logger.info(f"✅ [历史加载] 成功加载 {loaded_count} 条历史消息到内存: {self.stream_id}")
+            else:
+                logger.debug(f"没有历史消息需要加载: {self.stream_id}")
+
+        except Exception as e:
+            logger.error(f"从数据库初始化历史消息失败: {self.stream_id}, {e}", exc_info=True)
+            # 加载失败时重置标志，允许重试
+            self._history_initialized = False
+
+    async def ensure_history_initialized(self):
+        """确保历史消息已初始化（供外部调用）"""
+        if not self._history_initialized:
+            await self._initialize_history_from_db()
 
     async def _calculate_message_interest(self, message: DatabaseMessages) -> float:
         """
@@ -338,9 +417,7 @@ class SingleStreamContextManager:
         # 只有在第一次添加消息时才检测聊天类型，避免后续消息改变类型
         if len(self.context.unread_messages) == 1:  # 只有这条消息
             # 如果消息包含群组信息，则为群聊
-            if hasattr(message, "chat_info_group_id") and message.chat_info_group_id:
-                self.context.chat_type = ChatType.GROUP
-            elif hasattr(message, "chat_info_group_name") and message.chat_info_group_name:
+            if message.chat_info.group_info:
                 self.context.chat_type = ChatType.GROUP
             else:
                 self.context.chat_type = ChatType.PRIVATE

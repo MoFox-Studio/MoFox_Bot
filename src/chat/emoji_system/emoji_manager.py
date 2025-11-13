@@ -3,6 +3,7 @@ import base64
 import binascii
 import hashlib
 import io
+import json
 import os
 import random
 import re
@@ -15,8 +16,10 @@ from rich.traceback import install
 from sqlalchemy import select
 
 from src.chat.utils.utils_image import get_image_manager, image_path_to_base64
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import Emoji, Images
+from src.common.database.api.crud import CRUDBase
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import Emoji, Images
+from src.common.database.utils.decorators import cached
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -86,7 +89,7 @@ class MaiEmoji:
             logger.debug(f"[初始化] 正在使用Pillow获取格式: {self.filename}")
             try:
                 with Image.open(io.BytesIO(image_bytes)) as img:
-                    self.format = img.format.lower()  # type: ignore
+                    self.format = (img.format or "jpeg").lower()
                 logger.debug(f"[初始化] 格式获取成功: {self.format}")
             except Exception as pil_error:
                 logger.error(f"[初始化错误] Pillow无法处理图片 ({self.filename}): {pil_error}")
@@ -204,16 +207,23 @@ class MaiEmoji:
 
             # 2. 删除数据库记录
             try:
-                async with get_db_session() as session:
-                    result = await session.execute(select(Emoji).where(Emoji.emoji_hash == self.hash))
-                    will_delete_emoji = result.scalar_one_or_none()
-                    if will_delete_emoji is None:
-                        logger.warning(f"[删除] 数据库中未找到哈希值为 {self.hash} 的表情包记录。")
-                        result = 0  # Indicate no DB record was deleted
-                    else:
-                        await session.delete(will_delete_emoji)
-                        result = 1  # Successfully deleted one record
-                        await session.commit()
+                # 使用CRUD进行删除
+                crud = CRUDBase(Emoji)
+                will_delete_emoji = await crud.get_by(emoji_hash=self.hash)
+                if will_delete_emoji is None:
+                    logger.warning(f"[删除] 数据库中未找到哈希值为 {self.hash} 的表情包记录。")
+                    result = 0  # Indicate no DB record was deleted
+                else:
+                    await crud.delete(will_delete_emoji.id)
+                    result = 1  # Successfully deleted one record
+
+                    # 使缓存失效
+                    from src.common.database.optimization.cache_manager import get_cache
+                    from src.common.database.utils.decorators import generate_cache_key
+                    cache = await get_cache()
+                    await cache.delete(generate_cache_key("emoji_by_hash", self.hash))
+                    await cache.delete(generate_cache_key("emoji_description", self.hash))
+                    await cache.delete(generate_cache_key("emoji_tag", self.hash))
             except Exception as e:
                 logger.error(f"[错误] 删除数据库记录时出错: {e!s}")
                 result = 0
@@ -327,7 +337,7 @@ async def clear_temp_emoji() -> None:
     ):
         if os.path.exists(need_clear):
             files = os.listdir(need_clear)
-            # 如果文件数超过100就全部删除
+            # 如果文件数超过1000就全部删除
             if len(files) > 1000:
                 for filename in files:
                     file_path = os.path.join(need_clear, filename)
@@ -401,6 +411,7 @@ class EmojiManager:
         self.emoji_num_max_reach_deletion = global_config.emoji.do_replace
         self.emoji_objects: list[MaiEmoji] = []  # 存储MaiEmoji对象的列表，使用类型注解明确列表元素类型
         logger.info("启动表情包管理器")
+        _ensure_emoji_dir()
         self._initialized = True
         logger.info("启动表情包管理器")
 
@@ -439,12 +450,12 @@ class EmojiManager:
                 stmt = select(Emoji).where(Emoji.emoji_hash == emoji_hash)
                 result = await session.execute(stmt)
                 emoji_update = result.scalar_one_or_none()
-                if emoji_update is None:
-                    logger.error(f"记录表情使用失败: 未找到 hash 为 {emoji_hash} 的表情包")
-                else:
+                if emoji_update:
                     emoji_update.usage_count += 1
-                emoji_update.last_used_time = time.time()  # Update last used time
-                await session.commit()
+                    emoji_update.last_used_time = time.time()  # Update last used time
+                    await session.commit()
+                else:
+                    logger.error(f"记录表情使用失败: 未找到 hash 为 {emoji_hash} 的表情包")
         except Exception as e:
             logger.error(f"记录表情使用失败: {e!s}")
 
@@ -469,7 +480,7 @@ class EmojiManager:
                 return None
 
             # 2. 根据全局配置决定候选表情包的数量
-            max_candidates = global_config.emoji.max_emoji_for_llm_select
+            max_candidates = global_config.emoji.max_context_emojis
 
             # 如果配置为0或者大于等于总数，则选择所有表情包
             if max_candidates <= 0 or max_candidates >= len(all_emojis):
@@ -667,12 +678,13 @@ class EmojiManager:
     async def get_all_emoji_from_db(self) -> None:
         """获取所有表情包并初始化为MaiEmoji类对象，更新 self.emoji_objects"""
         try:
-            async with get_db_session() as session:
-                logger.debug("[数据库] 开始加载所有表情包记录 ...")
+            # 🔧 使用 QueryBuilder 以启用数据库缓存
+            from src.common.database.api.query import QueryBuilder
 
-                result = await session.execute(select(Emoji))
-                emoji_instances = result.scalars().all()
-                emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
+            logger.debug("[数据库] 开始加载所有表情包记录 ...")
+
+            emoji_instances = await QueryBuilder(Emoji).all()
+            emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
 
             # 更新内存中的列表和数量
             self.emoji_objects = emoji_objects
@@ -697,23 +709,27 @@ class EmojiManager:
             list[MaiEmoji]: 表情包对象列表
         """
         try:
-            async with get_db_session() as session:
-                if emoji_hash:
-                    result = await session.execute(select(Emoji).where(Emoji.emoji_hash == emoji_hash))
-                    query = result.scalars().all()
-                else:
-                    logger.warning(
-                        "[查询] 未提供 hash，将尝试加载所有表情包，建议使用 get_all_emoji_from_db 更新管理器状态。"
-                    )
-                    result = await session.execute(select(Emoji))
-                    query = result.scalars().all()
+            # 使用CRUD进行查询
+            crud = CRUDBase(Emoji)
 
-                emoji_instances = query
-                emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
+            if emoji_hash:
+                # 查询特定hash的表情包
+                emoji_record = await crud.get_by(emoji_hash=emoji_hash)
+                emoji_instances = [emoji_record] if emoji_record else []
+            else:
+                logger.warning(
+                    "[查询] 未提供 hash，将尝试加载所有表情包，建议使用 get_all_emoji_from_db 更新管理器状态。"
+                )
+                # 查询所有表情包
+                from src.common.database.api.query import QueryBuilder
+                query = QueryBuilder(Emoji)
+                emoji_instances = await query.all()
 
-                if load_errors > 0:
-                    logger.warning(f"[查询] 加载过程中出现 {load_errors} 个错误。")
-                return emoji_objects
+            emoji_objects, load_errors = _to_emoji_objects(emoji_instances)
+
+            if load_errors > 0:
+                logger.warning(f"[查询] 加载过程中出现 {load_errors} 个错误。")
+            return emoji_objects
 
         except Exception as e:
             logger.error(f"[错误] 从数据库获取表情包对象失败: {e!s}")
@@ -734,8 +750,9 @@ class EmojiManager:
                 return emoji
         return None  # 如果循环结束还没找到，则返回 None
 
+    @cached(ttl=1800, key_prefix="emoji_tag")  # 缓存30分钟
     async def get_emoji_tag_by_hash(self, emoji_hash: str) -> str | None:
-        """根据哈希值获取已注册表情包的描述
+        """根据哈希值获取已注册表情包的描述（带30分钟缓存）
 
         Args:
             emoji_hash: 表情包的哈希值
@@ -765,8 +782,9 @@ class EmojiManager:
             logger.error(f"获取表情包描述失败 (Hash: {emoji_hash}): {e!s}")
             return None
 
+    @cached(ttl=1800, key_prefix="emoji_description")  # 缓存30分钟
     async def get_emoji_description_by_hash(self, emoji_hash: str) -> str | None:
-        """根据哈希值获取已注册表情包的描述
+        """根据哈希值获取已注册表情包的描述（带30分钟缓存）
 
         Args:
             emoji_hash: 表情包的哈希值
@@ -781,12 +799,11 @@ class EmojiManager:
                 logger.info(f"[缓存命中] 从内存获取表情包描述: {emoji.description[:50]}...")
                 return emoji.description
 
-            # 如果内存中没有，从数据库查找
+            # 如果内存中没有，从数据库查找（使用 QueryBuilder 启用数据库缓存）
             try:
-                async with get_db_session() as session:
-                    stmt = select(Emoji).where(Emoji.emoji_hash == emoji_hash)
-                    result = await session.execute(stmt)
-                    emoji_record = result.scalar_one_or_none()
+                from src.common.database.api.query import QueryBuilder
+
+                emoji_record = await QueryBuilder(Emoji).filter(emoji_hash=emoji_hash).first()
                 if emoji_record and emoji_record.description:
                     logger.info(f"[缓存命中] 从数据库获取表情包描述: {emoji_record.description[:50]}...")
                     return emoji_record.description
@@ -943,92 +960,106 @@ class EmojiManager:
                 image_base64 = image_base64.encode("ascii", errors="ignore").decode("ascii")
             image_bytes = base64.b64decode(image_base64)
             image_hash = hashlib.md5(image_bytes).hexdigest()
-            image_format = (
-                Image.open(io.BytesIO(image_bytes)).format.lower()
-                if Image.open(io.BytesIO(image_bytes)).format
-                else "jpeg"
-            )
+            image_format = (Image.open(io.BytesIO(image_bytes)).format or "jpeg").lower()
 
-            # 2. 检查数据库中是否已存在该表情包的描述，实现复用
+            # 2. 检查数据库中是否已存在该表情包的描述，实现复用（使用 QueryBuilder 启用数据库缓存）
             existing_description = None
             try:
-                async with get_db_session() as session:
-                    stmt = select(Images).where(Images.emoji_hash == image_hash, Images.type == "emoji")
-                    result = await session.execute(stmt)
-                    existing_image = result.scalar_one_or_none()
-                    if existing_image and existing_image.description:
-                        existing_description = existing_image.description
-                        logger.info(f"[复用描述] 找到已有详细描述: {existing_description[:50]}...")
+                from src.common.database.api.query import QueryBuilder
+
+                existing_image = await QueryBuilder(Images).filter(emoji_hash=image_hash, type="emoji").first()
+                if existing_image and existing_image.description:
+                    existing_description = existing_image.description
+                    logger.info(f"[复用描述] 找到已有详细描述: {existing_description[:50]}...")
             except Exception as e:
                 logger.debug(f"查询已有表情包描述时出错: {e}")
 
             # 3. 如果没有现有描述，则调用VLM生成新的详细描述
+            # 3. 如果有现有描述，则复用或解析；否则调用VLM生成新的统一描述
             if existing_description:
-                description = existing_description
-                logger.info("[优化] 复用已有的详细描述，跳过VLM调用")
+                # 兼容旧格式的 final_description，尝试从中解析出各个部分
+                logger.info("[优化] 复用已有的描述，跳过VLM调用")
+                description_match = re.search(r"Desc: (.*)", existing_description, re.DOTALL)
+                keywords_match = re.search(r"Keywords: \[(.*?)\]", existing_description)
+                refined_match = re.search(r"^(.*?) Keywords:", existing_description, re.DOTALL)
+
+                description = description_match.group(1).strip() if description_match else existing_description
+                emotions_text = keywords_match.group(1) if keywords_match else ""
+                emotions = [e.strip() for e in emotions_text.split(",") if e.strip()]
+                refined_description = refined_match.group(1).strip() if refined_match else ""
+                final_description = existing_description
             else:
-                logger.info("[VLM分析] 开始为新表情包生成详细描述")
-                # 为动态图（GIF）和静态图构建不同的、要求简洁的prompt
+                logger.info("[VLM分析] 开始为新表情包生成统一描述")
+                description, emotions, refined_description, is_compliant = "", [], "", False
+
+                prompt = f"""这是一个表情包。请你作为一位互联网"梗"学家和情感分析师，对这个表情包进行全面分析，并以JSON格式返回你的分析结果。
+你的分析需要包含以下四个部分：
+1.  **detailed_description**: 对图片的详尽描述（不超过250字）。请遵循以下结构：
+    -   概括图片主题和氛围。
+    -   详细描述核心元素，宽泛描述人物外观特征（如发型、服装、颜色等），无需识别具体角色身份或出处。
+    -   描述传达的核心情绪或梗。
+    -   准确转述图中文字。
+    -   特别注意识别网络文化特殊含义（如"滑稽"表情）。
+2.  **keywords**: 提炼5到8个核心关键词或短语（数组形式），应包含：核心文字、表情动作、情绪氛围、主体或构图特点。
+3.  **refined_sentence**: 生成一句自然的精炼描述，应包含：人物外观特征、核心文字，并体现核心情绪。
+4.  **is_compliant**: 根据以下标准判断是否合规（布尔值true/false）：
+    -   主题符合："{global_config.emoji.filtration_prompt}"。
+    -   内容健康，无不良元素。
+    -   必须是表情包，非普通截图。
+    -   图中文字不超过5个。
+请确保你的最终输出是严格的JSON对象，不要添加任何额外解释或文本。
+"""
+
+                image_data_for_vlm, image_format_for_vlm = image_base64, image_format
                 if image_format in ["gif", "GIF"]:
                     image_base64_frames = get_image_manager().transform_gif(image_base64)
                     if not image_base64_frames:
                         raise RuntimeError("GIF表情包转换失败")
-                    prompt = "这是一个GIF动图表情包的关键帧。请用不超过250字，详细描述它的核心内容：1. 动态画面展现了什么变化？2. 它传达了什么核心情绪或玩的是什么梗？3. 通常在什么场景下使用？请确保描述既包含关键信息，又能充分展现其内涵。"
-                    description, _ = await self.vlm.generate_response_for_image(
-                        prompt, image_base64_frames, "jpeg", temperature=0.3, max_tokens=600
-                    )
-                else:
-                    prompt = "这是一个表情包。请用不超过250字，详细描述它的核心内容：1. 画面描绘了什么？2. 它传达了什么核心情绪或玩的是什么梗？3. 通常在什么场景下使用？请确保描述既包含关键信息，又能充分展现其内涵。"
-                    description, _ = await self.vlm.generate_response_for_image(
-                        prompt, image_base64, image_format, temperature=0.3, max_tokens=600
-                    )
+                    image_data_for_vlm, image_format_for_vlm = image_base64_frames, "jpeg"
+                    prompt = "这是一个GIF动图表情包的关键帧。" + prompt
 
-            # 4. 内容审核，确保表情包符合规定
-            if global_config.emoji.content_filtration:
-                prompt = f"""
-                    请根据以下标准审核这个表情包：
-                    1. 主题必须符合："{global_config.emoji.filtration_prompt}"。
-                    2. 内容健康，不含色情、暴力、政治敏感等元素。
-                    3. 必须是表情包，而不是普通的聊天截图或视频截图。
-                    4. 表情包中的文字数量（如果有）不能超过5个。
-                    这个表情包是否完全满足以上所有要求？请只回答“是”或“否”。
-                """
-                content, _ = await self.vlm.generate_response_for_image(
-                    prompt, image_base64, image_format, temperature=0.1, max_tokens=10
-                )
-                if "否" in content:
+                for i in range(3):
+                    try:
+                        logger.info(f"[VLM调用] 正在为表情包生成统一描述 (第 {i+1}/3 次)...")
+                        vlm_response_str, _ = await self.vlm.generate_response_for_image(
+                            prompt, image_data_for_vlm, image_format_for_vlm, temperature=0.3, max_tokens=800
+                        )
+                        if not vlm_response_str:
+                            continue
+
+                        match = re.search(r"\{.*\}", vlm_response_str, re.DOTALL)
+                        if match:
+                            vlm_response_json = json.loads(match.group(0))
+                            description = vlm_response_json.get("detailed_description", "")
+                            emotions = vlm_response_json.get("keywords", [])
+                            refined_description = vlm_response_json.get("refined_sentence", "")
+                            is_compliant = vlm_response_json.get("is_compliant", False)
+                            if description and emotions and refined_description:
+                                logger.info("[VLM分析] 成功解析VLM返回的JSON数据。")
+                                break
+                        logger.warning("[VLM分析] VLM返回的JSON数据不完整或格式错误，准备重试。")
+                    except (json.JSONDecodeError, AttributeError) as e:
+                        logger.error(f"VLM JSON解析失败 (第 {i+1}/3 次): {e}", exc_info=True)
+                    except Exception as e:
+                        logger.error(f"VLM调用失败 (第 {i+1}/3 次): {e}", exc_info=True)
+
+                    description, emotions, refined_description = "", [], ""  # Reset for retry
+                    if i < 2:
+                        await asyncio.sleep(1)
+
+                if not description or not emotions or not refined_description:
+                    logger.warning("VLM未能生成有效的统一描述，中止处理。")
+                    return "", []
+
+                if global_config.emoji.content_filtration and not is_compliant:
                     logger.warning(f"表情包审核未通过，内容: {description[:50]}...")
                     return "", []
 
-            # 5. 基于VLM的详细描述，调用LLM提炼情感关键词
-            emotions = []
-            if global_config.emoji.enable_emotion_analysis:
-                logger.info("[情感分析] 开始提炼表情包的情感关键词")
-                emotion_prompt = f"""
-                你是一个互联网“梗”学家和情感分析师。
-                这里有一份关于某个表情包的详细描述：
-                ---
-                {description}
-                ---
-                请你基于这份描述，提炼出这个表情包最核心的含义和适用场景。
+                final_description = f"{refined_description} Keywords: [{','.join(emotions)}] Desc: {description}"
 
-                你的任务是：
-                1.  分析并总结出3到5个最能代表这个表情包的关键词或短语。
-                2.  这些关键词应该非常凝练，比如“表达无语”、“有点小得意”、“求夸奖”、“猫猫疑惑”等。
-                3.  每个关键词不要超过15个字。
-                4.  请直接输出这些关键词，并用逗号分隔，不要添加任何其他解释。
-                """
-                emotions_text, _ = await self.llm_emotion_judge.generate_response_async(
-                    emotion_prompt, temperature=0.6, max_tokens=150
-                )
-                emotions = [e.strip() for e in emotions_text.split(",") if e.strip()]
-            else:
-                logger.info("[情感分析] 表情包感情关键词二次识别已禁用，跳过此步骤")
-
-            # 6. 格式化最终的描述，并返回结果
-            final_description = f"表情包，关键词：[{'，'.join(emotions)}]。详细描述：{description}"
-            logger.info(f"[注册分析] VLM描述: {description} -> 提炼出的情感标签: {emotions}")
-
+            logger.info(f"[注册分析] VLM描述: {description}")
+            logger.info(f"[注册分析] 提炼出的情感标签: {emotions}")
+            logger.info(f"[注册分析] 精炼后的自然语言描述: {refined_description}")
             return final_description, emotions
 
         except Exception as e:

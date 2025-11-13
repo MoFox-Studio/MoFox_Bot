@@ -28,7 +28,6 @@ class ActionPlannerInfo(BaseDataModel):
     action_message: Optional["DatabaseMessages"] = None
     available_actions: dict[str, "ActionInfo"] | None = None
 
-
 @dataclass
 class InterestScore(BaseDataModel):
     """兴趣度评分结果"""

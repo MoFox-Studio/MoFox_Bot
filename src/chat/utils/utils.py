@@ -11,7 +11,8 @@ import rjieba
 from maim_message import UserInfo
 
 from src.chat.message_receive.chat_stream import get_chat_manager
-from src.chat.message_receive.message import MessageRecv
+
+# MessageRecv 已被移除，现在使用 DatabaseMessages
 from src.common.logger import get_logger
 from src.common.message_repository import count_messages, find_messages
 from src.config.config import global_config, model_config
@@ -41,75 +42,96 @@ def db_message_to_str(message_dict: dict) -> str:
     return result
 
 
-def is_mentioned_bot_in_message(message: MessageRecv) -> tuple[bool, float]:
-    """检查消息是否提到了机器人"""
-    keywords = [global_config.bot.nickname]
+def is_mentioned_bot_in_message(message) -> tuple[bool, float]:
+    """检查消息是否提到了机器人
+
+    Args:
+        message: DatabaseMessages 消息对象
+
+    Returns:
+        tuple[bool, float]: (是否提及, 提及类型)
+        提及类型: 0=未提及, 1=弱提及（文本匹配）, 2=强提及（@/回复/私聊）
+    """
     nicknames = global_config.bot.alias_names
-    reply_probability = 0.0
-    is_at = False
-    is_mentioned = False
-    if message.is_mentioned is not None:
-        return bool(message.is_mentioned), message.is_mentioned
-    if (
-        message.message_info.additional_config is not None
-        and message.message_info.additional_config.get("is_mentioned") is not None
-    ):
+    mention_type = 0  # 0=未提及, 1=弱提及, 2=强提及
+
+    # 检查 is_mentioned 属性（保持向后兼容）
+    mentioned_attr = getattr(message, "is_mentioned", None)
+    if mentioned_attr is not None:
         try:
-            reply_probability = float(message.message_info.additional_config.get("is_mentioned"))  # type: ignore
-            is_mentioned = True
-            return is_mentioned, reply_probability
+            # 如果已有 is_mentioned，直接返回（假设是强提及）
+            return bool(mentioned_attr), 2.0 if mentioned_attr else 0.0
+        except (ValueError, TypeError):
+            pass
+
+    # 检查 additional_config（保持向后兼容）
+    additional_config = None
+
+    # DatabaseMessages: additional_config 是 JSON 字符串
+    if message.additional_config:
+        try:
+            import orjson
+            additional_config = orjson.loads(message.additional_config)
+        except Exception:
+            pass
+
+    if additional_config and additional_config.get("is_mentioned") is not None:
+        try:
+            mentioned_value = float(additional_config.get("is_mentioned"))  # type: ignore
+            # 如果配置中有提及值，假设是强提及
+            return True, 2.0 if mentioned_value > 0 else 0.0
         except Exception as e:
             logger.warning(str(e))
             logger.warning(
-                f"消息中包含不合理的设置 is_mentioned: {message.message_info.additional_config.get('is_mentioned')}"
+                f"消息中包含不合理的设置 is_mentioned: {additional_config.get('is_mentioned')}"
             )
 
-    if global_config.bot.nickname in message.processed_plain_text:
-        is_mentioned = True
+    processed_text = message.processed_plain_text or ""
 
-    for alias_name in global_config.bot.alias_names:
-        if alias_name in message.processed_plain_text:
-            is_mentioned = True
+    # 1. 判断是否为私聊（强提及）
+    group_info = getattr(message, "group_info", None)
+    if not group_info or not getattr(group_info, "group_id", None):
+        mention_type = 2
+        logger.debug("检测到私聊消息 - 强提及")
 
-    # 判断是否被@
-    if re.search(rf"@<(.+?):{global_config.bot.qq_account}>", message.processed_plain_text):
-        is_at = True
-        is_mentioned = True
+    # 2. 判断是否被@（强提及）
+    if re.search(rf"@<(.+?):{global_config.bot.qq_account}>", processed_text):
+        mention_type = 2
+        logger.debug("检测到@提及 - 强提及")
 
-    # print(f"message.processed_plain_text: {message.processed_plain_text}")
-    # print(f"is_mentioned: {is_mentioned}")
-    # print(f"is_at: {is_at}")
+    # 3. 判断是否被回复（强提及）
+    if re.match(
+        rf"\[回复 (.+?)\({global_config.bot.qq_account!s}\)：(.+?)\]，说：", processed_text
+    ) or re.match(
+        rf"\[回复<(.+?)(?=:{global_config.bot.qq_account!s}>)\:{global_config.bot.qq_account!s}>：(.+?)\]，说：",
+        processed_text,
+    ):
+        mention_type = 2
+        logger.debug("检测到回复消息 - 强提及")
 
-    if is_at and global_config.chat.at_bot_inevitable_reply:
-        reply_probability = 1.0
-        logger.debug("被@，回复概率设置为100%")
-    else:
-        if not is_mentioned:
-            # 判断是否被回复
-            if re.match(
-                rf"\[回复 (.+?)\({global_config.bot.qq_account!s}\)：(.+?)\]，说：", message.processed_plain_text
-            ) or re.match(
-                rf"\[回复<(.+?)(?=:{global_config.bot.qq_account!s}>)\:{global_config.bot.qq_account!s}>：(.+?)\]，说：",
-                message.processed_plain_text,
-            ):
-                is_mentioned = True
-            else:
-                # 判断内容中是否被提及
-                message_content = re.sub(r"@(.+?)（(\d+)）", "", message.processed_plain_text)
-                message_content = re.sub(r"@<(.+?)(?=:(\d+))\:(\d+)>", "", message_content)
-                message_content = re.sub(r"\[回复 (.+?)\(((\d+)|未知id)\)：(.+?)\]，说：", "", message_content)
-                message_content = re.sub(r"\[回复<(.+?)(?=:(\d+))\:(\d+)>：(.+?)\]，说：", "", message_content)
-                for keyword in keywords:
-                    if keyword in message_content:
-                        is_mentioned = True
-                for nickname in nicknames:
-                    if nickname in message_content:
-                        is_mentioned = True
-        if is_mentioned and global_config.chat.mentioned_bot_inevitable_reply:
-            reply_probability = 1.0
-            logger.debug("被提及，回复概率设置为100%")
-    return is_mentioned, reply_probability
+    # 4. 判断文本中是否提及bot名字或别名（弱提及）
+    if mention_type == 0:  # 只有在没有强提及时才检查弱提及
+        # 移除@和回复标记后再检查
+        message_content = re.sub(r"@(.+?)（(\d+)）", "", processed_text)
+        message_content = re.sub(r"@<(.+?)(?=:(\d+))\:(\d+)>", "", message_content)
+        message_content = re.sub(r"\[回复 (.+?)\(((\d+)|未知id)\)：(.+?)\]，说：", "", message_content)
+        message_content = re.sub(r"\[回复<(.+?)(?=:(\d+))\:(\d+)>：(.+?)\]，说：", "", message_content)
 
+        # 检查bot主名字
+        if global_config.bot.nickname in message_content:
+            mention_type = 1
+            logger.debug(f"检测到文本提及bot主名字 '{global_config.bot.nickname}' - 弱提及")
+        # 如果主名字没匹配，再检查别名
+        elif nicknames:
+            for alias_name in nicknames:
+                if alias_name in message_content:
+                    mention_type = 1
+                    logger.debug(f"检测到文本提及bot别名 '{alias_name}' - 弱提及")
+                    break
+
+    # 返回结果
+    is_mentioned = mention_type > 0
+    return is_mentioned, float(mention_type)
 
 async def get_embedding(text, request_type="embedding") -> list[float] | None:
     """获取文本的embedding向量"""
@@ -123,11 +145,11 @@ async def get_embedding(text, request_type="embedding") -> list[float] | None:
     return embedding
 
 
-def get_recent_group_speaker(chat_stream_id: str, sender, limit: int = 12) -> list:
+async def get_recent_group_speaker(chat_stream_id: str, sender, limit: int = 12) -> list:
     # 获取当前群聊记录内发言的人
     filter_query = {"chat_id": chat_stream_id}
     sort_order = [("time", -1)]
-    recent_messages = find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
+    recent_messages = await find_messages(message_filter=filter_query, sort=sort_order, limit=limit)
 
     if not recent_messages:
         return []
@@ -144,7 +166,7 @@ def get_recent_group_speaker(chat_stream_id: str, sender, limit: int = 12) -> li
         )
         if (
             (user_info.platform, user_info.user_id) != sender
-            and user_info.user_id != global_config.bot.qq_account
+            and user_info.user_id != str(global_config.bot.qq_account)
             and (user_info.platform, user_info.user_id, user_info.user_nickname) not in who_chat_in_group
             and len(who_chat_in_group) < 5
         ):  # 排除重复，排除消息发送者，排除bot，限制加载的关系数目
@@ -295,35 +317,130 @@ def random_remove_punctuation(text: str) -> str:
     return result
 
 
+def protect_special_blocks(text: str) -> tuple[str, dict[str, str]]:
+    """识别并保护数学公式和代码块，返回处理后的文本和映射"""
+    placeholder_map = {}
+
+    # 第一层防护：优先保护标准Markdown格式
+    # 使用 re.S 来让 . 匹配换行符
+    markdown_patterns = {
+        "code": r"```.*?```",
+        "math": r"\$\$.*?\$\$",
+    }
+
+    placeholder_idx = 0
+    for block_type, pattern in markdown_patterns.items():
+        matches = re.findall(pattern, text, re.S)
+        for match in matches:
+            placeholder = f"__SPECIAL_{block_type.upper()}_{placeholder_idx}__"
+            text = text.replace(match, placeholder, 1)
+            placeholder_map[placeholder] = match
+            placeholder_idx += 1
+
+    # 第二层防护：保护非标准的、可能是公式或代码的片段
+    # 这个正则表达式寻找连续5个以上的、主要由非中文字符组成的片段
+    general_pattern = r"(?:[a-zA-Z0-9\s.,;:(){}\[\]_+\-*/=<>^|&%?!'\"√²³ⁿ∑∫≠≥≤]){5,}"
+
+    # 为了避免与已保护的占位符冲突，我们在剩余的文本上进行查找
+    # 这是一个简化的处理，更稳妥的方式是分段查找，但目前这样足以应对多数情况
+    try:
+        matches = re.findall(general_pattern, text)
+        for match in matches:
+            # 避免将包含占位符的片段再次保护
+            if "__SPECIAL_" in match:
+                continue
+
+            placeholder = f"__SPECIAL_GENERAL_{placeholder_idx}__"
+            text = text.replace(match, placeholder, 1)
+            placeholder_map[placeholder] = match
+            placeholder_idx += 1
+    except re.error as e:
+        logger.error(f"特殊区域防护正则表达式错误: {e}")
+
+    return text, placeholder_map
+
+def recover_special_blocks(sentences: list[str], placeholder_map: dict[str, str]) -> list[str]:
+    """恢复被保护的特殊块"""
+    recovered_sentences = []
+    for sentence in sentences:
+        for placeholder, original_block in placeholder_map.items():
+            sentence = sentence.replace(placeholder, original_block)
+        recovered_sentences.append(sentence)
+    return recovered_sentences
+
+
+def protect_quoted_content(text: str) -> tuple[str, dict[str, str]]:
+    """识别并保护句子中被引号包裹的内容，返回处理后的文本和映射"""
+    placeholder_map = {}
+    # 匹配中英文单双引号，使用非贪婪模式
+    quote_pattern = re.compile(r'(".*?")|(\'.*?\')|(“.*?”)|(‘.*?’)')
+
+    matches = quote_pattern.finditer(text)
+
+    # 为了避免替换时索引错乱，我们从后往前替换
+    # finditer 找到的是 match 对象，我们需要转换为 list 来反转
+    match_list = list(matches)
+
+    for idx, match in enumerate(reversed(match_list)):
+        original_quoted_text = match.group(0)
+        placeholder = f"__QUOTE_{len(match_list) - 1 - idx}__"
+
+        # 直接在原始文本上操作，替换 match 对象的 span
+        start, end = match.span()
+        text = text[:start] + placeholder + text[end:]
+
+        placeholder_map[placeholder] = original_quoted_text
+
+    return text, placeholder_map
+
+
+def recover_quoted_content(sentences: list[str], placeholder_map: dict[str, str]) -> list[str]:
+    """恢复被保护的引号内容"""
+    recovered_sentences = []
+    for sentence in sentences:
+        for placeholder, original_block in placeholder_map.items():
+            sentence = sentence.replace(placeholder, original_block)
+        recovered_sentences.append(sentence)
+    return recovered_sentences
+
+
 def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese_typo: bool = True) -> list[str]:
     if not global_config.response_post_process.enable_response_post_process:
         return [text]
 
-    # 先保护颜文字
-    if global_config.response_splitter.enable_kaomoji_protection:
-        protected_text, kaomoji_mapping = protect_kaomoji(text)
-        logger.debug(f"保护颜文字后的文本: {protected_text}")
-    else:
-        protected_text = text
-        kaomoji_mapping = {}
+    # --- 三层防护系统 ---
+    # 第一层：保护颜文字
+    protected_text, kaomoji_mapping = protect_kaomoji(text) if global_config.response_splitter.enable_kaomoji_protection else (text, {})
+
+    # 第二层：保护引号内容
+    protected_text, quote_mapping = protect_quoted_content(protected_text)
+
+    # 第三层：保护数学公式和代码块
+    protected_text, special_blocks_mapping = protect_special_blocks(protected_text)
+
     # 提取被 () 或 [] 或 （）包裹且包含中文的内容
     pattern = re.compile(r"[(\[（](?=.*[一-鿿]).*?[)\]）]")
-    _extracted_contents = pattern.findall(protected_text)  # 在保护后的文本上查找
-    # 去除 () 和 [] 及其包裹的内容
+    _extracted_contents = pattern.findall(protected_text)
     cleaned_text = pattern.sub("", protected_text)
 
-    if cleaned_text == "":
+    if cleaned_text.strip() == "":
+        # 如果清理后只剩下特殊块，直接恢复并返回
+        if special_blocks_mapping:
+             recovered = recover_special_blocks([protected_text], special_blocks_mapping)
+             return recover_kaomoji(recovered, kaomoji_mapping)
         return ["呃呃"]
 
     logger.debug(f"{text}去除括号处理后的文本: {cleaned_text}")
 
     # 对清理后的文本进行进一步处理
-    max_length = global_config.response_splitter.max_length * 2
     max_sentence_num = global_config.response_splitter.max_sentence_num
-    # 如果基本上是中文，则进行长度过滤
-    if get_western_ratio(cleaned_text) < 0.1 and len(cleaned_text) > max_length:
-        logger.warning(f"回复过长 ({len(cleaned_text)} 字符)，返回默认回复")
-        return ["懒得说"]
+
+    # --- 移除总长度检查 ---
+    # 原有的总长度检查会导致长回复被直接丢弃，现已移除，由后续的智能合并逻辑处理。
+    # max_length = global_config.response_splitter.max_length * 2
+    # if get_western_ratio(cleaned_text) < 0.1 and len(cleaned_text) > max_length:
+    #     logger.warning(f"回复过长 ({len(cleaned_text)} 字符)，返回默认回复")
+    #     return ["懒得说"]
 
     typo_generator = ChineseTypoGenerator(
         error_rate=global_config.chinese_typo.error_rate,
@@ -335,19 +452,13 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
     if global_config.response_splitter.enable and enable_splitter:
         logger.info(f"回复分割器已启用，模式: {global_config.response_splitter.split_mode}。")
 
-        split_mode = global_config.response_splitter.split_mode
-
-        if split_mode == "llm" and "[SPLIT]" in cleaned_text:
+        if "[SPLIT]" in cleaned_text:
             logger.debug("检测到 [SPLIT] 标记，使用 LLM 自定义分割。")
             split_sentences_raw = cleaned_text.split("[SPLIT]")
             split_sentences = [s.strip() for s in split_sentences_raw if s.strip()]
         else:
-            if split_mode == "llm":
-                logger.debug("未检测到 [SPLIT] 标记，本次不进行分割。")
-                split_sentences = [cleaned_text]
-            else:  # mode == "punctuation"
-                logger.debug("使用基于标点的传统模式进行分割。")
-                split_sentences = split_into_sentences_w_remove_punctuation(cleaned_text)
+            logger.debug("使用基于标点的传统模式进行分割。")
+            split_sentences = split_into_sentences_w_remove_punctuation(cleaned_text)
     else:
         logger.debug("回复分割器已禁用。")
         split_sentences = [cleaned_text]
@@ -364,15 +475,45 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
         else:
             sentences.append(sentence)
 
+    # 如果分割后的句子数量超过上限，则启动智能合并逻辑
     if len(sentences) > max_sentence_num:
-        logger.warning(f"分割后消息数量过多 ({len(sentences)} 条)，返回默认回复")
-        return [f"{global_config.bot.nickname}不知道哦"]
+        logger.info(f"分割后消息数量 ({len(sentences)}) 超过上限 ({max_sentence_num})，启动智能合并...")
+
+        # 计算需要合并的次数
+        num_to_merge = len(sentences) - max_sentence_num
+
+        for _ in range(num_to_merge):
+            # 如果句子数量已经达标，提前退出
+            if len(sentences) <= max_sentence_num:
+                break
+
+            # 寻找最短的相邻句子对
+            min_len = float("inf")
+            merge_idx = -1
+            for i in range(len(sentences) - 1):
+                combined_len = len(sentences[i]) + len(sentences[i+1])
+                if combined_len < min_len:
+                    min_len = combined_len
+                    merge_idx = i
+
+            # 如果找到了可以合并的对，则执行合并
+            if merge_idx != -1:
+                # 将后一个句子合并到前一个句子
+                # 我们在合并时保留原始标点（如果有的话），或者添加一个逗号来确保可读性
+                merged_sentence = sentences[merge_idx] + "，" + sentences[merge_idx + 1]
+                sentences[merge_idx] = merged_sentence
+                # 删除后一个句子
+                del sentences[merge_idx + 1]
+
+        logger.info(f"智能合并完成，最终消息数量: {len(sentences)}")
 
     # if extracted_contents:
     #     for content in extracted_contents:
     #         sentences.append(content)
 
-    # 在所有句子处理完毕后，对包含占位符的列表进行恢复
+    # --- 恢复所有被保护的内容 ---
+    sentences = recover_special_blocks(sentences, special_blocks_mapping)
+    sentences = recover_quoted_content(sentences, quote_mapping)
     if global_config.response_splitter.enable_kaomoji_protection:
         sentences = recover_kaomoji(sentences, kaomoji_mapping)
 
@@ -382,8 +523,8 @@ def process_llm_response(text: str, enable_splitter: bool = True, enable_chinese
 def calculate_typing_time(
     input_string: str,
     thinking_start_time: float,
-    chinese_time: float = 0.3,
-    english_time: float = 0.15,
+    chinese_time: float = 0.2,
+    english_time: float = 0.1,
     is_emoji: bool = False,
 ) -> float:
     """
@@ -440,7 +581,7 @@ def cosine_similarity(v1, v2):
 def text_to_vector(text):
     """将文本转换为词频向量"""
     # 分词
-    words = rjieba.lcut(text)
+    words = rjieba.lcut(text) # type: ignore
     return Counter(words)
 
 
@@ -544,7 +685,7 @@ def get_western_ratio(paragraph):
     return western_count / len(alnum_chars)
 
 
-def count_messages_between(start_time: float, end_time: float, stream_id: str) -> tuple[int, int]:
+async def count_messages_between(start_time: float, end_time: float, stream_id: str) -> tuple[int, int]:
     """计算两个时间点之间的消息数量和文本总长度
 
     Args:
@@ -573,10 +714,10 @@ def count_messages_between(start_time: float, end_time: float, stream_id: str) -
 
     try:
         # 先获取消息数量
-        count = count_messages(filter_query)
+        count = await count_messages(filter_query)
 
         # 获取消息内容计算总长度
-        messages = find_messages(message_filter=filter_query)
+        messages = await find_messages(message_filter=filter_query)
         total_length = sum(len(msg.get("processed_plain_text", "")) for msg in messages)
 
         return count, total_length
@@ -782,3 +923,51 @@ def assign_message_ids_flexible(
 # # 增强版本 - 使用时间戳
 # result3 = assign_message_ids_flexible(messages, prefix="ts", use_timestamp=True)
 # # 结果: [{'id': 'ts123a1b', 'message': 'Hello'}, {'id': 'ts123c2d', 'message': 'World'}, {'id': 'ts123e3f', 'message': 'Test message'}]
+
+
+def filter_system_format_content(content: str | None) -> str:
+    """
+    过滤系统格式化内容，移除回复、@、图片、表情包等系统生成的格式文本
+
+    此方法过滤以下类型的系统格式化内容：
+    1. 回复格式：[回复xxx]，说：xxx (包括深度嵌套)
+    2. 表情包格式：[表情包：xxx]
+    3. 图片格式：[图片:xxx]
+    4. @格式：@<xxx>
+    5. 错误格式：[表情包(...)]、[图片(...)]
+
+    Args:
+        content: 原始内容
+
+    Returns:
+        过滤后的纯文本内容
+    """
+    if not content:
+        return ""
+
+    original_content = content
+    cleaned_content = content.strip()
+
+    # 核心逻辑：优先处理最复杂的[回复...]格式，特别是嵌套格式。
+    # 这种方法最稳健：如果以[回复开头，就找到最后一个]，然后切掉之前的所有内容。
+    if cleaned_content.startswith("[回复"):
+        last_bracket_index = cleaned_content.rfind("]")
+        if last_bracket_index != -1:
+            cleaned_content = cleaned_content[last_bracket_index + 1 :].strip()
+
+    # 在处理完回复格式后，再清理其他简单的格式
+    # 新增：移除所有残余的 [...] 格式，例如 [at=...] 等
+    cleaned_content = re.sub(r"\[.*?\]", "", cleaned_content)
+
+    # 移除@格式：@<xxx>
+    cleaned_content = re.sub(r"@<[^>]*>", "", cleaned_content)
+
+    # 记录过滤操作
+    if cleaned_content != original_content.strip():
+        logger.info(
+            f"[系统格式过滤器] 检测到并清理了系统格式化文本。"
+            f"原始内容: '{original_content}', "
+            f"清理后: '{cleaned_content}'"
+        )
+
+    return cleaned_content

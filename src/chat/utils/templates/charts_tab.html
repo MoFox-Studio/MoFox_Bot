@@ -1,0 +1,16 @@
+<div id="charts" class="tab-content">
+    <h2>数据图表</h2>
+    <div style="margin: 20px 0; text-align: center;">
+        <label style="margin-right: 10px; font-weight: bold;">时间范围:</label>
+        <button class="time-range-btn" onclick="switchTimeRange('6h')">6小时</button>
+        <button class="time-range-btn" onclick="switchTimeRange('12h')">12小时</button>
+        <button class="time-range-btn" onclick="switchTimeRange('24h')">24小时</button>
+        <button class="time-range-btn" onclick="switchTimeRange('48h')">48小时</button>
+    </div>
+    <div style="margin-top: 20px;">
+        <div style="margin-bottom: 40px;"><canvas id="totalCostChart" width="800" height="400"></canvas></div>
+        <div style="margin-bottom: 40px;"><canvas id="costByModuleChart" width="800" height="400"></canvas></div>
+        <div style="margin-bottom: 40px;"><canvas id="costByModelChart" width="800" height="400"></canvas></div>
+        <div><canvas id="messageByChatChart" width="800" height="400"></canvas></div>
+    </div>
+</div>

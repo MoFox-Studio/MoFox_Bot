@@ -1,3 +1,5 @@
+from typing import Any
+
 from src.common.logger import get_logger
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.base.component_types import ComponentType
@@ -5,8 +7,16 @@ from src.plugin_system.base.component_types import ComponentType
 logger = get_logger("tool_api")
 
 
-def get_tool_instance(tool_name: str) -> BaseTool | None:
-    """获取公开工具实例"""
+def get_tool_instance(tool_name: str, chat_stream: Any = None) -> BaseTool | None:
+    """获取公开工具实例
+
+    Args:
+        tool_name: 工具名称
+        chat_stream: 聊天流对象，用于提供上下文信息
+
+    Returns:
+        BaseTool: 工具实例，如果工具不存在则返回None
+    """
     from src.plugin_system.core import component_registry
 
     # 获取插件配置
@@ -17,34 +27,40 @@ def get_tool_instance(tool_name: str) -> BaseTool | None:
         plugin_config = None
 
     tool_class: type[BaseTool] = component_registry.get_component_class(tool_name, ComponentType.TOOL)  # type: ignore
-    if tool_class:
-        return tool_class(plugin_config)
-
-    # 如果不是常规工具，检查是否是MCP工具
-    # MCP工具不需要返回实例，会在execute_tool_call中特殊处理
-    return None
+    return tool_class(plugin_config, chat_stream) if tool_class else None
 
 
-def get_llm_available_tool_definitions():
-    """获取LLM可用的工具定义列表
+def get_llm_available_tool_definitions() -> list[dict[str, Any]]:
+    """获取LLM可用的工具定义列表（包括 MCP 工具）
 
     Returns:
-        List[Tuple[str, Dict[str, Any]]]: 工具定义列表，为[("tool_name", 定义)]
+        list[dict[str, Any]]: 工具定义列表
     """
     from src.plugin_system.core import component_registry
 
     llm_available_tools = component_registry.get_llm_available_tools()
-    tool_definitions = [(name, tool_class.get_tool_definition()) for name, tool_class in llm_available_tools.items()]
+    tool_definitions = []
 
-    # 添加MCP工具
+    # 获取常规工具定义
+    for tool_name, tool_class in llm_available_tools.items():
+        try:
+            # 调用类方法 get_tool_definition 获取定义
+            definition = tool_class.get_tool_definition()
+            tool_definitions.append(definition)
+        except Exception as e:
+            logger.error(f"获取工具 {tool_name} 的定义失败: {e}")
+
+    # 获取 MCP 工具定义
     try:
-        from src.plugin_system.utils.mcp_tool_provider import mcp_tool_provider
-
-        mcp_tools = mcp_tool_provider.get_mcp_tool_definitions()
-        tool_definitions.extend(mcp_tools)
-        if mcp_tools:
-            logger.debug(f"已添加 {len(mcp_tools)} 个MCP工具到可用工具列表")
+        mcp_tools = component_registry.get_mcp_tools()
+        for mcp_tool in mcp_tools:
+            try:
+                definition = mcp_tool.get_tool_definition()
+                tool_definitions.append(definition)
+            except Exception as e:
+                logger.error(f"获取 MCP 工具 {mcp_tool.name} 的定义失败: {e}")
     except Exception as e:
-        logger.debug(f"获取MCP工具失败（可能未配置）: {e}")
+        logger.debug(f"获取 MCP 工具列表失败（可能未启用）: {e}")
 
     return tool_definitions
+

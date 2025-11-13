@@ -88,6 +88,8 @@ class QAManager:
         else:
             logger.info("未找到相关关系，将使用文段检索结果")
             result = paragraph_search_res
+            if result and result[0][1] < global_config.lpmm_knowledge.qa_paragraph_threshold:
+                result = []
             ppr_node_weights = None
 
         # 过滤阈值

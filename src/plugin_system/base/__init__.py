@@ -8,6 +8,7 @@ from .base_action import BaseAction
 from .base_command import BaseCommand
 from .base_events_handler import BaseEventHandler
 from .base_plugin import BasePlugin
+from .base_prompt import BasePrompt
 from .base_tool import BaseTool
 from .command_args import CommandArgs
 from .component_types import (
@@ -28,7 +29,8 @@ from .component_types import (
     ToolParamType,
 )
 from .config_types import ConfigField
-from .plus_command import PlusCommand, PlusCommandAdapter, create_plus_command_adapter
+from .plugin_metadata import PluginMetadata
+from .plus_command import PlusCommand, create_plus_command_adapter
 
 __all__ = [
     "ActionActivationType",
@@ -37,6 +39,7 @@ __all__ = [
     "BaseCommand",
     "BaseEventHandler",
     "BasePlugin",
+    "BasePrompt",
     "BaseTool",
     "ChatMode",
     "ChatType",
@@ -49,6 +52,7 @@ __all__ = [
     "EventType",
     "MaiMessages",
     "PluginInfo",
+    "PluginMetadata",
     # 增强命令系统
     "PlusCommand",
     "PlusCommandAdapter",

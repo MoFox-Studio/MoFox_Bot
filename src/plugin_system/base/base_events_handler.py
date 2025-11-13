@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import ClassVar
 
 from src.common.logger import get_logger
 
@@ -21,7 +22,7 @@ class BaseEventHandler(ABC):
     """处理器权重，越大权重越高"""
     intercept_message: bool = False
     """是否拦截消息，默认为否"""
-    init_subscribe: list[EventType | str] = [EventType.UNKNOWN]
+    init_subscribe: ClassVar[list[EventType | str]] = [EventType.UNKNOWN]
     """初始化时订阅的事件名称"""
     plugin_name = None
 

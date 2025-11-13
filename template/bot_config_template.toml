@@ -1,5 +1,5 @@
 [inner]
-version = "7.2.4"
+version = "7.7.0"
 
 #----以下是给开发人员阅读的，如果你只是部署了MoFox-Bot，不需要阅读----
 #如果你想要修改配置文件，请递增version的值
@@ -43,11 +43,26 @@ connection_timeout = 10 # 连接超时时间（秒）
 # 批量动作记录存储配置
 batch_action_storage_enabled = true # 是否启用批量保存动作记录（开启后将多个动作一次性写入数据库，提升性能）
 
+# 数据库缓存配置（防止内存溢出）
+enable_database_cache = true # 是否启用数据库查询缓存系统
+cache_l1_max_size = 1000 # L1缓存最大条目数（热数据，内存占用约1-5MB）
+cache_l1_ttl = 300 # L1缓存生存时间（秒）
+cache_l2_max_size = 10000 # L2缓存最大条目数（温数据，内存占用约10-50MB）
+cache_l2_ttl = 1800 # L2缓存生存时间（秒）
+cache_cleanup_interval = 60 # 缓存清理任务执行间隔（秒）
+cache_max_memory_mb = 50 # 缓存最大内存占用（MB），超过此值将触发强制清理
+cache_max_item_size_mb = 5 # 单个缓存条目最大大小（MB），超过此值将不缓存
+
 [permission] # 权限系统配置
 # Master用户配置（拥有最高权限，无视所有权限节点）
 # 格式：[[platform, user_id], ...]
 # 示例：[["qq", "123456"], ["telegram", "user789"]]
 master_users = []# ["qq", "123456789"],  # 示例：QQ平台的Master用户
+
+[permission.master_prompt] # 主人身份提示词配置
+enable = false # 是否启用主人/非主人提示注入
+master_hint = "你正在与自己的主人交流，注意展现亲切与尊重。" # 主人提示词
+non_master_hint = "对方并非你的主人，请保持常规互动风格。" # 非主人提示词
 
 [bot]
 platform = "qq"
@@ -74,22 +89,27 @@ background_story = ""
 # 描述MoFox-Bot说话的表达风格，表达习惯，如要修改，可以酌情新增内容
 reply_style = "回复可以简短一些。可以参考贴吧，知乎和微博的回复风格，回复不要浮夸，不要用夸张修辞，平淡一些。"
 
-# 安全与互动底线 (Bot在任何情况下都必须遵守的原则)
-# 你可以在这里定义Bot的行为红线，例如如何回应不恰当的问题。
+# 互动规则 (Bot在任何情况下都必须遵守的原则)
+# 你可以在这里定义Bot在互动中的行为准则。
 safety_guidelines = [
     "拒绝任何包含骚扰、冒犯、暴力、色情或危险内容的请求。",
     "在拒绝时，请使用符合你人设的、坚定的语气。",
     "不要执行任何可能被用于恶意目的的指令。"
 ]
 
-#回复的Prompt模式选择：s4u为原有s4u样式，normal为0.9之前的模式
-prompt_mode = "s4u" # 可选择 "s4u" 或 "normal"
-
 compress_personality = false # 是否压缩人格，压缩后会精简人格信息，节省token消耗并提高回复性能，但是会丢失一些信息，如果人设不长，可以关闭
 compress_identity = true # 是否压缩身份，压缩后会精简身份信息，节省token消耗并提高回复性能，但是会丢失一些信息，如果不长，可以关闭
 
 [expression]
 # 表达学习配置
+# mode: 表达方式模式，可选：
+#   - "classic": 经典模式，随机抽样 + LLM选择
+#   - "exp_model": 表达模型模式，使用机器学习模型预测最合适的表达
+mode = "classic"
+
+# expiration_days: 表达方式过期天数，超过此天数未激活的表达方式将被清理
+expiration_days = 1
+
 # rules是一个列表，每个元素都是一个学习规则
 # chat_stream_id: 聊天流ID，格式为 "platform:id:type"，例如 "qq:123456:private"。空字符串""表示全局配置
 # use_expression: 是否使用学到的表达 (true/false)
@@ -122,17 +142,14 @@ allow_reply_self = false # 是否允许回复自己说的话
 max_context_size = 25 # 上下文长度
 thinking_timeout = 40 # MoFox-Bot一次回复最长思考规划时间，超过这个时间的思考会放弃（往往是api反应太慢）
 
+# 消息缓存系统配置
+enable_message_cache = false # 是否启用消息缓存系统（启用后，处理中收到的消息会被缓存，处理完成后统一刷新到未读列表）
+
 # 消息打断系统配置 - 反比例函数概率模型
-interruption_enabled = true # 是否启用消息打断系统
+interruption_enabled = false # 是否启用消息打断系统
+allow_reply_interruption = false # 是否允许在正在生成回复时打断（true=允许打断回复，false=回复期间不允许打断）
 interruption_max_limit = 5 # 每个聊天流的最大打断次数
 interruption_min_probability = 0.05 # 最低打断概率（反比例函数趋近的下限值）
-interruption_afc_reduction = 0.05 # 每次连续打断降低的afc阈值数值
-
-# DEPRECATED: interruption_probability_factor (已废弃的配置项)
-# 新的反比例函数概率模型不再需要复杂的概率因子
-# 公式：打断概率 = 1.4 / (当前打断次数 + 2.0) + 最低概率
-# 特性：第1次80% → 第2次35% → 第3次15% → 趋近于最低概率
-# interruption_probability_factor = 0.8 # 此配置已废弃，请删除
 
 # 动态消息分发系统配置
 dynamic_distribution_enabled = true # 是否启用动态消息分发周期调整
@@ -141,12 +158,15 @@ dynamic_distribution_min_interval = 1.0 # 最小分发间隔（秒）
 dynamic_distribution_max_interval = 30.0 # 最大分发间隔（秒）
 dynamic_distribution_jitter_factor = 0.2 # 分发间隔随机扰动因子
 max_concurrent_distributions = 10 # 最大并发处理的消息流数量，可以根据API性能和服务器负载调整
+enable_decision_history = true # 是否启用决策历史功能
+decision_history_length = 3 # 决策历史记录的长度，用于增强语言模型的上下文连续性
 
+# 多重回复控制配置
+enable_multiple_replies = false # 是否允许多重回复（True=允许多个回复动作，False=只保留一个回复动作）
+multiple_replies_strategy = "keep_first" # 多重回复处理策略：keep_first(保留第一个)，keep_best(保留最佳)，keep_last(保留最后一个)
 
-[relationship]
-enable_relationship = true # 是否启用关系系统
-relation_frequency = 1 # 关系频率，MoFox-Bot构建关系的频率
-
+# 表情包回复配置
+allow_reply_to_emoji = false # 是否允许回复表情包消息
 
 [message_receive]
 # 以下是消息过滤，可以根据规则过滤特定消息，将不会读取这些消息
@@ -159,35 +179,17 @@ ban_msgs_regex = [
     #"https?://[^\\s]+", # 匹配https链接
     #"\\d{4}-\\d{2}-\\d{2}", # 匹配日期
 ]
+# 静默群组列表，在这些群组中，只有在被@或回复时才会响应
+# 格式: ["group_id1", "group_id2"]
+mute_group_list = []
 
-[anti_prompt_injection] # LLM反注入系统配置
-enabled = false # 是否启用反注入系统
-enabled_rules = false # 是否启用规则检测
-enabled_LLM = false # 是否启用LLM检测
-process_mode = "lenient" # 处理模式：strict(严格模式，直接丢弃), lenient(宽松模式，消息加盾), auto(自动模式), counter_attack(反击模式，使用LLM反击并丢弃消息)
-# 白名单配置
-# 格式：[[platform, user_id], ...]
-# 示例：[["qq", "123456"], ["telegram", "user789"]]
-whitelist = [] # 用户白名单，这些用户的消息将跳过检测
-# LLM检测配置
-llm_detection_enabled = true # 是否启用LLM二次分析
-llm_detection_threshold = 0.7 # LLM判定危险的置信度阈值(0-1)
-# 性能配置
-cache_enabled = true # 是否启用检测结果缓存
-cache_ttl = 3600 # 缓存有效期(秒)
-max_message_length = 150 # 最大检测消息长度，超过将直接判定为危险
-# 统计配置
-stats_enabled = true # 是否启用统计功能
-# 自动封禁配置
-auto_ban_enabled = false # 是否启用自动封禁功能
-auto_ban_violation_threshold = 3 # 触发封禁的违规次数阈值
-auto_ban_duration_hours = 2 # 封禁持续时间（小时）
-# 消息加盾配置（宽松模式下使用）
-shield_prefix = "🛡️ " # 加盾消息前缀
-shield_suffix = " 🛡️" # 加盾消息后缀
-
-[normal_chat] #普通聊天
-willing_mode = "classical" # 回复意愿模式 —— 经典模式：classical，mxp模式：mxp，自定义模式：custom（需要你自己实现）
+[notice] # Notice消息配置
+enable_notice_trigger_chat = false # 是否允许notice消息触发聊天流程（默认关闭，notice只会被记录但不会触发回复）
+notice_in_prompt = true # 是否在提示词中展示最近的notice消息
+notice_prompt_limit = 5 # 在提示词中展示的最大notice数量
+notice_time_window = 1800 # notice时间窗口（秒），只有这个时间范围内的notice会在提示词中展示，默认0.5小时
+max_notices_per_chat = 30 # 每个聊天保留的notice数量上限
+notice_retention_time = 3600 # notice保留时间（秒），默认1小时
 
 [tool]
 enable_tool = true # 是否在普通聊天中启用工具
@@ -213,158 +215,156 @@ enable_emotion_analysis = false # 是否启用表情包感情关键词二次识�
 emoji_selection_mode = "emotion"
 max_context_emojis = 30 # 每次随机传递给LLM的表情包详细描述的最大数量，0为全部
 
+# ==================== 记忆图系统配置 (Memory Graph System) ====================
+# 新一代记忆系统：基于知识图谱 + 语义向量的混合记忆架构
+# 替代旧的 enhanced memory 系统
+
 [memory]
-enable_memory = true # 是否启用记忆系统
-memory_build_interval = 600 # 记忆构建间隔（秒）。间隔越低，学习越频繁，但可能产生更多冗余信息
+# === 基础配置 ===
+enable = true # 是否启用记忆系统
+data_dir = "data/memory_graph" # 记忆数据存储目录
 
-# === 记忆采样系统配置 ===
-memory_sampling_mode = "immediate" # 记忆采样模式：'immediate'(即时采样), 'hippocampus'(海马体定时采样) or 'all'(双模式)
+# === 向量存储配置 ===
+vector_collection_name = "memory_nodes" # 向量集合名称
+vector_db_path = "data/memory_graph/chroma_db" # 向量数据库路径 (使用独立的chromadb实例)
 
-# 海马体双峰采样配置
-enable_hippocampus_sampling = true # 启用海马体双峰采样策略
-hippocampus_sample_interval = 1800 # 海马体采样间隔（秒，默认30分钟）
-hippocampus_sample_size = 30 # 海马体采样样本数量
-hippocampus_batch_size = 10 # 海马体批量处理大小
-hippocampus_distribution_config = [12.0, 8.0, 0.7, 48.0, 24.0, 0.3] # 海马体双峰分布配置：[近期均值(h), 近期标准差(h), 近期权重, 远期均值(h), 远期标准差(h), 远期权重]
+# === 记忆检索配置 ===
+search_top_k = 10 # 默认检索返回数量
+search_min_importance = 0.3 # 最小重要性阈值 (0.0-1.0)
+search_similarity_threshold = 0.6 # 向量相似度阈值
+search_expand_semantic_threshold = 0.3 # 图扩展时语义相似度阈值（建议0.3-0.5，过低可能引入无关记忆，过高无法扩展）
 
-# 即时采样配置
-precision_memory_reply_threshold = 0.5 # 精准记忆回复阈值（0-1），高于此值的对话将立即构建记忆
+# 智能查询优化
+enable_query_optimization = true # 启用查询优化（使用小模型分析对话历史，生成综合性搜索查询）
 
-min_memory_length = 10 # 最小记忆长度
-max_memory_length = 500 # 最大记忆长度
-memory_value_threshold = 0.5 # 记忆价值阈值，低于该值的记忆会被丢弃
-vector_similarity_threshold = 0.7 # 向量相似度阈值
-semantic_similarity_threshold = 0.6 # 语义重排阶段的最低匹配阈值
+# === 记忆整合配置 ===
+# 记忆整合包含两个功能：1)去重（合并相似记忆）2)关联（建立记忆关系）
+# 注意：整合任务会遍历所有记忆进行相似度计算，可能占用较多资源
+# 建议：1) 降低执行频率；2) 提高相似度阈值减少误判；3) 限制批量大小
+consolidation_enabled = true # 是否启用记忆整合
+consolidation_interval_hours = 1.0 # 整合任务执行间隔
+consolidation_deduplication_threshold = 0.9 # 相似记忆去重阈值
+consolidation_time_window_hours = 2.0 # 整合时间窗口（小时）- 统一用于去重和关联
+consolidation_max_batch_size = 100 # 单次最多处理的记忆数量
 
-metadata_filter_limit = 100 # 元数据过滤阶段返回数量上限
-vector_search_limit = 50 # 向量搜索阶段返回数量上限
-semantic_rerank_limit = 20 # 语义重排阶段返回数量上限
-final_result_limit = 10 # 综合筛选后的最终返回数量
+# 记忆关联配置（整合功能的子模块）
+consolidation_linking_enabled = true # 是否启用记忆关联建立
+consolidation_linking_max_candidates = 10 # 每个记忆最多关联的候选数
+consolidation_linking_max_memories = 20 # 单次最多处理的记忆总数
+consolidation_linking_min_importance = 0.5 # 最低重要性阈值（低于此值的记忆不参与关联）
+consolidation_linking_pre_filter_threshold = 0.7 # 向量相似度预筛选阈值
+consolidation_linking_max_pairs_for_llm = 5 # 最多发送给LLM分析的候选对数
+consolidation_linking_min_confidence = 0.7 # LLM分析最低置信度阈值
+consolidation_linking_llm_temperature = 0.2 # LLM分析温度参数
+consolidation_linking_llm_max_tokens = 1500 # LLM分析最大输出长度
 
-vector_weight = 0.4 # 综合评分中向量相似度的权重
-semantic_weight = 0.3 # 综合评分中语义匹配的权重
-context_weight = 0.2 # 综合评分中上下文关联的权重
-recency_weight = 0.1 # 综合评分中时效性的权重
+# === 记忆遗忘配置 ===
+forgetting_enabled = true # 是否启用自动遗忘
+forgetting_activation_threshold = 0.1 # 激活度阈值（低于此值的记忆会被遗忘）
+forgetting_min_importance = 0.8 # 最小保护重要性（高于此值的记忆不会被遗忘）
 
-fusion_similarity_threshold = 0.85 # 记忆融合时的相似度阈值
-deduplication_window_hours = 24 # 记忆去重窗口（小时）
+# === 记忆激活配置 ===
+activation_decay_rate = 0.9 # 激活度衰减率（每天衰减10%）
+activation_propagation_strength = 0.5 # 激活传播强度（传播到相关记忆的激活度比例）
+activation_propagation_depth = 1 # 激活传播深度（最多传播几层，建议1-2）
 
-# 智能遗忘机制配置 (新增)
-enable_memory_forgetting = true # 是否启用智能遗忘机制
-forgetting_check_interval_hours = 24 # 遗忘检查间隔（小时）
+# === 记忆检索配置 ===
+search_max_expand_depth = 2 # 检索时图扩展深度（0=仅直接匹配，1=扩展1跳，2=扩展2跳，推荐1-2）
+search_vector_weight = 0.4 # 向量相似度权重
+search_graph_distance_weight = 0.2 # 图距离权重
+search_importance_weight = 0.2 # 重要性权重
+search_recency_weight = 0.2 # 时效性权重
 
-# 遗忘阈值配置
-base_forgetting_days = 30.0 # 基础遗忘天数
-min_forgetting_days = 7.0 # 最小遗忘天数（重要记忆也会被保留的最少天数）
-max_forgetting_days = 365.0 # 最大遗忘天数（普通记忆最长保留天数）
+# === 路径评分扩展算法配置（实验性功能）===
+# 这是一种全新的图检索算法，通过路径传播和分数聚合来发现相关记忆
+# 优势：更精确的图结构利用、路径合并机制、动态剪枝优化
+# 注意：这是实验性功能，可能需要调整参数以获得最佳效果
+enable_path_expansion = false # 是否启用路径评分扩展算法（默认false，使用传统图扩展）
+path_expansion_max_hops = 2 # 路径扩展最大跳数（建议1-3）
+path_expansion_damping_factor = 0.85 # 路径分数衰减因子（PageRank风格，0.85推荐）
+path_expansion_max_branches = 10 # 每节点最大分叉数（控制探索广度）
+path_expansion_merge_strategy = "weighted_geometric" # 路径合并策略: weighted_geometric(几何平均), max_bonus(最大值加成)
+path_expansion_pruning_threshold = 0.9 # 路径剪枝阈值（新路径分数需达到已有路径的90%）
+path_expansion_path_score_weight = 0.50 # 路径分数在最终评分中的权重
+path_expansion_importance_weight = 0.30 # 重要性在最终评分中的权重
+path_expansion_recency_weight = 0.20 # 时效性在最终评分中的权重
 
-# 重要程度权重 - 不同重要程度的额外保护天数
-critical_importance_bonus = 45.0 # 关键重要性额外天数
-high_importance_bonus = 30.0 # 高重要性额外天数
-normal_importance_bonus = 15.0 # 一般重要性额外天数
-low_importance_bonus = 0.0 # 低重要性额外天数
-
-# 置信度权重 - 不同置信度的额外保护天数
-verified_confidence_bonus = 30.0 # 已验证置信度额外天数
-high_confidence_bonus = 20.0 # 高置信度额外天数
-medium_confidence_bonus = 10.0 # 中等置信度额外天数
-low_confidence_bonus = 0.0 # 低置信度额外天数
-
-# 激活频率权重
-activation_frequency_weight = 0.5 # 每次激活增加的天数权重
-max_frequency_bonus = 10.0 # 最大激活频率奖励天数
-
-# 休眠机制
-dormant_threshold_days = 90 # 休眠状态判定天数（超过此天数未访问的记忆进入休眠状态）
-
-# 统一存储配置 (已弃用 - 请使用Vector DB配置)
-# DEPRECATED: unified_storage_path = "data/unified_memory"
-# DEPRECATED: unified_storage_cache_limit = 10000
-# DEPRECATED: unified_storage_auto_save_interval = 50
-# DEPRECATED: unified_storage_enable_compression = true
-
-# Vector DB存储配置 (新增 - 替代JSON存储)
-enable_vector_memory_storage = true # 启用Vector DB存储
-enable_llm_instant_memory = true # 启用基于LLM的瞬时记忆
-enable_vector_instant_memory = true # 启用基于向量的瞬时记忆
-
-# Vector DB配置
-vector_db_memory_collection = "unified_memory_v2" # Vector DB主记忆集合名称
-vector_db_metadata_collection = "memory_metadata_v2" # Vector DB元数据集合名称
-vector_db_similarity_threshold = 0.5 # Vector DB相似度阈值 (推荐范围: 0.5-0.6, 过高会导致检索不到结果)
-vector_db_search_limit = 20 # Vector DB单次搜索返回的最大结果数
-vector_db_batch_size = 100 # 批处理大小 (批量存储记忆时每批处理的记忆条数)
-vector_db_enable_caching = true # 启用内存缓存
-vector_db_cache_size_limit = 1000 # 缓存大小限制 (内存缓存最多保存的记忆条数)
-vector_db_auto_cleanup_interval = 3600 # 自动清理间隔（秒）
-vector_db_retention_hours = 720 # 记忆保留时间（小时，默认30天）
-
-# 多阶段召回配置（可选）
-# 取消注释以启用更严格的粗筛，适用于大规模记忆库（>10万条）
-# memory_importance_threshold = 0.3   # 重要性阈值（过滤低价值记忆，范围0.0-1.0）
-# memory_recency_days = 30            # 时间范围（只搜索最近N天的记忆，0表示不限制）
-
-# Vector DB配置 (ChromaDB)
-[vector_db]
-type = "chromadb" # Vector DB类型
-path = "data/chroma_db" # Vector DB数据路径
-
-[vector_db.settings]
-anonymized_telemetry = false # 禁用匿名遥测
-allow_reset = true # 允许重置
-
-[vector_db.collections]
-unified_memory_v2 = { description = "统一记忆存储V2", hnsw_space = "cosine", version = "2.0" }
-memory_metadata_v2 = { description = "记忆元数据索引", hnsw_space = "cosine", version = "2.0" } 
-semantic_cache = { description = "语义缓存", hnsw_space = "cosine" }
+# === 性能配置 ===
+max_memory_nodes_per_memory = 10 # 每条记忆最多包含的节点数
+max_related_memories = 5 # 激活传播时最多影响的相关记忆数
 
 [voice]
 enable_asr = true # 是否启用语音识别，启用后MoFox-Bot可以识别语音消息，启用该功能需要配置语音识别模型[model.voice]
+# [语音识别提供商] 可选值: "api", "local". 默认使用 "api".
+# 注意: "local" 会消耗大量CPU资源, 可能导致低配服务器卡顿. 详情请见 stt_whisper_plugin 插件配置.
+asr_provider = "api"
 
 [lpmm_knowledge] # lpmm知识库配置
 enable = false # 是否启用lpmm知识库
+enable_summary = true # 是否启用知识库总结
 rag_synonym_search_top_k = 10 # 同义词搜索TopK
 rag_synonym_threshold = 0.8 # 同义词阈值（相似度高于此阈值的词语会被认为是同义词）
 info_extraction_workers = 3 # 实体提取同时执行线程数，非Pro模型不要设置超过5
 qa_relation_search_top_k = 10 # 关系搜索TopK
 qa_relation_threshold = 0.5 # 关系阈值（相似度高于此阈值的关系会被认为是相关的关系）
 qa_paragraph_search_top_k = 1000 # 段落搜索TopK（不能过小，可能影响搜索结果）
+qa_paragraph_threshold = 0.4 # 段落阈值（相似度高于此阈值的段落才会被认为是相关的）
 qa_paragraph_node_weight = 0.05 # 段落节点权重（在图搜索&PPR计算中的权重，当搜索仅使用DPR时，此参数不起作用）
 qa_ent_filter_top_k = 10 # 实体过滤TopK
 qa_ppr_damping = 0.8 # PPR阻尼系数
 qa_res_top_k = 3 # 最终提供的文段TopK
 embedding_dimension = 1024 # 嵌入向量维度,应该与模型的输出维度一致
 
-# keyword_rules 用于设置关键词触发的额外回复知识
-# 添加新规则方法：在 keyword_rules 数组中增加一项，格式如下：
-# { keywords = ["关键词1", "关键词2"], reaction = "触发这些关键词时的回复内容" }
-# 例如，添加一个新规则：当检测到“你好”或“hello”时回复“你好，有什么可以帮你？”
-# { keywords = ["你好", "hello"], reaction = "你好，有什么可以帮你？" }
-[keyword_reaction]
-keyword_rules = [
-    { keywords = ["人机", "bot", "机器", "入机", "robot", "机器人", "ai", "AI"], reaction = "有人说你是人机或者机器人，否定这一事实，攻击或反问他。注意，只有认为你是机器人才回复，否则不要否认" },
-    { keywords = ["测试关键词回复", "test"], reaction = "回答测试成功" },
-    #{ keywords = ["你好", "hello"], reaction = "你好，有什么可以帮你？" }    
-    # 在此处添加更多规则，格式同上
-]
+# --- 反应规则系统 ---
+# 在这里，您可以定义一系列基于关键词或正则表达式的自动回复规则。
+# 每条规则都是一个独立的 [[reaction.rules]] 块。
 
-regex_rules = [
-    { regex = ["^(?P<n>\\S{1,20})是这样的$"], reaction = "请按照以下模板造句：[n]是这样的，xx只要xx就可以，可是[n]要考虑的事情就很多了，比如什么时候xx，什么时候xx，什么时候xx。（请自由发挥替换xx部分，只需保持句式结构，同时表达一种将[n]过度重视的反讽意味）" }
-]
+# chat_stream_id: 聊天流ID (格式 "platform:id:type")。
+#                 用于指定此规则仅在哪个聊天中生效。
+#                 如果留空 ("")，则为全局规则，对所有聊天生效。
+# rule_type:      规则类型，必须是 "keyword" 或 "regex"。
+#                 "keyword": 表示本条规则使用关键词匹配。
+#                 "regex":   表示本条规则使用正则表达式匹配。
+# patterns:       一个字符串列表，根据 rule_type 的不同，这里填写关键词或正则表达式。
+# reaction:       触发规则后，机器人发送的回复内容。
+
+[[reaction.rules]]
+chat_stream_id = ""
+rule_type = "keyword"
+patterns = ["人机", "bot", "机器", "入机", "robot", "机器人", "ai", "AI"]
+reaction = "有人说你是人机或者机器人，否定这一事实，攻击或反问他。注意，只有认为你是机器人才回复，否则不要否认"
+
+[[reaction.rules]]
+chat_stream_id = ""
+rule_type = "keyword"
+patterns = ["测试关键词回复", "test"]
+reaction = "回答测试成功"
+
+[[reaction.rules]]
+chat_stream_id = ""
+rule_type = "regex"
+patterns = ["^(?P<n>\\S{1,20})是这样的$"]
+reaction = "请按照以下模板造句：[n]是这样的，xx只要xx就可以，可是[n]要考虑的事情就很多了，比如什么时候xx，什么时候xx，什么时候xx。（请自由发挥替换xx部分，只需保持句式结构，同时表达一种将[n]过度重视的反讽意味）"
 
 # 可以自定义部分提示词
 [custom_prompt]
 image_prompt = "请用中文描述这张图片的内容。如果有文字，请把文字描述概括出来，请留意其主题，直观感受，输出为一段平文本，最多30字，请注意不要分点，就输出一段文本"
 planner_custom_prompt_content = "" # 决策器自定义提示词内容，如果这里没有内容则不生效
 
+# 注意力优化配置 - 防止提示词过度相似导致LLM注意力退化
+[attention_optimization]
+enable_noise = false # 启用轻量级噪声注入（空白字符调整）
+enable_semantic_variants = false # 启用语义变体替换（实验性功能）
+noise_strength = "light" # 噪声强度: "light"(轻量) | "medium"(中等) | "heavy"(强力)，推荐使用light
+
 [response_post_process]
 enable_response_post_process = true # 是否启用回复后处理，包括错别字生成器，回复分割器
 
 [chinese_typo]
 enable = true # 是否启用中文错别字生成器
-error_rate=0.01 # 单字替换概率
+error_rate=0.001 # 单字替换概率
 min_freq=9 # 最小字频阈值
-tone_error_rate=0.1 # 声调错误概率
+tone_error_rate=0.005 # 声调错误概率
 word_replace_rate=0.006 # 整词替换概率
 
 [response_splitter]
@@ -384,7 +384,7 @@ console_log_level = "INFO" # 控制台日志级别，可选: DEBUG, INFO, WARNIN
 file_log_level = "DEBUG" # 文件日志级别，可选: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 # 第三方库日志控制
-suppress_libraries = ["faiss","httpx", "urllib3", "asyncio", "websockets", "httpcore", "requests", "peewee", "openai","uvicorn","rjieba","maim_message"] # 完全屏蔽的库
+suppress_libraries = ["faiss","httpx", "urllib3", "asyncio", "websockets", "httpcore", "requests", "aiosqlite", "openai","uvicorn","rjieba","maim_message"] # 完全屏蔽的库
 library_log_levels = { "aiohttp" = "WARNING"} # 设置特定库的日志级别
 
 [dependency_management] # 插件Python依赖管理配置
@@ -476,159 +476,137 @@ enable_web_search_tool = true # 是否启用联网搜索tool
 enable_url_tool = true # 是否启用URL解析tool
 tavily_api_keys = ["None"]# Tavily API密钥列表，支持轮询机制
 exa_api_keys = ["None"]# EXA API密钥列表，支持轮询机制
+metaso_api_keys = ["None"]# Metaso API密钥列表，支持轮询机制
 searxng_instances = [] # SearXNG 实例 URL 列表
 searxng_api_keys = []# SearXNG 实例 API 密钥列表
+serper_api_keys = []# serper API 密钥列表
 
 # 搜索引擎配置
-enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing"
+enabled_engines = ["ddg"] # 启用的搜索引擎列表，可选: "exa", "tavily", "ddg","bing", "metaso","serper"
 search_strategy = "single" # 搜索策略: "single"(使用第一个可用引擎), "parallel"(并行使用所有启用的引擎), "fallback"(按顺序尝试，失败则尝试下一个)
-
-[sleep_system]
-enable = false #"是否启用睡眠系统"
-sleep_by_schedule = true #"是否根据日程表进行睡觉"
-fixed_sleep_time = "23:00" #"固定的睡觉时间"
-fixed_wake_up_time = "07:00" #"固定的起床时间"
-sleep_time_offset_minutes = 15 #"睡觉时间随机偏移量范围（分钟），实际睡觉时间会在±该值范围内随机"
-wake_up_time_offset_minutes = 15 #"起床时间随机偏移量范围（分钟），实际起床时间会在±该值范围内随机"
-wakeup_threshold = 15.0 #唤醒阈值，达到此值时会被唤醒"
-private_message_increment = 3.0 #"私聊消息增加的唤醒度"
-group_mention_increment = 2.0 #"群聊艾特增加的唤醒度"
-decay_rate = 0.2 #"每次衰减的唤醒度数值"
-decay_interval = 30.0 #"唤醒度衰减间隔(秒)"
-angry_duration = 300.0 #"愤怒状态持续时间(秒)"
-angry_prompt = "你被人吵醒了非常生气，说话带着怒气" # "被吵醒后的愤怒提示词"
-re_sleep_delay_minutes = 5 # "被唤醒后，如果多久没有新消息则尝试重新入睡（分钟）"
-
-# --- 失眠机制相关参数 ---
-enable_insomnia_system = false # 是否启用失眠系统
-# 触发“压力不足型失眠”的睡眠压力阈值
-sleep_pressure_threshold = 30.0
-# 进入“深度睡眠”的睡眠压力阈值
-deep_sleep_threshold = 80.0
-# 压力正常时的失眠基础概率 (0.0 to 1.0)
-insomnia_chance_normal_pressure = 0.1
-# 每次AI执行动作后，增加的睡眠压力值
-sleep_pressure_increment = 1.5
-# 睡眠时，每分钟衰减的睡眠压力值
-sleep_pressure_decay_rate = 1.5
-
-# --- 弹性睡眠与睡前消息 ---
-# 是否启用弹性睡眠。启用后，AI不会到点立刻入睡，而是会根据睡眠压力增加5-10分钟的缓冲，并可能因为压力不足而推迟睡眠。
-enable_flexible_sleep = false
-# 触发弹性睡眠的睡眠压力阈值。当AI的睡眠压力低于此值时，可能会推迟入睡。
-flexible_sleep_pressure_threshold = 40.0
-# 每日最大可推迟入睡的总分钟数。
-max_sleep_delay_minutes = 60
-
-# 是否在进入“准备入睡”状态时发送一条消息通知。
-enable_pre_sleep_notification = false
-# 用于生成睡前消息的提示。AI会根据这个提示生成一句晚安问候。
-pre_sleep_prompt = "我准备睡觉了，请生成一句简短自然的晚安问候。"
-insomnia_duration_minutes = [30, 60] # 单次失眠状态的持续时间范围（分钟）
-# --- 睡后失眠 ---
-# 入睡后，经过一段延迟后触发失眠判定的延迟时间（分钟），设置为范围以增加随机性
-insomnia_trigger_delay_minutes = [15, 45]
 
 [cross_context] # 跨群聊/私聊上下文共享配置
 # 这是总开关，用于一键启用或禁用此功能
 enable = true
-# 在这里定义您的“共享组”
-# 只有在同一个组内的聊天才会共享上下文
-# 格式：chat_ids = [["type", "id"], ["type", "id"], ...]
-# type 可选 "group" 或 "private"
+
+# --- S4U模式: 用户中心上下文检索 ---
+# S4U模式不再依赖于共享组配置，而是使用以下全局配置
+s4u_mode = "whitelist" # "whitelist"(白名单) 或 "blacklist"(黑名单)。
+s4u_limit = 10 # S4U模式下，从每个聊天中获取目标用户的消息条数
+s4u_stream_limit = 3 # S4U模式下，最多检索多少个不同的聊天流 (按时间排序)
+# 白名单列表，格式: ["platform:type:id", ...]
+# 示例: ["qq:group:123456", "qq:private:7891011"]
+s4u_whitelist_chats = []
+# 黑名单列表，格式同上
+s4u_blacklist_chats = []
+
+# --- Normal模式: 共享组配置 ---
+# 现在这些是预留plugin使用的上下文互通组配置
+# 您可以根据需要添加多个互通组
+# 在回复过程中只会遵循上面的--S4U模式: 用户中心上下文检索--
+
+# --- QQ空间专用互通组 (示例) ---
+# Maizone插件会根据组名 "Maizone默认互通组" 来获取上下文
+# 您可以修改下面的chat_ids来定义哪些聊天内容可以被Maizone插件参考
 [[cross_context.groups]]
-name = "项目A技术讨论组"
-chat_ids = [
-    ["group", "169850076"],  # 假设这是“开发群”的ID
-    ["group", "1025509724"],   # 假设这是“产品群”的ID
-    ["private", "123456789"] # 假设这是某个用户的私聊
-]
-# 定义QQ空间互通组
-# 同一个组的chat_id会共享上下文，用于生成更相关的说说
-[[cross_context.maizone_context_group]]
 name = "Maizone默认互通组"
+mode = "whitelist"
+default_limit = 10
 chat_ids = [
-    ["group", "111111"], # 示例群聊1
+    ["group", "111111"],     # 示例群聊1
     ["private", "222222"]  # 示例私聊2
 ]
 
 [affinity_flow]
+enable_normal_mode = true # 是否启用 Normal 聊天模式。启用后，在专注模式回复后会自动切换，并根据兴趣度决定是否回复，以实现更快速的回复。
 # 兴趣评分系统参数
-reply_action_interest_threshold = 0.62 # 回复动作兴趣阈值
-non_reply_action_interest_threshold = 0.48 # 非回复动作兴趣阈值
+reply_action_interest_threshold = 0.75 # 回复动作兴趣阈值
+non_reply_action_interest_threshold = 0.65 # 非回复动作兴趣阈值
 high_match_interest_threshold = 0.6 # 高匹配兴趣阈值
 medium_match_interest_threshold = 0.4 # 中匹配兴趣阈值
 low_match_interest_threshold = 0.2 # 低匹配兴趣阈值
-high_match_keyword_multiplier = 4.5 # 高匹配关键词兴趣倍率
-medium_match_keyword_multiplier = 2.75 # 中匹配关键词兴趣倍率
+high_match_keyword_multiplier = 4 # 高匹配关键词兴趣倍率
+medium_match_keyword_multiplier = 2.5 # 中匹配关键词兴趣倍率
 low_match_keyword_multiplier = 1.15 # 低匹配关键词兴趣倍率
-match_count_bonus = 0.02 # 匹配数关键词加成值
-max_match_bonus = 0.25 # 最大匹配数加成值
+match_count_bonus = 0.01 # 匹配数关键词加成值
+max_match_bonus = 0.1 # 最大匹配数加成值
 
 # 回复决策系统参数
-no_reply_threshold_adjustment = 0.03 # 不回复兴趣阈值调整值
-reply_cooldown_reduction = 3 # 回复后减少的不回复计数
+no_reply_threshold_adjustment = 0.02 # 不回复兴趣阈值调整值
+reply_cooldown_reduction = 2 # 回复后减少的不回复计数
 max_no_reply_count = 5 # 最大不回复计数次数
 
+# 回复后连续对话机制参数
+enable_post_reply_boost = true # 是否启用回复后阈值降低机制，使bot在回复后更容易进行连续对话
+post_reply_threshold_reduction = 0.1 # 回复后初始阈值降低值
+post_reply_boost_max_count = 3 # 回复后阈值降低的最大持续次数
+post_reply_boost_decay_rate = 0.5 # 每次回复后阈值降低衰减率（0-1，越小衰减越快）
+
 # 综合评分权重
-keyword_match_weight = 0.4 # 兴趣关键词匹配度权重
+keyword_match_weight = 0.5 # 兴趣关键词匹配度权重
 mention_bot_weight = 0.3 # 提及bot分数权重
-relationship_weight = 0.3 # 人物关系分数权重
+relationship_weight = 0.2 # 人物关系分数权重
 
 # 提及bot相关参数
-mention_bot_adjustment_threshold = 0.3 # 提及bot后的调整阈值
-mention_bot_interest_score = 0.6 # 提及bot的兴趣分
+mention_bot_adjustment_threshold = 0.5 # 提及bot后的调整阈值
+# 强提及（被@、被回复、私聊）和弱提及（文本匹配名字/别名）使用不同分值
+strong_mention_interest_score = 2.0 # 强提及的兴趣分（被@、被回复、私聊）
+weak_mention_interest_score = 0.8 # 弱提及的兴趣分（文本匹配bot名字或别名）
 base_relationship_score = 0.3 # 基础人物关系分
 
 [proactive_thinking] # 主动思考（主动发起对话）功能配置
+# 详细配置说明请参考：docs/proactive_thinking_config_guide.md
+
 # --- 总开关 ---
 enable = true # 是否启用主动发起对话功能
 
-# --- 触发时机 ---
-# 基础触发间隔（秒），AI会围绕这个时间点主动发起对话
-interval = 1500 # 默认25分钟
-# 间隔随机化标准差（秒），让触发时间更自然。设为0则为固定间隔。
-interval_sigma = 120
-# 每日活跃度调整，格式：[["", "HH:MM,factor", ...], ["stream_id", ...]]
-# factor > 1.0 会缩短思考间隔，更活跃；factor < 1.0 会延长间隔。
-talk_frequency_adjust = [['', '8:00,1', '12:00,1.2', '18:00,1.5', '01:00,0.6']]
+# --- 间隔配置 ---
+base_interval = 720 # 基础触发间隔（秒），默认12分钟
+min_interval = 360 # 最小触发间隔（秒），默认6分钟
+max_interval = 2880 # 最大触发间隔（秒），默认48分钟
+
+# 动态调整配置
+use_interest_score = true # 是否根据兴趣分数动态调整间隔
+interest_score_factor = 2.0 # 兴趣分数影响因子（1.0-3.0）
+# 公式: interval = base_interval * (interest_score_factor - interest_score)
+# 例如: interest_score=0.8, factor=2.0 -> interval = 1800 * 1.2 = 2160秒(36分钟)
+
+# --- 黑白名单配置 ---
+whitelist_mode = false # 是否启用白名单模式（启用后只对白名单中的聊天流生效）
+blacklist_mode = false # 是否启用黑名单模式（启用后排除黑名单中的聊天流）
+
+# 白名单配置（示例格式）
+whitelist_private = [] # 私聊白名单，格式: ["qq:12345:private"]
+whitelist_group = [] # 群聊白名单，格式: ["qq:123456:group"]
+
+# 黑名单配置（示例格式）
+blacklist_private = [] # 私聊黑名单，格式: ["qq:12345:private"]
+blacklist_group = [] # 群聊黑名单，格式: ["qq:999999:group"]
 
 # --- 作用范围 ---
 enable_in_private = true # 是否允许在私聊中主动发起对话
 enable_in_group = true # 是否允许在群聊中主动发起对话
-# 私聊白名单，为空则对所有私聊生效
-# 格式: ["platform:user_id", ...] e.g., ["qq:123456"]
-enabled_private_chats = []
-# 群聊白名单，为空则对所有群聊生效
-# 格式: ["platform:group_id", ...] e.g., ["qq:7891011"]
-enabled_group_chats = []
 
-# --- 冷启动配置 (针对私聊) ---
-# 对于白名单中不活跃的私聊，是否允许进行一次“冷启动”问候
-enable_cold_start = true
-# 冷启动后，该私聊的下一次主动思考需要等待的最小时间（秒）
-cold_start_cooldown = 86400 # 默认24小时
+# --- 兴趣分数阈值 ---
+min_interest_score = 0.0 # 最低兴趣分数阈值，低于此值不会主动思考
+max_interest_score = 1.0 # 最高兴趣分数阈值，高于此值不会主动思考
 
-# ===== MCP (Model Context Protocol) 工具服务器配置 =====
-# MCP允许连接外部工具服务器，AI可以调用这些工具来执行各种任务
-# 例如：文件操作、Git操作、数据库查询等
+# --- 时间策略配置 ---
+enable_time_strategy = true # 是否启用时间策略（根据时段调整频率）
+quiet_hours_start = "00:00" # 安静时段开始时间，格式: "HH:MM"
+quiet_hours_end = "07:00" # 安静时段结束时间，格式: "HH:MM"
+active_hours_multiplier = 0.7 # 活跃时段间隔倍数，<1表示更频繁，>1表示更稀疏
 
-# 示例MCP服务器配置（需要取消注释才能启用）
-#[[mcp_servers]]
-#name = "filesystem"  # 服务器名称，工具将以此为前缀（如 filesystem_read_file）
-#url = "http://localhost:3000"  # MCP服务器地址
-#api_key = ""  # API密钥（如果服务器需要认证）
-#timeout = 30  # 超时时间（秒）
-#enabled = true  # 是否启用此服务器
+# --- 冷却与限制 ---
+reply_reset_enabled = true # bot回复后是否重置定时器（避免回复后立即又主动发言）
+topic_throw_cooldown = 3600 # 主动发言后的冷却时间（秒），期间暂停主动思考，等待用户回复。0表示不暂停，继续主动思考
+max_daily_proactive = 3 # 每个聊天流每天最多主动发言次数，0表示不限制
 
-# 可以配置多个MCP服务器
-#[[mcp_servers]]
-#name = "git_tools"
-#url = "http://localhost:3001"
-#enabled = true
+# --- 决策权重配置 ---
+do_nothing_weight = 0.4 # do_nothing动作的基础权重
+simple_bubble_weight = 0.3 # simple_bubble动作的基础权重
+throw_topic_weight = 0.3 # throw_topic动作的基础权重
 
-# 详细说明:
-# 1. MCP服务器需要单独启动，Bot启动后会自动连接
-# 2. 每个服务器提供的工具会自动注册到Bot的工具系统
-# 3. AI会自动发现并在需要时调用这些工具
-# 4. 详细文档请参考: docs/MCP_TOOLS_INTEGRATION.md
+# --- 调试与监控 ---
+enable_statistics = false # 是否启用统计功能（记录触发次数、决策分布等）
+log_decisions = false # 是否记录每次决策的详细日志（用于调试）

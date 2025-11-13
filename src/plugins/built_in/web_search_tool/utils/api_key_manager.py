@@ -33,10 +33,10 @@ class APIKeyManager(Generic[T]):
 
         if api_keys:
             # 过滤有效的API密钥，排除None、空字符串、"None"字符串等
-            valid_keys = []
-            for key in api_keys:
-                if isinstance(key, str) and key.strip() and key.strip().lower() not in ("none", "null", ""):
-                    valid_keys.append(key.strip())
+            valid_keys = [
+                key.strip() for key in api_keys
+                if isinstance(key, str) and key.strip() and key.strip().lower() not in ("none", "null", "")
+            ]
 
             if valid_keys:
                 try:
@@ -59,6 +59,7 @@ class APIKeyManager(Generic[T]):
     def get_next_client(self) -> T | None:
         """获取下一个客户端（轮询）"""
         if not self.is_available():
+
             return None
         return next(self.client_cycle)
 

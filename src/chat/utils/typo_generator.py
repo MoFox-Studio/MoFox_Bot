@@ -254,7 +254,8 @@ class ChineseTypoGenerator:
         all_combinations = itertools.product(*candidates)
 
         # 获取rjieba词典和词频信息
-        dict_path = os.path.join(os.path.dirname(rjieba.__file__), "dict.txt")
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        dict_path = os.path.join(base_dir, "depends-data", "dict.txt")
         valid_words = {}  # 改用字典存储词语及其频率
         with open(dict_path, encoding="utf-8") as f:
             for line in f:

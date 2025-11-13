@@ -12,8 +12,8 @@ class APIProvider(ValidatedConfigBase):
     name: str = Field(..., min_length=1, description="API提供商名称")
     base_url: str = Field(..., description="API基础URL")
     api_key: str | list[str] = Field(..., min_length=1, description="API密钥，支持单个密钥或密钥列表轮询")
-    client_type: Literal["openai", "gemini", "aiohttp_gemini", "mcp_sse"] = Field(
-        default="openai", description="客户端类型（如openai/google/mcp_sse等，默认为openai）"
+    client_type: Literal["openai", "gemini", "aiohttp_gemini"] = Field(
+        default="openai", description="客户端类型（如openai/google等，默认为openai）"
     )
     max_retry: int = Field(default=2, ge=0, description="最大重试次数（单个模型API调用失败，最多重试的次数）")
     timeout: int = Field(

@@ -12,6 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import aiofiles
 import aiohttp
 import bs4
 import json5
@@ -47,7 +48,7 @@ class QZoneService:
         content_service: ContentService,
         image_service: ImageService,
         cookie_service: CookieService,
-        reply_tracker: ReplyTrackerService = None,
+        reply_tracker: ReplyTrackerService | None = None,
     ):
         self.get_config = get_config
         self.content_service = content_service
@@ -116,72 +117,187 @@ class QZoneService:
 
     async def read_and_process_feeds(self, target_name: str, stream_id: str | None) -> dict[str, Any]:
         """读取并处理指定好友的说说"""
-        target_person_id = await person_api.get_person_id_by_name(target_name)
-        if not target_person_id:
-            return {"success": False, "message": f"找不到名为'{target_name}'的好友"}
-        target_qq = await person_api.get_person_value(target_person_id, "user_id")
-        if not target_qq:
-            return {"success": False, "message": f"好友'{target_name}'没有关联QQ号"}
+        # 判断输入是QQ号还是昵称
+        target_qq = None
+
+        if target_name.isdigit():
+            # 输入是纯数字，当作QQ号处理
+            target_qq = int(target_name)
+        else:
+            # 输入是昵称，查询person_info获取QQ号
+            target_person_id = await person_api.get_person_id_by_name(target_name)
+            if not target_person_id:
+                return {"success": False, "message": f"找不到名为'{target_name}'的好友"}
+            person_info = await person_api.get_person_info(target_person_id)
+            target_qq = person_info.get("user_id")
+            if not target_qq:
+                return {"success": False, "message": f"好友'{target_name}'没有关联QQ号"}
 
         qq_account = config_api.get_global_config("bot.qq_account", "")
+        logger.info(f"[DEBUG] 准备获取API客户端，qq_account={qq_account}")
         api_client = await self._get_api_client(qq_account, stream_id)
         if not api_client:
+            logger.error("[DEBUG] API客户端获取失败，返回错误")
             return {"success": False, "message": "获取QZone API客户端失败"}
 
+        logger.info("[DEBUG] API客户端获取成功，准备读取说说")
         num_to_read = self.get_config("read.read_number", 5)
-        try:
-            feeds = await api_client["list_feeds"](target_qq, num_to_read)
-            if not feeds:
-                return {"success": True, "message": f"没有从'{target_name}'的空间获取到新说说。"}
 
-            for feed in feeds:
-                await self._process_single_feed(feed, api_client, target_qq, target_name)
-                await asyncio.sleep(random.uniform(3, 7))
+        # 尝试执行，如果Cookie失效则自动重试一次
+        for retry_count in range(2):  # 最多尝试2次
+            try:
+                logger.info(f"[DEBUG] 开始调用 list_feeds，target_qq={target_qq}, num={num_to_read}")
+                feeds = await api_client["list_feeds"](target_qq, num_to_read)
+                logger.info(f"[DEBUG] list_feeds 返回，feeds数量={len(feeds) if feeds else 0}")
+                if not feeds:
+                    return {"success": True, "message": f"没有从'{target_name}'的空间获取到新说说。"}
 
-            return {"success": True, "message": f"成功处理了'{target_name}'的 {len(feeds)} 条说说。"}
-        except Exception as e:
-            logger.error(f"读取和处理说说时发生异常: {e}", exc_info=True)
-            return {"success": False, "message": f"处理说说异常: {e}"}
+                logger.info(f"[DEBUG] 准备处理 {len(feeds)} 条说说")
+                total_liked = 0
+                total_commented = 0
+                for feed in feeds:
+                    result = await self._process_single_feed(feed, api_client, str(target_qq), target_name)
+                    if result["liked"]:
+                        total_liked += 1
+                    if result["commented"]:
+                        total_commented += 1
+                    await asyncio.sleep(random.uniform(3, 7))
+
+                # 构建详细的反馈信息
+                stats_parts = []
+                if total_liked > 0:
+                    stats_parts.append(f"点赞了{total_liked}条")
+                if total_commented > 0:
+                    stats_parts.append(f"评论了{total_commented}条")
+
+                if stats_parts:
+                    stats_msg = "、".join(stats_parts)
+                    message = f"成功查看了'{target_name}'的空间，{stats_msg}。"
+                else:
+                    message = f"成功查看了'{target_name}'的 {len(feeds)} 条说说，但这次没有进行互动。"
+
+                return {
+                    "success": True,
+                    "message": message,
+                    "stats": {"total": len(feeds), "liked": total_liked, "commented": total_commented},
+                }
+            except RuntimeError as e:
+                # QQ空间API返回的业务错误
+                error_msg = str(e)
+
+                # 检查是否是Cookie失效（-3000错误）
+                if "错误码: -3000" in error_msg and retry_count == 0:
+                    logger.warning("检测到Cookie失效（-3000错误），准备删除缓存并重试...")
+
+                    # 删除Cookie缓存文件
+                    cookie_file = self.cookie_service._get_cookie_file_path(qq_account)
+                    if cookie_file.exists():
+                        try:
+                            cookie_file.unlink()
+                            logger.info(f"已删除过期的Cookie缓存文件: {cookie_file}")
+                        except Exception as delete_error:
+                            logger.error(f"删除Cookie文件失败: {delete_error}")
+
+                    # 重新获取API客户端（会自动获取新Cookie）
+                    logger.info("正在重新获取Cookie...")
+                    api_client = await self._get_api_client(qq_account, stream_id)
+                    if not api_client:
+                        logger.error("重新获取API客户端失败")
+                        return {"success": False, "message": "Cookie已失效，且无法重新获取。请检查Bot和Napcat连接状态。"}
+
+                    logger.info("Cookie已更新，正在重试...")
+                    continue  # 继续循环，重试一次
+
+                # 其他业务错误或重试后仍失败
+                logger.warning(f"QQ空间API错误: {e}")
+                return {"success": False, "message": error_msg}
+            except Exception as e:
+                # 其他未知异常
+                logger.error(f"读取和处理说说时发生异常: {e}", exc_info=True)
+                return {"success": False, "message": f"处理说说时出现异常: {e}"}
 
     async def monitor_feeds(self, stream_id: str | None = None):
         """监控并处理所有好友的动态，包括回复自己说说的评论"""
         logger.info("开始执行好友动态监控...")
         qq_account = config_api.get_global_config("bot.qq_account", "")
-        api_client = await self._get_api_client(qq_account, stream_id)
-        if not api_client:
-            logger.error("监控失败：无法获取API客户端")
-            return
 
-        try:
-            # --- 第一步: 单独处理自己说说的评论 ---
-            if self.get_config("monitor.enable_auto_reply", False):
-                try:
-                    # 传入新参数，表明正在检查自己的说说
-                    own_feeds = await api_client["list_feeds"](qq_account, 5)
-                    if own_feeds:
-                        logger.info(f"获取到自己 {len(own_feeds)} 条说说，检查评论...")
-                        for feed in own_feeds:
-                            await self._reply_to_own_feed_comments(feed, api_client)
-                            await asyncio.sleep(random.uniform(3, 5))
-                except Exception as e:
-                    logger.error(f"处理自己说说评论时发生异常: {e}", exc_info=True)
-
-            # --- 第二步: 处理好友的动态 ---
-            friend_feeds = await api_client["monitor_list_feeds"](20)
-            if not friend_feeds:
-                logger.info("监控完成：未发现好友新说说")
+        # 尝试执行，如果Cookie失效则自动重试一次
+        for retry_count in range(2):  # 最多尝试2次
+            api_client = await self._get_api_client(qq_account, stream_id)
+            if not api_client:
+                logger.error("监控失败：无法获取API客户端")
                 return
 
-            logger.info(f"监控任务: 发现 {len(friend_feeds)} 条好友新动态，准备处理...")
-            for feed in friend_feeds:
-                target_qq = feed.get("target_qq")
-                if not target_qq or str(target_qq) == str(qq_account):  # 确保不重复处理自己的
-                    continue
+            try:
+                # --- 第一步: 单独处理自己说说的评论 ---
+                if self.get_config("monitor.enable_auto_reply", False):
+                    try:
+                        # 传入新参数，表明正在检查自己的说说
+                        own_feeds = await api_client["list_feeds"](qq_account, 5)
+                        if own_feeds:
+                            logger.info(f"获取到自己 {len(own_feeds)} 条说说，检查评论...")
+                            for feed in own_feeds:
+                                await self._reply_to_own_feed_comments(feed, api_client)
+                                await asyncio.sleep(random.uniform(3, 5))
+                    except Exception as e:
+                        logger.error(f"处理自己说说评论时发生异常: {e}", exc_info=True)
 
-                await self._process_single_feed(feed, api_client, target_qq, target_qq)
-                await asyncio.sleep(random.uniform(5, 10))
-        except Exception as e:
-            logger.error(f"监控好友动态时发生异常: {e}", exc_info=True)
+                # --- 第二步: 处理好友的动态 ---
+                friend_feeds = await api_client["monitor_list_feeds"](20)
+                if not friend_feeds:
+                    logger.info("监控完成：未发现好友新说说")
+                    return
+
+                logger.info(f"监控任务: 发现 {len(friend_feeds)} 条好友新动态，准备处理...")
+                monitor_stats = {"total": 0, "liked": 0, "commented": 0}
+                for feed in friend_feeds:
+                    target_qq = feed.get("target_qq")
+                    if not target_qq or str(target_qq) == str(qq_account):  # 确保不重复处理自己的
+                        continue
+
+                    result = await self._process_single_feed(feed, api_client, str(target_qq), str(target_qq))
+                    monitor_stats["total"] += 1
+                    if result.get("liked"):
+                        monitor_stats["liked"] += 1
+                    if result.get("commented"):
+                        monitor_stats["commented"] += 1
+                    await asyncio.sleep(random.uniform(5, 10))
+
+                logger.info(
+                    f"监控任务完成: 处理了{monitor_stats['total']}条动态，"
+                    f"点赞{monitor_stats['liked']}条，评论{monitor_stats['commented']}条"
+                )
+                return  # 成功完成，直接返回
+
+            except RuntimeError as e:
+                # QQ空间API返回的业务错误
+                error_msg = str(e)
+
+                # 检查是否是Cookie失效（-3000错误）
+                if "错误码: -3000" in error_msg and retry_count == 0:
+                    logger.warning("检测到Cookie失效（-3000错误），准备删除缓存并重试...")
+
+                    # 删除Cookie缓存文件
+                    cookie_file = self.cookie_service._get_cookie_file_path(qq_account)
+                    if cookie_file.exists():
+                        try:
+                            cookie_file.unlink()
+                            logger.info(f"已删除过期的Cookie缓存文件: {cookie_file}")
+                        except Exception as delete_error:
+                            logger.error(f"删除Cookie文件失败: {delete_error}")
+
+                    # 重新获取API客户端会在下一次循环中自动进行
+                    logger.info("Cookie已删除，正在重试...")
+                    continue  # 继续循环，重试一次
+
+                # 其他业务错误或重试后仍失败
+                logger.error(f"监控好友动态时发生业务错误: {e}")
+                return
+
+            except Exception as e:
+                # 其他未知异常
+                logger.error(f"监控好友动态时发生异常: {e}", exc_info=True)
+                return
 
     # --- Internal Helper Methods ---
 
@@ -190,7 +306,7 @@ class QZoneService:
         获取互通组的聊天上下文。
         """
         # 实际的逻辑已迁移到 cross_context_api
-        return await cross_context_api.get_intercom_group_context_by_name("maizone_context_group")
+        return await cross_context_api.get_intercom_group_context("maizone_context_group")
 
     async def _reply_to_own_feed_comments(self, feed: dict, api_client: dict):
         """处理对自己说说的评论并进行回复"""
@@ -278,12 +394,19 @@ class QZoneService:
                 self.reply_tracker.remove_reply_record(fid, comment_tid)
                 logger.debug(f"已清理删除的回复记录: feed_id={fid}, comment_id={comment_tid}")
 
-    async def _process_single_feed(self, feed: dict, api_client: dict, target_qq: str, target_name: str):
-        """处理单条说说，决定是否评论和点赞"""
+    async def _process_single_feed(self, feed: dict, api_client: dict, target_qq: str, target_name: str) -> dict:
+        """处理单条说说，决定是否评论和点赞
+
+        返回:
+            dict: {"liked": bool, "commented": bool}
+        """
         content = feed.get("content", "")
         fid = feed.get("tid", "")
-        rt_con = feed.get("rt_con", "")
+        # 正确提取转发内容（rt_con 可能是字典或字符串）
+        rt_con = feed.get("rt_con", {}).get("content", "") if isinstance(feed.get("rt_con"), dict) else feed.get("rt_con", "")
         images = feed.get("images", [])
+
+        result = {"liked": False, "commented": False}
 
         # --- 处理评论 ---
         comment_key = f"{fid}_main_comment"
@@ -303,6 +426,7 @@ class QZoneService:
                     if success:
                         self.reply_tracker.mark_as_replied(fid, "main_comment")
                         logger.info(f"成功评论'{target_name}'的说说: '{comment_text}'")
+                        result["commented"] = True
                     else:
                         logger.error(f"评论'{target_name}'的说说失败")
             except Exception as e:
@@ -313,8 +437,19 @@ class QZoneService:
                     self.processing_comments.remove(comment_key)
 
         # --- 处理点赞 (逻辑不变) ---
-        if random.random() <= self.get_config("read.like_possibility", 1.0):
-            await api_client["like"](target_qq, fid)
+        like_probability = self.get_config("read.like_possibility", 1.0)
+        if random.random() <= like_probability:
+            logger.info(f"准备点赞说说: target_qq={target_qq}, fid={fid}")
+            like_success = await api_client["like"](target_qq, fid)
+            if like_success:
+                logger.info(f"成功点赞'{target_name}'的说说: fid={fid}")
+                result["liked"] = True
+            else:
+                logger.warning(f"点赞'{target_name}'的说说失败: fid={fid}")
+        else:
+            logger.debug(f"概率未命中，跳过点赞: probability={like_probability}")
+
+        return result
 
     def _load_local_images(self, image_dir: str) -> list[bytes]:
         """随机加载本地图片（不删除文件）"""
@@ -397,8 +532,8 @@ class QZoneService:
                 }
                 # 成功获取后，异步写入本地文件作为备份
                 try:
-                    with open(cookie_file_path, "wb") as f:
-                        f.write(orjson.dumps(parsed_cookies))
+                    async with aiofiles.open(cookie_file_path, "wb") as f:
+                        await f.write(orjson.dumps(parsed_cookies))
                     logger.info(f"通过Napcat服务成功更新Cookie，并已保存至: {cookie_file_path}")
                 except Exception as e:
                     logger.warning(f"保存Cookie到文件时出错: {e}")
@@ -413,8 +548,9 @@ class QZoneService:
         logger.info("尝试从本地Cookie文件加载...")
         if cookie_file_path.exists():
             try:
-                with open(cookie_file_path, "rb") as f:
-                    cookies = orjson.loads(f.read())
+                async with aiofiles.open(cookie_file_path, "rb") as f:
+                    content = await f.read()
+                    cookies = orjson.loads(content)
                     logger.info(f"成功从本地文件加载Cookie: {cookie_file_path}")
                     return cookies
             except Exception as e:
@@ -473,6 +609,7 @@ class QZoneService:
         raise RuntimeError(f"无法连接到Napcat服务: 超过最大重试次数({max_retries})")
 
     async def _get_api_client(self, qq_account: str, stream_id: str | None) -> dict | None:
+        logger.info(f"[DEBUG] 开始获取API客户端，qq_account={qq_account}")
         cookies = await self.cookie_service.get_cookies(qq_account, stream_id)
         if not cookies:
             logger.error(
@@ -480,16 +617,22 @@ class QZoneService:
             )
             return None
 
+        logger.info(f"[DEBUG] Cookie获取成功，keys: {list(cookies.keys())}")
+
         p_skey = cookies.get("p_skey") or cookies.get("p_skey".upper())
         if not p_skey:
             logger.error(f"获取API客户端失败：Cookie中缺少关键的 'p_skey'。Cookie内容: {cookies}")
             return None
+
+        logger.info("[DEBUG] p_skey获取成功")
 
         gtk = self._generate_gtk(p_skey)
         uin = cookies.get("uin", "").lstrip("o")
         if not uin:
             logger.error(f"获取API客户端失败：Cookie中缺少关键的 'uin'。Cookie内容: {cookies}")
             return None
+
+        logger.info(f"[DEBUG] uin={uin}, gtk={gtk}, 准备构造API客户端")
 
         async def _request(method, url, params=None, data=None, headers=None):
             final_headers = {"referer": f"https://user.qzone.qq.com/{uin}", "origin": "https://user.qzone.qq.com"}
@@ -693,6 +836,7 @@ class QZoneService:
         async def _list_feeds(t_qq: str, num: int) -> list[dict]:
             """获取指定用户说说列表 (统一接口)"""
             try:
+                logger.info(f"[DEBUG] _list_feeds 开始，t_qq={t_qq}, num={num}")
                 # 统一使用 format=json 获取完整评论
                 params = {
                     "g_tk": gtk,
@@ -706,19 +850,33 @@ class QZoneService:
                     "format": "json",  # 关键：使用JSON格式
                     "need_comment": 1,
                 }
+                logger.info(f"[DEBUG] 准备发送HTTP请求到 {self.LIST_URL}")
                 res_text = await _request("GET", self.LIST_URL, params=params)
+                logger.info(f"[DEBUG] HTTP请求返回，响应长度={len(res_text)}")
                 json_data = orjson.loads(res_text)
+                logger.info(f"[DEBUG] JSON解析成功，code={json_data.get('code')}")
 
                 if json_data.get("code") != 0:
-                    logger.warning(
-                        f"获取说说列表API返回错误: code={json_data.get('code')}, message={json_data.get('message')}"
-                    )
-                    return []
+                    error_code = json_data.get("code")
+                    error_message = json_data.get("message", "未知错误")
+                    logger.warning(f"获取说说列表API返回错误: code={error_code}, message={error_message}")
+
+                    # 将API错误信息抛出，让上层处理并反馈给用户
+                    raise RuntimeError(f"QQ空间API错误: {error_message} (错误码: {error_code})")
 
                 feeds_list = []
                 my_name = json_data.get("logininfo", {}).get("name", "")
+                total_msgs = len(json_data.get("msglist", []))
+                logger.debug(f"[DEBUG] 从API获取到 {total_msgs} 条原始说说")
 
-                for msg in json_data.get("msglist", []):
+                for idx, msg in enumerate(json_data.get("msglist", [])):
+                    msg_tid = msg.get("tid", "")
+                    msg_content = msg.get("content", "")
+                    msg_rt_con = msg.get("rt_con")
+                    is_retweet = bool(msg_rt_con)
+
+                    logger.debug(f"[DEBUG] 说说 {idx+1}/{total_msgs}: tid={msg_tid}, 是否转发={is_retweet}, content长度={len(msg_content)}")
+
                     # 当读取的是好友动态时，检查是否已评论过，如果是则跳过
                     is_friend_feed = str(t_qq) != str(uin)
                     if is_friend_feed:
@@ -729,6 +887,7 @@ class QZoneService:
                                 c.get("name") == my_name for c in commentlist_for_check if isinstance(c, dict)
                             )
                         if is_commented:
+                            logger.debug(f"[DEBUG] 跳过已评论的说说: tid={msg_tid}, 是否转发={is_retweet}")
                             continue
 
                     # --- 安全地处理图片列表 ---
@@ -788,7 +947,11 @@ class QZoneService:
 
                 logger.info(f"成功获取到 {len(feeds_list)} 条说说 from {t_qq} (使用统一JSON接口)")
                 return feeds_list
+            except RuntimeError:
+                # QQ空间API业务错误，向上传播让调用者处理
+                raise
             except Exception as e:
+                # 其他异常（如网络错误、JSON解析错误等），记录后返回空列表
                 logger.error(f"获取说说列表失败: {e}", exc_info=True)
                 return []
 
@@ -806,8 +969,22 @@ class QZoneService:
                     "platformid": 52,
                     "ref": "feeds",
                 }
-                await _request("POST", self.COMMENT_URL, params={"g_tk": gtk}, data=data)
-                return True
+                response_text = await _request("POST", self.COMMENT_URL, params={"g_tk": gtk}, data=data)
+
+                # 解析响应检查业务状态
+                try:
+                    response_data = orjson.loads(response_text)
+                    code = response_data.get("code", -1)
+                    if code == 0:
+                        logger.info(f"评论API返回成功: feed_id={feed_id}")
+                        return True
+                    else:
+                        message = response_data.get("message", "未知错误")
+                        logger.error(f"评论API返回失败: code={code}, message={message}, feed_id={feed_id}")
+                        return False
+                except orjson.JSONDecodeError:
+                    logger.warning(f"评论API响应无法解析为JSON，假定成功: {response_text[:200]}")
+                    return True
             except Exception as e:
                 logger.error(f"评论说说异常: {e}", exc_info=True)
                 return False
@@ -828,8 +1005,22 @@ class QZoneService:
                     "format": "json",
                     "fupdate": 1,
                 }
-                await _request("POST", self.DOLIKE_URL, params={"g_tk": gtk}, data=data)
-                return True
+                response_text = await _request("POST", self.DOLIKE_URL, params={"g_tk": gtk}, data=data)
+
+                # 解析响应检查业务状态
+                try:
+                    response_data = orjson.loads(response_text)
+                    code = response_data.get("code", -1)
+                    if code == 0:
+                        logger.debug(f"点赞API返回成功: feed_id={feed_id}")
+                        return True
+                    else:
+                        message = response_data.get("message", "未知错误")
+                        logger.warning(f"点赞API返回失败: code={code}, message={message}, feed_id={feed_id}")
+                        return False
+                except orjson.JSONDecodeError:
+                    logger.warning(f"点赞API响应无法解析为JSON，假定成功: {response_text[:200]}")
+                    return True
             except Exception as e:
                 logger.error(f"点赞说说异常: {e}", exc_info=True)
                 return False
@@ -859,8 +1050,22 @@ class QZoneService:
                     f"子回复请求参数: topicId={data['topicId']}, parent_tid={data['parent_tid']}, content='{content[:50]}...'"
                 )
 
-                await _request("POST", self.REPLY_URL, params={"g_tk": gtk}, data=data)
-                return True
+                response_text = await _request("POST", self.REPLY_URL, params={"g_tk": gtk}, data=data)
+
+                # 解析响应检查业务状态
+                try:
+                    response_data = orjson.loads(response_text)
+                    code = response_data.get("code", -1)
+                    if code == 0:
+                        logger.info(f"回复API返回成功: fid={fid}, parent_tid={comment_tid}")
+                        return True
+                    else:
+                        message = response_data.get("message", "未知错误")
+                        logger.error(f"回复API返回失败: code={code}, message={message}, fid={fid}")
+                        return False
+                except orjson.JSONDecodeError:
+                    logger.warning(f"回复API响应无法解析为JSON，假定成功: {response_text[:200]}")
+                    return True
             except Exception as e:
                 logger.error(f"回复评论异常: {e}", exc_info=True)
                 return False
@@ -897,21 +1102,25 @@ class QZoneService:
 
                 json_str = json_str.replace("undefined", "null").strip()
 
+                # 解析JSON
                 try:
                     json_data = json5.loads(json_str)
-                    if not isinstance(json_data, dict):
-                        logger.warning(f"解析后的JSON数据不是字典类型: {type(json_data)}")
-                        return []
-
-                    if json_data.get("code") != 0:
-                        error_code = json_data.get("code")
-                        error_msg = json_data.get("message", "未知错误")
-                        logger.warning(f"QQ空间API返回错误: code={error_code}, message={error_msg}")
-                        return []
-
                 except Exception as parse_error:
                     logger.error(f"JSON解析失败: {parse_error}, 原始数据: {json_str[:200]}...")
                     return []
+
+                # 检查JSON数据类型
+                if not isinstance(json_data, dict):
+                    logger.warning(f"解析后的JSON数据不是字典类型: {type(json_data)}")
+                    return []
+
+                # 检查错误码（在try-except之外，让异常能向上传播）
+                if json_data.get("code") != 0:
+                    error_code = json_data.get("code")
+                    error_msg = json_data.get("message", "未知错误")
+                    logger.warning(f"QQ空间API返回错误: code={error_code}, message={error_msg}")
+                    # 抛出异常以便上层的重试机制捕获
+                    raise RuntimeError(f"QQ空间API错误: {error_msg} (错误码: {error_code})")
 
                 feeds_data = []
                 if isinstance(json_data, dict):
@@ -943,28 +1152,28 @@ class QZoneService:
 
                     like_btn = soup.find("a", class_="qz_like_btn_v3")
                     is_liked = False
-                    if like_btn and isinstance(like_btn, bs4.Tag):
-                        is_liked = like_btn.get("data-islike") == "1"
+                    if isinstance(like_btn, bs4.Tag) and like_btn.get("data-islike") == "1":
+                        is_liked = True
 
                     if is_liked:
                         continue
 
                     text_div = soup.find("div", class_="f-info")
-                    text = text_div.get_text(strip=True) if text_div else ""
+                    text = text_div.get_text(strip=True) if isinstance(text_div, bs4.Tag) else ""
 
                     # --- 借鉴原版插件的精确图片提取逻辑 ---
                     image_urls = []
                     img_box = soup.find("div", class_="img-box")
-                    if img_box:
+                    if isinstance(img_box, bs4.Tag):
                         for img in img_box.find_all("img"):
-                            src = img.get("src")
-                            # 排除QQ空间的小图标和表情
-                            if src and "qzonestyle.gtimg.cn" not in src:
-                                image_urls.append(src)
+                            if isinstance(img, bs4.Tag):
+                                src = img.get("src")
+                                if src and isinstance(src, str) and "qzonestyle.gtimg.cn" not in src:
+                                    image_urls.append(src)
 
                     # 视频封面也视为图片
                     video_thumb = soup.select_one("div.video-img img")
-                    if video_thumb and "src" in video_thumb.attrs:
+                    if isinstance(video_thumb, bs4.Tag) and "src" in video_thumb.attrs:
                         image_urls.append(video_thumb["src"])
 
                     # 去重
@@ -973,11 +1182,13 @@ class QZoneService:
                     comments = []
                     comment_divs = soup.find_all("div", class_="f-single-comment")
                     for comment_div in comment_divs:
+                        if not isinstance(comment_div, bs4.Tag):
+                            continue
                         # --- 处理主评论 ---
                         author_a = comment_div.find("a", class_="f-nick")
                         content_span = comment_div.find("span", class_="f-re-con")
 
-                        if author_a and content_span:
+                        if isinstance(author_a, bs4.Tag) and isinstance(content_span, bs4.Tag):
                             comments.append(
                                 {
                                     "qq_account": str(comment_div.get("data-uin", "")),
@@ -991,21 +1202,23 @@ class QZoneService:
                         # --- 处理这条主评论下的所有回复 ---
                         reply_divs = comment_div.find_all("div", class_="f-single-re")
                         for reply_div in reply_divs:
+                            if not isinstance(reply_div, bs4.Tag):
+                                continue
                             reply_author_a = reply_div.find("a", class_="f-nick")
                             reply_content_span = reply_div.find("span", class_="f-re-con")
 
-                            if reply_author_a and reply_content_span:
+                            if isinstance(reply_author_a, bs4.Tag) and isinstance(reply_content_span, bs4.Tag):
                                 comments.append(
                                     {
                                         "qq_account": str(reply_div.get("data-uin", "")),
                                         "nickname": reply_author_a.get_text(strip=True),
                                         "content": reply_content_span.get_text(strip=True).lstrip(
                                             ": "
-                                        ),  # 移除回复内容前多余的冒号和空格
+                                        ),
                                         "comment_tid": reply_div.get("data-tid", ""),
                                         "parent_tid": reply_div.get(
                                             "data-parent-tid", comment_div.get("data-tid", "")
-                                        ),  # 如果没有父ID，则将父ID设为主评论ID
+                                        ),
                                     }
                                 )
 
@@ -1015,9 +1228,14 @@ class QZoneService:
                 logger.info(f"监控任务发现 {len(feeds_list)} 条未处理的新说说。")
                 return feeds_list
             except Exception as e:
+                # 检查是否是Cookie失效错误（-3000），如果是则重新抛出
+                if "错误码: -3000" in str(e):
+                    logger.warning("监控任务遇到Cookie失效错误，重新抛出异常以触发上层重试")
+                    raise  # 重新抛出异常，让上层处理
                 logger.error(f"监控好友动态失败: {e}", exc_info=True)
                 return []
 
+        logger.info("[DEBUG] API客户端构造完成，返回包含6个方法的字典")
         return {
             "publish": _publish,
             "list_feeds": _list_feeds,

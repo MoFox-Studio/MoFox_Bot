@@ -28,7 +28,7 @@ def get_global_config(key: str, default: Any = None) -> Any:
 #### 示例：
 获取机器人昵称
 ```python
-bot_name = config_api.get_global_config("bot.nickname", "MaiBot")
+bot_name = config_api.get_global_config("bot.nickname", "MoFox-Bot")
 ```
 
 ### 2. 获取插件配置

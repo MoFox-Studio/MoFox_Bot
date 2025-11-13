@@ -5,7 +5,7 @@ Web Search Tool Plugin
 """
 
 from src.common.logger import get_logger
-from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, PythonDependency, register_plugin
+from src.plugin_system import BasePlugin, ComponentInfo, ConfigField, register_plugin
 from src.plugin_system.apis import config_api
 
 from .tools.url_parser import URLParserTool
@@ -22,6 +22,7 @@ class WEBSEARCHPLUGIN(BasePlugin):
     提供网络搜索和URL解析功能，支持多种搜索引擎：
     - Exa (需要API密钥)
     - Tavily (需要API密钥)
+    - Metaso (需要API密钥)
     - DuckDuckGo (免费)
     - Bing (免费)
     """
@@ -41,7 +42,9 @@ class WEBSEARCHPLUGIN(BasePlugin):
             from .engines.bing_engine import BingSearchEngine
             from .engines.ddg_engine import DDGSearchEngine
             from .engines.exa_engine import ExaSearchEngine
+            from .engines.metaso_engine import MetasoSearchEngine
             from .engines.searxng_engine import SearXNGSearchEngine
+            from .engines.serper_engine import SerperSearchEngine
             from .engines.tavily_engine import TavilySearchEngine
 
             # 实例化所有搜索引擎，这会触发API密钥管理器的初始化
@@ -50,14 +53,18 @@ class WEBSEARCHPLUGIN(BasePlugin):
             ddg_engine = DDGSearchEngine()
             bing_engine = BingSearchEngine()
             searxng_engine = SearXNGSearchEngine()
+            metaso_engine = MetasoSearchEngine()
+            serper_engine = SerperSearchEngine()
 
-            # 报告每个引擎的状态
+             # 报告每个引擎的状态
             engines_status = {
                 "Exa": exa_engine.is_available(),
                 "Tavily": tavily_engine.is_available(),
                 "DuckDuckGo": ddg_engine.is_available(),
                 "Bing": bing_engine.is_available(),
                 "SearXNG": searxng_engine.is_available(),
+                "Metaso": metaso_engine.is_available(),
+                "Serper": serper_engine.is_available(),
             }
 
             available_engines = [name for name, available in engines_status.items() if available]
@@ -70,29 +77,6 @@ class WEBSEARCHPLUGIN(BasePlugin):
 
         except Exception as e:
             logger.error(f"❌ 搜索引擎初始化失败: {e}", exc_info=True)
-
-    # Python包依赖列表
-    python_dependencies: list[PythonDependency] = [  # noqa: RUF012
-        PythonDependency(package_name="asyncddgs", description="异步DuckDuckGo搜索库", optional=False),
-        PythonDependency(
-            package_name="exa_py",
-            description="Exa搜索API客户端库",
-            optional=True,  # 如果没有API密钥，这个是可选的
-        ),
-        PythonDependency(
-            package_name="tavily",
-            install_name="tavily-python",  # 安装时使用这个名称
-            description="Tavily搜索API客户端库",
-            optional=True,  # 如果没有API密钥，这个是可选的
-        ),
-        PythonDependency(
-            package_name="httpx",
-            version=">=0.20.0",
-            install_name="httpx[socks]",  # 安装时使用这个名称（包含可选依赖）
-            description="支持SOCKS代理的HTTP客户端库",
-            optional=False,
-        ),
-    ]
     config_file_name: str = "config.toml"  # 配置文件名
 
     # 配置节描述

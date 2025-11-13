@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 from src.common.data_models.message_manager_data_model import StreamContext
 from src.plugin_system.base.component_types import ChatterInfo, ComponentType
@@ -15,7 +15,7 @@ class BaseChatter(ABC):
     """Chatter组件的名称"""
     chatter_description: str = ""
     """Chatter组件的描述"""
-    chat_types: list[ChatType] = [ChatType.PRIVATE, ChatType.GROUP]
+    chat_types: ClassVar[list[ChatType]] = [ChatType.PRIVATE, ChatType.GROUP]
 
     def __init__(self, stream_id: str, action_manager: "ChatterActionManager"):
         """

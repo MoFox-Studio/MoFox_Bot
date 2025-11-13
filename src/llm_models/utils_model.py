@@ -534,7 +534,7 @@ class _RequestExecutor:
         model_name = model_info.name
         retry_interval = api_provider.retry_interval
 
-        if isinstance(e, (NetworkConnectionError, ReqAbortException)):
+        if isinstance(e, NetworkConnectionError | ReqAbortException):
             return await self._check_retry(remain_try, retry_interval, "连接异常", model_name)
         elif isinstance(e, RespNotOkException):
             return await self._handle_resp_not_ok(e, model_info, api_provider, remain_try, messages_info)
@@ -802,6 +802,11 @@ class LLMRequest:
             for model in self.model_for_task.model_list
         }
         """模型使用量记录"""
+        # 🔧 优化：移除全局锁，改用信号量控制并发度（允许多个请求并行）
+        # 默认允许50个并发请求，可通过配置调整
+        max_concurrent = getattr(model_set, "max_concurrent_requests", 50)
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._stats_lock = asyncio.Lock()  # 只保护统计数据的写入
 
         # 初始化辅助类
         self._model_selector = _ModelSelector(self.model_for_task.model_list, self.model_usage)
@@ -946,26 +951,29 @@ class LLMRequest:
             Tuple[str, Tuple[str, str, Optional[List[ToolCall]]]]:
                 (响应内容, (推理过程, 模型名称, 工具调用))
         """
-        start_time = time.time()
-        tool_options = await self._build_tool_options(tools)
+        # 🔧 优化：使用信号量控制并发，允许多个请求并行执行
+        async with self._semaphore:
+            start_time = time.time()
+            tool_options = await self._build_tool_options(tools)
 
-        response, model_info = await self._strategy.execute_with_failover(
-            RequestType.RESPONSE,
-            raise_when_empty=raise_when_empty,
-            prompt=prompt,  # 传递原始prompt，由strategy处理
-            tool_options=tool_options,
-            temperature=self.model_for_task.temperature if temperature is None else temperature,
-            max_tokens=self.model_for_task.max_tokens if max_tokens is None else max_tokens,
-        )
+            response, model_info = await self._strategy.execute_with_failover(
+                RequestType.RESPONSE,
+                raise_when_empty=raise_when_empty,
+                prompt=prompt,  # 传递原始prompt，由strategy处理
+                tool_options=tool_options,
+                temperature=self.model_for_task.temperature if temperature is None else temperature,
+                max_tokens=self.model_for_task.max_tokens if max_tokens is None else max_tokens,
+            )
 
-        await self._record_usage(model_info, response.usage, time.time() - start_time, "/chat/completions")
+            await self._record_usage(model_info, response.usage, time.time() - start_time, "/chat/completions")
+            logger.debug(f"LLM原始响应: {response.content}")
 
-        if not response.content and not response.tool_calls:
-            if raise_when_empty:
-                raise RuntimeError("所选模型生成了空回复。")
-            response.content = "生成的响应为空"
+            if not response.content and not response.tool_calls:
+                if raise_when_empty:
+                    raise RuntimeError("所选模型生成了空回复。")
+                response.content = "生成的响应为空"
 
-        return response.content or "", (response.reasoning_content or "", model_info.name, response.tool_calls)
+            return response.content or "", (response.reasoning_content or "", model_info.name, response.tool_calls)
 
     async def get_embedding(self, embedding_input: str) -> tuple[list[float], str]:
         """
@@ -1003,20 +1011,21 @@ class LLMRequest:
             endpoint (str): 请求的API端点 (e.g., "/chat/completions")。
         """
         if usage:
-            # 步骤1: 更新内存中的统计数据，用于负载均衡
-            stats = self.model_usage[model_info.name]
+            # 步骤1: 更新内存中的统计数据，用于负载均衡（需要加锁保护）
+            async with self._stats_lock:
+                stats = self.model_usage[model_info.name]
 
-            # 计算新的平均延迟
-            new_request_count = stats.request_count + 1
-            new_avg_latency = (stats.avg_latency * stats.request_count + time_cost) / new_request_count
+                # 计算新的平均延迟
+                new_request_count = stats.request_count + 1
+                new_avg_latency = (stats.avg_latency * stats.request_count + time_cost) / new_request_count
 
-            self.model_usage[model_info.name] = stats._replace(
-                total_tokens=stats.total_tokens + usage.total_tokens,
-                avg_latency=new_avg_latency,
-                request_count=new_request_count,
-            )
+                self.model_usage[model_info.name] = stats._replace(
+                    total_tokens=stats.total_tokens + usage.total_tokens,
+                    avg_latency=new_avg_latency,
+                    request_count=new_request_count,
+                )
 
-            # 步骤2: 创建一个后台任务，将用量数据异步写入数据库
+            # 步骤2: 创建一个后台任务，将用量数据异步写入数据库（无需等待）
             asyncio.create_task(  # noqa: RUF006
                 llm_usage_recorder.record_usage_to_database(
                     model_info=model_info,

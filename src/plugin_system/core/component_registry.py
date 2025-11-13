@@ -11,6 +11,7 @@ from src.plugin_system.base.base_chatter import BaseChatter
 from src.plugin_system.base.base_command import BaseCommand
 from src.plugin_system.base.base_events_handler import BaseEventHandler
 from src.plugin_system.base.base_interest_calculator import BaseInterestCalculator
+from src.plugin_system.base.base_prompt import BasePrompt
 from src.plugin_system.base.base_tool import BaseTool
 from src.plugin_system.base.component_types import (
     ActionInfo,
@@ -22,9 +23,10 @@ from src.plugin_system.base.component_types import (
     InterestCalculatorInfo,
     PluginInfo,
     PlusCommandInfo,
+    PromptInfo,
     ToolInfo,
 )
-from src.plugin_system.base.plus_command import PlusCommand
+from src.plugin_system.base.plus_command import PlusCommand, create_legacy_command_adapter
 
 logger = get_logger("component_registry")
 
@@ -37,6 +39,7 @@ ComponentClassType = (
     | type[PlusCommand]
     | type[BaseChatter]
     | type[BaseInterestCalculator]
+    | type[BasePrompt]
 )
 
 
@@ -83,6 +86,10 @@ class ComponentRegistry:
         # 工具特定注册表
         self._tool_registry: dict[str, type["BaseTool"]] = {}  # 工具名 -> 工具类
         self._llm_available_tools: dict[str, type["BaseTool"]] = {}  # llm可用的工具名 -> 工具类
+
+        # MCP 工具注册表(运行时动态加载)
+        self._mcp_tools: list[Any] = []  # MCP 工具适配器实例列表
+        self._mcp_tools_loaded = False  # MCP 工具是否已加载
 
         # EventHandler特定注册表
         self._event_handler_registry: dict[str, type["BaseEventHandler"]] = {}
@@ -183,6 +190,10 @@ class ComponentRegistry:
                 assert isinstance(component_info, InterestCalculatorInfo)
                 assert issubclass(component_class, BaseInterestCalculator)
                 ret = self._register_interest_calculator_component(component_info, component_class)
+            case ComponentType.PROMPT:
+                assert isinstance(component_info, PromptInfo)
+                assert issubclass(component_class, BasePrompt)
+                ret = self._register_prompt_component(component_info, component_class)
             case _:
                 logger.warning(f"未知组件类型: {component_type}")
                 ret = False
@@ -210,25 +221,16 @@ class ComponentRegistry:
 
     def _register_command_component(self, command_info: CommandInfo, command_class: type[BaseCommand]) -> bool:
         """注册Command组件到Command特定注册表"""
-        if not (command_name := command_info.name):
-            logger.error(f"Command组件 {command_class.__name__} 必须指定名称")
-            return False
-        if not isinstance(command_info, CommandInfo) or not issubclass(command_class, BaseCommand):
-            logger.error(f"注册失败: {command_name} 不是有效的Command")
-            return False
-        _assign_plugin_attrs(
-            command_class, command_info.plugin_name, self.get_plugin_config(command_info.plugin_name) or {}
-        )
-        self._command_registry[command_name] = command_class
-        if command_info.enabled and command_info.command_pattern:
-            pattern = re.compile(command_info.command_pattern, re.IGNORECASE | re.DOTALL)
-            if pattern not in self._command_patterns:
-                self._command_patterns[pattern] = command_name
-            else:
-                logger.warning(
-                    f"'{command_name}' 对应的命令模式与 '{self._command_patterns[pattern]}' 重复，忽略此命令"
-                )
-        return True
+        logger.warning(
+                f"检测到旧版Command组件 '{command_class.command_name}' (来自插件: {command_info.plugin_name})。"
+                "它将通过兼容层运行，但建议尽快迁移到PlusCommand以获得更好的性能和功能。"
+            )
+        # 使用适配器将其转换为PlusCommand
+        adapted_class = create_legacy_command_adapter(command_class)
+        plus_command_info = adapted_class.get_plus_command_info()
+        plus_command_info.plugin_name = command_info.plugin_name  # 继承插件名
+
+        return self._register_plus_command_component(plus_command_info, adapted_class)
 
     def _register_plus_command_component(
         self, plus_command_info: PlusCommandInfo, plus_command_class: type[PlusCommand]
@@ -344,6 +346,31 @@ class ComponentRegistry:
         self._enabled_interest_calculator_registry[calculator_name] = interest_calculator_class
 
         logger.debug(f"已注册InterestCalculator组件: {calculator_name}")
+        return True
+
+    def _register_prompt_component(
+        self, prompt_info: PromptInfo, prompt_class: "ComponentClassType"
+    ) -> bool:
+        """注册Prompt组件到Prompt特定注册表"""
+        prompt_name = prompt_info.name
+        if not prompt_name:
+            logger.error(f"Prompt组件 {prompt_class.__name__} 必须指定名称")
+            return False
+
+        if not hasattr(self, "_prompt_registry"):
+            self._prompt_registry: dict[str, type[BasePrompt]] = {}
+        if not hasattr(self, "_enabled_prompt_registry"):
+            self._enabled_prompt_registry: dict[str, type[BasePrompt]] = {}
+
+        _assign_plugin_attrs(
+            prompt_class, prompt_info.plugin_name, self.get_plugin_config(prompt_info.plugin_name) or {}
+        )
+        self._prompt_registry[prompt_name] = prompt_class  # type: ignore
+
+        if prompt_info.enabled:
+            self._enabled_prompt_registry[prompt_name] = prompt_class  # type: ignore
+
+        logger.debug(f"已注册Prompt组件: {prompt_name}")
         return True
 
     # === 组件移除相关 ===
@@ -580,7 +607,17 @@ class ComponentRegistry:
         component_name: str,
         component_type: ComponentType | None = None,
     ) -> (
-        type[BaseCommand | BaseAction | BaseEventHandler | BaseTool | PlusCommand | BaseChatter | BaseInterestCalculator] | None
+        type[
+            BaseCommand
+            | BaseAction
+            | BaseEventHandler
+            | BaseTool
+            | PlusCommand
+            | BaseChatter
+            | BaseInterestCalculator
+            | BasePrompt
+        ]
+        | None
     ):
         """获取组件类，支持自动命名空间解析
 
@@ -829,6 +866,7 @@ class ComponentRegistry:
         events_handlers: int = 0
         plus_command_components: int = 0
         chatter_components: int = 0
+        prompt_components: int = 0
         for component in self._components.values():
             if component.component_type == ComponentType.ACTION:
                 action_components += 1
@@ -842,13 +880,17 @@ class ComponentRegistry:
                 plus_command_components += 1
             elif component.component_type == ComponentType.CHATTER:
                 chatter_components += 1
+            elif component.component_type == ComponentType.PROMPT:
+                prompt_components += 1
         return {
             "action_components": action_components,
             "command_components": command_components,
             "tool_components": tool_components,
+            "mcp_tools": len(self._mcp_tools),
             "event_handlers": events_handlers,
             "plus_command_components": plus_command_components,
             "chatter_components": chatter_components,
+            "prompt_components": prompt_components,
             "total_components": len(self._components),
             "total_plugins": len(self._plugins),
             "components_by_type": {
@@ -857,6 +899,34 @@ class ComponentRegistry:
             "enabled_components": len([c for c in self._components.values() if c.enabled]),
             "enabled_plugins": len([p for p in self._plugins.values() if p.enabled]),
         }
+
+    # === MCP 工具相关方法 ===
+
+    async def load_mcp_tools(self) -> None:
+        """加载 MCP 工具（异步方法）"""
+        if self._mcp_tools_loaded:
+            logger.debug("MCP 工具已加载，跳过")
+            return
+
+        try:
+            from .mcp_tool_adapter import load_mcp_tools_as_adapters
+
+            logger.info("开始加载 MCP 工具...")
+            self._mcp_tools = await load_mcp_tools_as_adapters()
+            self._mcp_tools_loaded = True
+            logger.info(f"MCP 工具加载完成，共 {len(self._mcp_tools)} 个工具")
+        except Exception as e:
+            logger.error(f"加载 MCP 工具失败: {e}")
+            self._mcp_tools = []
+            self._mcp_tools_loaded = True  # 标记为已尝试加载，避免重复尝试
+
+    def get_mcp_tools(self) -> list["BaseTool"]:
+        """获取所有 MCP 工具适配器实例"""
+        return self._mcp_tools.copy()
+
+    def is_mcp_tool(self, tool_name: str) -> bool:
+        """检查工具名是否为 MCP 工具"""
+        return tool_name.startswith("mcp_")
 
     # === 组件移除相关 ===
 

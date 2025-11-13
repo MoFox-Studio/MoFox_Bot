@@ -1,7 +1,7 @@
 [project]
-name = "MaiBotNapcatAdapter"
+name = "MoFoxBotNapcatAdapter"
 version = "0.4.8"
-description = "A MaiBot adapter for Napcat"
+description = "A MoFox-Bot adapter for Napcat"
 dependencies = [
     "ruff>=0.12.9",
 ]

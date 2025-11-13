@@ -1,4 +1,3 @@
-# import asyncio
 import asyncio
 import os
 import platform
@@ -106,10 +105,12 @@ class EULAManager:
         """检查EULA和隐私条款确认状态"""
         confirm_logger = get_logger("confirm")
 
+        # 只在开始时加载一次，避免重复读取文件
         if not ConfigManager.safe_load_dotenv():
             confirm_logger.error("无法加载环境变量，EULA检查失败")
             sys.exit(1)
 
+        # 从 os.environ 读取（避免重复 I/O）
         eula_confirmed = os.getenv("EULA_CONFIRMED", "").lower()
         if eula_confirmed == "true":
             logger.info("EULA已通过环境变量确认")
@@ -120,7 +121,9 @@ class EULAManager:
         confirm_logger.critical("请阅读以下文件：")
         confirm_logger.critical("  - EULA.md (用户许可协议)")
         confirm_logger.critical("  - PRIVACY.md (隐私条款)")
-        confirm_logger.critical("然后编辑 .env 文件，将 'EULA_CONFIRMED=false' 改为 'EULA_CONFIRMED=true'")
+        confirm_logger.critical(
+            "然后编辑 .env 文件，将 'EULA_CONFIRMED=false' 改为 'EULA_CONFIRMED=true'"
+        )
 
         attempts = 0
         while attempts < MAX_EULA_CHECK_ATTEMPTS:
@@ -128,8 +131,10 @@ class EULAManager:
                 await asyncio.sleep(EULA_CHECK_INTERVAL)
                 attempts += 1
 
-                # 重新加载环境变量
-                ConfigManager.safe_load_dotenv()
+                # 重新加载.env文件以获取最新更改
+                load_dotenv(override=True)
+
+                # 从 os.environ 读取，避免重复 I/O
                 eula_confirmed = os.getenv("EULA_CONFIRMED", "").lower()
                 if eula_confirmed == "true":
                     confirm_logger.info("EULA确认成功，感谢您的同意")
@@ -282,14 +287,14 @@ class DatabaseManager:
     async def __aenter__(self):
         """异步上下文管理器入口"""
         try:
-            from src.common.database.database import initialize_sql_database
+            from src.common.database.core import check_and_migrate_database as initialize_sql_database
             from src.config.config import global_config
 
             logger.info("正在初始化数据库连接...")
             start_time = time.time()
 
             # 使用线程执行器运行潜在的阻塞操作
-            await initialize_sql_database( global_config.database)
+            await initialize_sql_database()
             elapsed_time = time.time() - start_time
             logger.info(
                 f"数据库连接初始化成功，使用 {global_config.database.database_type} 数据库，耗时: {elapsed_time:.2f}秒"
@@ -550,19 +555,14 @@ class MaiBotMain:
         except Exception as e:
             logger.warning(f"时区设置失败: {e}")
 
-    async def initialize_database(self):
-        """初始化数据库连接"""
-        async with DatabaseManager():
-            pass
-
     async def initialize_database_async(self):
         """异步初始化数据库表结构"""
         logger.info("正在初始化数据库表结构...")
         try:
             start_time = time.time()
-            from src.common.database.sqlalchemy_models import initialize_database
+            from src.common.database.core import check_and_migrate_database
 
-            await initialize_database()
+            await check_and_migrate_database()
             elapsed_time = time.time() - start_time
             logger.info(f"数据库表结构初始化完成，耗时: {elapsed_time:.2f}秒")
         except Exception as e:
@@ -588,19 +588,12 @@ class MaiBotMain:
 
     async def run_async_init(self, main_system):
         """执行异步初始化步骤"""
-        # 初始化数据库连接
-        await self.initialize_database()
 
         # 初始化数据库表结构
         await self.initialize_database_async()
 
         # 初始化主系统
         await main_system.initialize()
-
-        # 初始化知识库
-        from src.chat.knowledge.knowledge_lib import initialize_lpmm_knowledge
-
-        initialize_lpmm_knowledge()
 
         # 显示彩蛋
         EasterEgg.show()
@@ -612,9 +605,9 @@ async def wait_for_user_input():
         # 在非生产环境下，使用异步方式等待输入
         if os.getenv("ENVIRONMENT") != "production":
             logger.info("程序执行完成，按 Ctrl+C 退出...")
-            # 简单的异步等待，避免阻塞事件循环
-            while True:
-                await asyncio.sleep(1)
+            # 使用 Event 替代 sleep 循环，避免阻塞事件循环
+            shutdown_event = asyncio.Event()
+            await shutdown_event.wait()
     except KeyboardInterrupt:
         logger.info("用户中断程序")
         return True

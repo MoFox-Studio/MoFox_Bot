@@ -11,8 +11,8 @@ from collections.abc import Callable
 
 from sqlalchemy import select
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import MaiZoneScheduleStatus
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import MaiZoneScheduleStatus
 from src.common.logger import get_logger
 from src.schedule.schedule_manager import schedule_manager
 
@@ -175,9 +175,11 @@ class SchedulerService:
                     record.story_content = content  # type: ignore
                 else:
                     # 如果不存在，则创建新记录
+                    # 如果activity是字典，只提取activity字段
+                    activity_str = activity.get("activity", str(activity)) if isinstance(activity, dict) else str(activity)
                     new_record = MaiZoneScheduleStatus(
                         datetime_hour=hour_str,
-                        activity=activity,
+                        activity=activity_str,
                         is_processed=True,
                         processed_at=datetime.datetime.now(),
                         story_content=content,

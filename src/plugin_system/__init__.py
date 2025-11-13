@@ -1,5 +1,5 @@
 """
-MaiBot 插件系统
+MoFox-Bot 插件系统
 
 提供统一的插件开发和管理框架
 """
@@ -15,6 +15,7 @@ from .apis import (
     get_logger,
     llm_api,
     message_api,
+    mood_api,
     person_api,
     plugin_manage_api,
     register_plugin,
@@ -28,6 +29,7 @@ from .base import (
     BaseCommand,
     BaseEventHandler,
     BasePlugin,
+    BasePrompt,
     BaseTool,
     ChatMode,
     ChatType,
@@ -42,8 +44,6 @@ from .base import (
     PluginInfo,
     # 新增的增强命令系统
     PlusCommand,
-    PlusCommandAdapter,
-    PlusCommandInfo,
     PythonDependency,
     ToolInfo,
     ToolParamType,
@@ -64,6 +64,7 @@ __all__ = [
     "BaseEventHandler",
     # 基础类
     "BasePlugin",
+    "BasePrompt",
     "BaseTool",
     "ChatMode",
     "ChatType",
@@ -78,15 +79,12 @@ __all__ = [
     # 消息
     "MaiMessages",
     # 工具函数
-    "ManifestValidator",
     "PluginInfo",
     # 增强命令系统
     "PlusCommand",
-    "PlusCommandAdapter",
     "PythonDependency",
     "ToolInfo",
     "ToolParamType",
-    # API 模块
     "chat_api",
     "component_manage_api",
     "config_api",
@@ -104,6 +102,8 @@ __all__ = [
     "get_logger",
     "llm_api",
     "message_api",
+    # API 模块
+    "mood_api",
     "person_api",
     "plugin_manage_api",
     "register_plugin",

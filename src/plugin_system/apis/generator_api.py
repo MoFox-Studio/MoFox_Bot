@@ -15,11 +15,12 @@ from rich.traceback import install
 
 from src.chat.message_receive.chat_stream import ChatStream
 from src.chat.utils.utils import process_llm_response
+from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.logger import get_logger
 from src.plugin_system.base.component_types import ActionInfo
 
 if TYPE_CHECKING:
-    pass
+    from chat.replyer.default_generator import DefaultReplyer
 
 install(extra_lines=3)
 
@@ -36,7 +37,7 @@ async def get_replyer(
     chat_stream: ChatStream | None = None,
     chat_id: str | None = None,
     request_type: str = "replyer",
-) -> Any | None:
+) -> "DefaultReplyer | None":
     """获取回复器对象
 
     优先使用chat_stream，如果没有则使用chat_id直接查找。
@@ -81,7 +82,7 @@ async def generate_reply(
     chat_id: str | None = None,
     action_data: dict[str, Any] | None = None,
     reply_to: str = "",
-    reply_message: dict[str, Any] | None = None,
+    reply_message: DatabaseMessages | None = None,
     extra_info: str = "",
     available_actions: dict[str, ActionInfo] | None = None,
     enable_tool: bool = False,
@@ -127,6 +128,18 @@ async def generate_reply(
         if not extra_info and action_data:
             extra_info = action_data.get("extra_info", "")
 
+        # 从action_data中提取prompt_mode
+        prompt_mode = "s4u"  # 默认使用s4u模式
+        if action_data and "prompt_mode" in action_data:
+            prompt_mode = action_data.get("prompt_mode", "s4u")
+
+        # 将prompt_mode添加到available_actions中（作为特殊键）
+        # 注意：这里我们需要暂时使用类型忽略，因为available_actions的类型定义不支持非ActionInfo值
+        if available_actions is None:
+            available_actions = {}
+        available_actions = available_actions.copy()  # 避免修改原字典
+        available_actions["_prompt_mode"] = prompt_mode  # type: ignore  # 特殊键，用于传递prompt_mode
+
         # 如果action_data中有thinking，添加到extra_info中
         if action_data and (thinking := action_data.get("thinking")):
             if extra_info:
@@ -150,6 +163,8 @@ async def generate_reply(
         assert llm_response_dict is not None, "llm_response_dict不应为None"  # 虽然说不会出现llm_response为空的情况
         if content := llm_response_dict.get("content", ""):
             # 处理为拟人化文本
+            from src.chat.utils.utils import filter_system_format_content
+            content = filter_system_format_content(content)
             reply_set = process_human_text(content, enable_splitter, enable_chinese_typo)
         else:
             reply_set = []

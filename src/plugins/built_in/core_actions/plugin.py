@@ -6,15 +6,17 @@
 """
 
 # 导入依赖的系统组件
+from typing import ClassVar
+
 from src.common.logger import get_logger
 
 # 导入新插件系统
 from src.plugin_system import BasePlugin, ComponentInfo, register_plugin
 from src.plugin_system.base.config_types import ConfigField
-from src.plugins.built_in.core_actions.anti_injector_manager import AntiInjectorStatusCommand
 
 # 导入API模块 - 标准Python包方式
 from src.plugins.built_in.core_actions.emoji import EmojiAction
+from src.plugins.built_in.core_actions.reply import ReplyAction, RespondAction
 
 logger = get_logger("core_actions")
 
@@ -34,28 +36,26 @@ class CoreActionsPlugin(BasePlugin):
     # 插件基本信息
     plugin_name: str = "core_actions"  # 内部标识符
     enable_plugin: bool = True
-    dependencies: list[str] = []  # 插件依赖列表
-    python_dependencies: list[str] = []  # Python包依赖列表
+    dependencies: ClassVar[list[str]] = []  # 插件依赖列表
+    python_dependencies: ClassVar[list[str]] = []  # Python包依赖列表
     config_file_name: str = "config.toml"
 
     # 配置节描述
-    config_section_descriptions = {
+    config_section_descriptions: ClassVar = {
         "plugin": "插件启用配置",
         "components": "核心组件启用配置",
     }
 
     # 配置Schema定义
-    config_schema: dict = {
+    config_schema: ClassVar[dict] = {
         "plugin": {
             "enabled": ConfigField(type=bool, default=True, description="是否启用插件"),
             "config_version": ConfigField(type=str, default="0.6.0", description="配置文件版本"),
         },
         "components": {
-            "enable_reply": ConfigField(type=bool, default=True, description="是否启用基本回复动作"),
+            "enable_reply": ConfigField(type=bool, default=True, description="是否启用 reply 动作（s4u模板）"),
+            "enable_respond": ConfigField(type=bool, default=True, description="是否启用 respond 动作（normal模板）"),
             "enable_emoji": ConfigField(type=bool, default=True, description="是否启用发送表情/图片动作"),
-            "enable_anti_injector_manager": ConfigField(
-                type=bool, default=True, description="是否启用反注入系统管理命令"
-            ),
         },
     }
 
@@ -63,10 +63,18 @@ class CoreActionsPlugin(BasePlugin):
         """返回插件包含的组件列表"""
 
         # --- 根据配置注册组件 ---
-        components = []
+        components: ClassVar = []
+
+        # 注册 reply 动作
+        if self.get_config("components.enable_reply", True):
+            components.append((ReplyAction.get_action_info(), ReplyAction))
+
+        # 注册 respond 动作
+        if self.get_config("components.enable_respond", True):
+            components.append((RespondAction.get_action_info(), RespondAction))
+
+        # 注册 emoji 动作
         if self.get_config("components.enable_emoji", True):
             components.append((EmojiAction.get_action_info(), EmojiAction))
-        if self.get_config("components.enable_anti_injector_manager", True):
-            components.append((AntiInjectorStatusCommand.get_command_info(), AntiInjectorStatusCommand))
 
         return components

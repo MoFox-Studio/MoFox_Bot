@@ -13,7 +13,7 @@ from src.common.logger import get_logger
 from src.config.config_base import ValidatedConfigBase
 from src.config.official_configs import (
     AffinityFlowConfig,
-    AntiPromptInjectionConfig,
+    AttentionOptimizationConfig,
     BotConfig,
     ChatConfig,
     ChineseTypoConfig,
@@ -26,21 +26,19 @@ from src.config.official_configs import (
     EmojiConfig,
     ExperimentalConfig,
     ExpressionConfig,
-    KeywordReactionConfig,
     LPMMKnowledgeConfig,
     MaimMessageConfig,
     MemoryConfig,
     MessageReceiveConfig,
     MoodConfig,
-    NormalChatConfig,
+    NoticeConfig,
     PermissionConfig,
     PersonalityConfig,
     PlanningSystemConfig,
     ProactiveThinkingConfig,
-    RelationshipConfig,
+    ReactionConfig,
     ResponsePostProcessConfig,
     ResponseSplitterConfig,
-    SleepSystemConfig,
     ToolConfig,
     VideoAnalysisConfig,
     VoiceConfig,
@@ -59,14 +57,14 @@ install(extra_lines=3)
 # 配置主程序日志格式
 logger = get_logger("config")
 
-# 获取当前文件所在目录的父目录的父目录（即MaiBot项目根目录）
+# 获取当前文件所在目录的父目录的父目录（即MoFox-Bot项目根目录）
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONFIG_DIR = os.path.join(PROJECT_ROOT, "config")
 TEMPLATE_DIR = os.path.join(PROJECT_ROOT, "template")
 
 # 考虑到，实际上配置文件中的mai_version是不会自动更新的,所以采用硬编码
 # 对该字段的更新，请严格参照语义化版本规范：https://semver.org/lang/zh-CN/
-MMC_VERSION = "0.11.0"
+MMC_VERSION = "0.12.0"
 
 
 def get_key_comment(toml_table, key):
@@ -377,15 +375,14 @@ class Config(ValidatedConfigBase):
     database: DatabaseConfig = Field(..., description="数据库配置")
     bot: BotConfig = Field(..., description="机器人基本配置")
     personality: PersonalityConfig = Field(..., description="个性配置")
-    relationship: RelationshipConfig = Field(..., description="关系配置")
     chat: ChatConfig = Field(..., description="聊天配置")
     message_receive: MessageReceiveConfig = Field(..., description="消息接收配置")
-    normal_chat: NormalChatConfig = Field(..., description="普通聊天配置")
+    notice: NoticeConfig = Field(..., description="Notice消息配置")
     emoji: EmojiConfig = Field(..., description="表情配置")
     expression: ExpressionConfig = Field(..., description="表达配置")
-    memory: MemoryConfig = Field(..., description="记忆配置")
+    memory: MemoryConfig | None = Field(default=None, description="记忆配置")
     mood: MoodConfig = Field(..., description="情绪配置")
-    keyword_reaction: KeywordReactionConfig = Field(..., description="关键词反应配置")
+    reaction: ReactionConfig = Field(default_factory=ReactionConfig, description="反应规则配置")
     chinese_typo: ChineseTypoConfig = Field(..., description="中文错别字配置")
     response_post_process: ResponsePostProcessConfig = Field(..., description="响应后处理配置")
     response_splitter: ResponseSplitterConfig = Field(..., description="响应分割配置")
@@ -395,14 +392,14 @@ class Config(ValidatedConfigBase):
     tool: ToolConfig = Field(..., description="工具配置")
     debug: DebugConfig = Field(..., description="调试配置")
     custom_prompt: CustomPromptConfig = Field(..., description="自定义提示配置")
+    attention_optimization: AttentionOptimizationConfig = Field(
+        default_factory=lambda: AttentionOptimizationConfig(), description="注意力优化配置"
+    )
     voice: VoiceConfig = Field(..., description="语音配置")
     permission: PermissionConfig = Field(..., description="权限配置")
     command: CommandConfig = Field(..., description="命令系统配置")
 
     # 有默认值的字段放在后面
-    anti_prompt_injection: AntiPromptInjectionConfig = Field(
-        default_factory=lambda: AntiPromptInjectionConfig(), description="反提示注入配置"
-    )
     video_analysis: VideoAnalysisConfig = Field(
         default_factory=lambda: VideoAnalysisConfig(), description="视频分析配置"
     )
@@ -410,7 +407,6 @@ class Config(ValidatedConfigBase):
         default_factory=lambda: DependencyManagementConfig(), description="依赖管理配置"
     )
     web_search: WebSearchConfig = Field(default_factory=lambda: WebSearchConfig(), description="网络搜索配置")
-    sleep_system: SleepSystemConfig = Field(default_factory=lambda: SleepSystemConfig(), description="睡眠系统配置")
     planning_system: PlanningSystemConfig = Field(
         default_factory=lambda: PlanningSystemConfig(), description="规划系统配置"
     )

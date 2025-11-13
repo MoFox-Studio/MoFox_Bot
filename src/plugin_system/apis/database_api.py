@@ -9,7 +9,7 @@
 注意：此模块现在使用SQLAlchemy实现，提供更好的连接管理和错误处理
 """
 
-from src.common.database.sqlalchemy_database_api import MODEL_MAPPING, db_get, db_query, db_save, store_action_info
+from src.common.database.compatibility import MODEL_MAPPING, db_get, db_query, db_save, store_action_info
 
 # 保持向后兼容性
 __all__ = ["MODEL_MAPPING", "db_get", "db_query", "db_save", "store_action_info"]

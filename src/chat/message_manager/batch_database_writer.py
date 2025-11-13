@@ -9,8 +9,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.common.database.sqlalchemy_database_api import get_db_session
-from src.common.database.sqlalchemy_models import ChatStreams
+from src.common.database.compatibility import get_db_session
+from src.common.database.core.models import ChatStreams
 from src.common.logger import get_logger
 from src.config.config import global_config
 

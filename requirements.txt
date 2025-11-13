@@ -1,5 +1,6 @@
 sqlalchemy
 aiosqlite
+aiofiles
 aiomysql
 APScheduler
 aiohttp
@@ -9,6 +10,8 @@ customtkinter
 dotenv
 faiss-cpu
 fastapi
+fastmcp
+filetype
 rjieba
 jsonlines
 maim_message
@@ -69,6 +72,10 @@ lunar_python
 fuzzywuzzy
 python-multipart
 aiofiles
+jinja2
 inkfox
-mcp
-sse-starlette
+soundfile
+pedalboard
+
+# For local speech-to-text functionality (stt_whisper_plugin)
+openai-whisper

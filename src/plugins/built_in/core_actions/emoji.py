@@ -1,4 +1,6 @@
 import random
+import re
+from typing import ClassVar
 
 from src.chat.emoji_system.emoji_history import add_emoji_to_history, get_recent_emojis
 from src.chat.emoji_system.emoji_manager import MaiEmoji, get_emoji_manager
@@ -18,8 +20,36 @@ logger = get_logger("emoji")
 
 
 class EmojiAction(BaseAction):
-    """表情动作 - 发送表情包"""
+    """表情动作 - 发送表情包
 
+    注意：此 Action 使用旧的激活类型配置方式（已废弃但仍然兼容）。
+    BaseAction.go_activate() 的默认实现会自动处理这些旧配置。
+
+    推荐的新写法（迁移示例）：
+    ----------------------------------------
+    # 移除下面的 activation_type 相关配置，改为重写 go_activate 方法：
+
+    async def go_activate(self, chat_content: str = "", llm_judge_model=None) -> bool:
+        # 根据配置选择激活方式
+        if global_config.emoji.emoji_activate_type == "llm":
+            return await self._llm_judge_activation(
+                chat_content=chat_content,
+                judge_prompt=\"""
+                判定是否需要使用表情动作的条件：
+                1. 用户明确要求使用表情包
+                2. 这是一个适合表达情绪的场合
+                3. 发表情包能使当前对话更有趣
+                4. 不要发送太多表情包
+                \""",
+                llm_judge_model=llm_judge_model
+            )
+        else:
+            # 使用随机激活
+            return await self._random_activation(global_config.emoji.emoji_chance)
+    ----------------------------------------
+    """
+
+    # ========== 以下使用旧的激活配置（已废弃但兼容） ==========
     # 激活设置
     if global_config.emoji.emoji_activate_type == "llm":
         activation_type = ActionActivationType.LLM_JUDGE
@@ -37,26 +67,26 @@ class EmojiAction(BaseAction):
     # LLM判断提示词
     llm_judge_prompt = """
     判定是否需要使用表情动作的条件：
-    1. 用户明确要求使用表情包
-    2. 这是一个适合表达情绪的场合
-    3. 发表情包能使当前对话更有趣
-    4. 不要发送太多表情包，如果你已经发送过多个表情包则回答"否"
+    1. 用户明确要求使用表情包。
+    2. 当前的对话氛围很适合用表情来活跃气氛。
+    3. 发送表情包能让互动变得更有趣、更生动。
+    4. 请像正常人一样自然地使用表情包，不要过度依赖，也不要刷屏哦。
 
     请回答"是"或"否"。
     """
 
     # 动作参数定义
-    action_parameters = {}
+    action_parameters: ClassVar = {}
 
     # 动作使用场景
-    action_require = [
+    action_require: ClassVar = [
         "发送表情包辅助表达情绪",
         "表达情绪时可以选择使用",
         "不要连续发送，如果你已经发过[表情包]，就不要选择此动作",
     ]
 
     # 关联类型
-    associated_types = ["emoji"]
+    associated_types: ClassVar[list[str]] = ["emoji"]
 
     async def execute(self) -> tuple[bool, str]:
         """执行表情动作"""
@@ -90,8 +120,8 @@ class EmojiAction(BaseAction):
                 logger.error(f"{self.log_prefix} 获取或处理表情发送历史时出错: {e}")
 
             # 4. 准备情感数据和后备列表
-            emotion_map = {}
-            all_emojis_data = []
+            emotion_map: ClassVar = {}
+            all_emojis_data: ClassVar = []
 
             for emoji in all_emojis_obj:
                 b64 = image_path_to_base64(emoji.full_path)
@@ -195,7 +225,13 @@ class EmojiAction(BaseAction):
                     )
 
                 # 准备表情描述列表
-                emoji_descriptions = [desc for _, desc in all_emojis_data]
+                # 提取精炼描述和关键词用于LLM选择
+                def extract_refined_info(full_desc: str) -> str:
+                    # 新格式: [精炼描述] Keywords: [关键词] Desc: [详细描述]
+                    # 我们只需要 Desc: 之前的部分
+                    return full_desc.split(" Desc:")[0].strip()
+
+                emoji_descriptions = [extract_refined_info(desc) for _, desc in all_emojis_data]
 
                 # 构建prompt让LLM选择描述
                 prompt = f"""
@@ -228,32 +264,40 @@ class EmojiAction(BaseAction):
                     chosen_emotion = chosen_description  # 在描述模式下，用描述作为情感标签
                     logger.info(f"{self.log_prefix} LLM选择的描述: {chosen_description}")
 
-                    # 简单关键词匹配
-                    matched_emoji = next(
-                        (
-                            item
-                            for item in all_emojis_data
-                            if chosen_description.lower() in item[1].lower()
-                            or item[1].lower() in chosen_description.lower()
-                        ),
-                        None,
-                    )
+                    # 优化匹配逻辑：优先在精炼描述中精确匹配，然后进行关键词匹配
+                    def extract_refined_info(full_desc: str) -> str:
+                        return full_desc.split(" Desc:")[0].strip()
 
-                    # 如果包含匹配失败，尝试关键词匹配
-                    if not matched_emoji:
-                        keywords = ["惊讶", "困惑", "呆滞", "震惊", "懵", "无语", "萌", "可爱"]
-                        for keyword in keywords:
-                            if keyword in chosen_description:
-                                for item in all_emojis_data:
-                                    if any(k in item[1] for k in ["呆", "萌", "惊", "困惑", "无语"]):
-                                        matched_emoji = item
-                                        break
-                                if matched_emoji:
-                                    break
+                    # 1. 尝试在精炼描述中找到最匹配的表情
+                    # 我们假设LLM返回的是精炼描述的一部分或全部
+                    matched_emoji = None
+                    best_match_score = 0
+
+                    for item in all_emojis_data:
+                        refined_info = extract_refined_info(item[1])
+                        # 计算一个简单的匹配分数
+                        score = 0
+                        if chosen_description.lower() in refined_info.lower():
+                            score += 2 # 包含匹配
+                        if refined_info.lower() in chosen_description.lower():
+                            score += 2 # 包含匹配
+
+                        # 关键词匹配加分
+                        chosen_keywords = re.findall(r"\w+", chosen_description.lower())
+                        item_keywords = re.findall(r"\[(.*?)\]", refined_info)
+                        if item_keywords:
+                            item_keywords_set = {k.strip().lower() for k in item_keywords[0].split(",")}
+                            for kw in chosen_keywords:
+                                if kw in item_keywords_set:
+                                    score += 1
+
+                        if score > best_match_score:
+                            best_match_score = score
+                            matched_emoji = item
 
                     if matched_emoji:
                         emoji_base64, emoji_description = matched_emoji
-                        logger.info(f"{self.log_prefix} 找到匹配描述的表情包: {emoji_description}")
+                        logger.info(f"{self.log_prefix} 找到匹配描述的表情包: {extract_refined_info(emoji_description)}")
                     else:
                         logger.warning(f"{self.log_prefix} LLM选择的描述无法匹配任何表情包, 将随机选择")
                         emoji_base64, emoji_description = random.choice(all_emojis_data)

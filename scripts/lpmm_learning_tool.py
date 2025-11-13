@@ -3,10 +3,9 @@ import datetime
 import os
 import shutil
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from threading import Lock
 
+import aiofiles
 import orjson
 from json_repair import repair_json
 
@@ -37,7 +36,26 @@ ROOT_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DATA_PATH = os.path.join(ROOT_PATH, "data", "lpmm_raw_data")
 OPENIE_OUTPUT_DIR = os.path.join(ROOT_PATH, "data", "openie")
 TEMP_DIR = os.path.join(ROOT_PATH, "temp", "lpmm_cache")
-file_lock = Lock()
+
+# ========== 性能配置参数 ==========
+#
+# 知识提取（步骤2：txt转json）并发控制
+# - 控制同时进行的LLM提取请求数量
+# - 推荐值: 3-10，取决于API速率限制
+# - 过高可能触发429错误（速率限制）
+MAX_EXTRACTION_CONCURRENCY = 5
+
+# 数据导入（步骤3：生成embedding）性能配置
+# - max_workers: 并发批次数（每批次并行处理）
+# - chunk_size: 每批次包含的字符串数
+# - 理论并发 = max_workers × chunk_size
+# - 推荐配置:
+#   * 高性能API（OpenAI）: max_workers=20-30, chunk_size=30-50
+#   * 中等API: max_workers=10-15, chunk_size=20-30
+#   * 本地/慢速API: max_workers=5-10, chunk_size=10-20
+EMBEDDING_MAX_WORKERS = 20  # 并发批次数
+EMBEDDING_CHUNK_SIZE = 30   # 每批次字符串数
+# ===================================
 
 # --- 缓存清理 ---
 
@@ -154,25 +172,41 @@ def get_extraction_prompt(paragraph: str) -> str:
 
 
 async def extract_info_async(pg_hash, paragraph, llm_api):
+    """
+    异步提取单个段落的信息（带缓存支持）
+    
+    Args:
+        pg_hash: 段落哈希值
+        paragraph: 段落文本
+        llm_api: LLM请求实例
+    
+    Returns:
+        tuple: (doc_item或None, failed_hash或None)
+    """
     temp_file_path = os.path.join(TEMP_DIR, f"{pg_hash}.json")
-    with file_lock:
-        if os.path.exists(temp_file_path):
+
+    # 🔧 优化：使用异步文件检查，避免阻塞
+    if os.path.exists(temp_file_path):
+        try:
+            async with aiofiles.open(temp_file_path, "rb") as f:
+                content = await f.read()
+                return orjson.loads(content), None
+        except orjson.JSONDecodeError:
+            # 缓存文件损坏，删除并重新生成
             try:
-                with open(temp_file_path, "rb") as f:
-                    return orjson.loads(f.read()), None
-            except orjson.JSONDecodeError:
                 os.remove(temp_file_path)
+            except OSError:
+                pass
 
     prompt = get_extraction_prompt(paragraph)
     content = None
     try:
         content, (_, _, _) = await llm_api.generate_response_async(prompt)
 
-        # 改进点：调用封装好的函数处理JSON解析和修复
+        # 调用封装好的函数处理JSON解析和修复
         extracted_data = _parse_and_repair_json(content)
 
         if extracted_data is None:
-            # 如果解析失败，抛出异常以触发统一的错误处理逻辑
             raise ValueError("无法从LLM输出中解析有效的JSON数据")
 
         doc_item = {
@@ -181,9 +215,11 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
             "extracted_entities": extracted_data.get("entities", []),
             "extracted_triples": extracted_data.get("triples", []),
         }
-        with file_lock:
-            with open(temp_file_path, "wb") as f:
-                f.write(orjson.dumps(doc_item))
+
+        # 保存到缓存（异步写入）
+        async with aiofiles.open(temp_file_path, "wb") as f:
+            await f.write(orjson.dumps(doc_item))
+
         return doc_item, None
     except Exception as e:
         logger.error(f"提取信息失败：{pg_hash}, 错误：{e}")
@@ -192,41 +228,74 @@ async def extract_info_async(pg_hash, paragraph, llm_api):
         return None, pg_hash
 
 
-def extract_info_sync(pg_hash, paragraph, llm_api):
-    return asyncio.run(extract_info_async(pg_hash, paragraph, llm_api))
-
-
-def extract_information(paragraphs_dict, model_set):
+async def extract_information(paragraphs_dict, model_set):
+    """
+    🔧 优化：使用真正的异步并发代替多线程
+    
+    这样可以：
+    1. 避免 event loop closed 错误
+    2. 更高效地利用 I/O 资源
+    3. 与我们优化的 LLM 请求层无缝集成
+    
+    并发控制：
+    - 使用信号量限制最大并发数为 5，防止触发 API 速率限制
+    
+    Args:
+        paragraphs_dict: {hash: paragraph} 字典
+        model_set: 模型配置
+    """
     logger.info("--- 步骤 2: 开始信息提取 ---")
     os.makedirs(OPENIE_OUTPUT_DIR, exist_ok=True)
     os.makedirs(TEMP_DIR, exist_ok=True)
 
-    llm_api = LLMRequest(model_set=model_set)
     failed_hashes, open_ie_docs = [], []
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        f_to_hash = {
-            executor.submit(extract_info_sync, p_hash, p, llm_api): p_hash for p_hash, p in paragraphs_dict.items()
-        }
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            TaskProgressColumn(),
-            MofNCompleteColumn(),
-            "•",
-            TimeElapsedColumn(),
-            "<",
-            TimeRemainingColumn(),
-        ) as progress:
-            task = progress.add_task("[cyan]正在提取信息...", total=len(paragraphs_dict))
-            for future in as_completed(f_to_hash):
-                doc_item, failed_hash = future.result()
-                if failed_hash:
-                    failed_hashes.append(failed_hash)
-                elif doc_item:
-                    open_ie_docs.append(doc_item)
-                progress.update(task, advance=1)
+    # 🔧 关键修复：创建单个 LLM 请求实例，复用连接
+    llm_api = LLMRequest(model_set=model_set, request_type="lpmm_extraction")
+
+    # 🔧 并发控制：限制最大并发数，防止速率限制
+    semaphore = asyncio.Semaphore(MAX_EXTRACTION_CONCURRENCY)
+
+    async def extract_with_semaphore(pg_hash, paragraph):
+        """带信号量控制的提取函数"""
+        async with semaphore:
+            return await extract_info_async(pg_hash, paragraph, llm_api)
+
+    # 创建所有异步任务（带并发控制）
+    tasks = [
+        extract_with_semaphore(p_hash, paragraph)
+        for p_hash, paragraph in paragraphs_dict.items()
+    ]
+
+    total = len(tasks)
+    completed = 0
+
+    logger.info(f"开始提取 {total} 个段落的信息（最大并发: {MAX_EXTRACTION_CONCURRENCY}）")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        MofNCompleteColumn(),
+        "•",
+        TimeElapsedColumn(),
+        "<",
+        TimeRemainingColumn(),
+    ) as progress:
+        task = progress.add_task("[cyan]正在提取信息...", total=total)
+
+        # 🔧 优化：使用 asyncio.gather 并发执行所有任务
+        # return_exceptions=True 确保单个失败不影响其他任务
+        for coro in asyncio.as_completed(tasks):
+            doc_item, failed_hash = await coro
+            if failed_hash:
+                failed_hashes.append(failed_hash)
+            elif doc_item:
+                open_ie_docs.append(doc_item)
+
+            completed += 1
+            progress.update(task, advance=1)
 
     if open_ie_docs:
         all_entities = [e for doc in open_ie_docs for e in doc["extracted_entities"]]
@@ -241,6 +310,7 @@ def extract_information(paragraphs_dict, model_set):
         with open(output_path, "wb") as f:
             f.write(orjson.dumps(openie_obj._to_dict()))
         logger.info(f"信息提取结果已保存到: {output_path}")
+        logger.info(f"成功提取 {len(open_ie_docs)} 个段落的信息")
 
     if failed_hashes:
         logger.error(f"以下 {len(failed_hashes)} 个段落提取失败: {failed_hashes}")
@@ -260,7 +330,10 @@ async def import_data(openie_obj: OpenIE | None = None):
                                                  默认为 None.
     """
     logger.info("--- 步骤 3: 开始数据导入 ---")
-    embed_manager, kg_manager = EmbeddingManager(), KGManager()
+    # 使用配置的并发参数以加速 embedding 生成
+    # max_workers: 并发批次数，chunk_size: 每批次处理的字符串数
+    embed_manager = EmbeddingManager(max_workers=EMBEDDING_MAX_WORKERS, chunk_size=EMBEDDING_CHUNK_SIZE)
+    kg_manager = KGManager()
 
     logger.info("正在加载现有的 Embedding 库...")
     try:
@@ -301,7 +374,7 @@ async def import_data(openie_obj: OpenIE | None = None):
     else:
         logger.info(f"去重完成，发现 {len(new_raw_paragraphs)} 个新段落。")
         logger.info("开始生成 Embedding...")
-        embed_manager.store_new_data_set(new_raw_paragraphs, new_triple_list_data)
+        await embed_manager.store_new_data_set(new_raw_paragraphs, new_triple_list_data)
         embed_manager.rebuild_faiss_index()
         embed_manager.save_to_file()
         logger.info("Embedding 处理完成！")
@@ -337,6 +410,23 @@ def import_from_specific_file():
 # --- 主函数 ---
 
 
+def rebuild_faiss_only():
+    """仅重建 FAISS 索引，不重新导入数据"""
+    logger.info("--- 重建 FAISS 索引 ---")
+    # 重建索引不需要并发参数（不涉及 embedding 生成）
+    embed_manager = EmbeddingManager()
+
+    logger.info("正在加载现有的 Embedding 库...")
+    try:
+        embed_manager.load_from_file()
+        logger.info("开始重建 FAISS 索引...")
+        embed_manager.rebuild_faiss_index()
+        embed_manager.save_to_file()
+        logger.info("✅ FAISS 索引重建完成！")
+    except Exception as e:
+        logger.error(f"重建 FAISS 索引时发生错误: {e}", exc_info=True)
+
+
 def main():
     # 使用 os.path.relpath 创建相对于项目根目录的友好路径
     raw_data_relpath = os.path.relpath(RAW_DATA_PATH, os.path.join(ROOT_PATH, ".."))
@@ -349,27 +439,32 @@ def main():
     print("4. [全流程] -> 按顺序执行 1 -> 2 -> 3")
     print("5. [指定导入] -> 从特定的 openie.json 文件导入知识")
     print("6. [清理缓存] -> 删除所有已提取信息的缓存")
+    print("7. [重建索引] -> 仅重建 FAISS 索引（数据已导入时使用）")
     print("0. [退出]")
     print("-" * 30)
-    choice = input("请输入你的选择 (0-5): ").strip()
+    choice = input("请输入你的选择 (0-7): ").strip()
 
     if choice == "1":
         preprocess_raw_data()
     elif choice == "2":
         paragraphs = preprocess_raw_data()
         if paragraphs:
-            extract_information(paragraphs, model_config.model_task_config.lpmm_qa)
+            # 🔧 修复：使用 asyncio.run 调用异步函数
+            asyncio.run(extract_information(paragraphs, model_config.model_task_config.lpmm_qa))
     elif choice == "3":
         asyncio.run(import_data())
     elif choice == "4":
         paragraphs = preprocess_raw_data()
         if paragraphs:
-            extract_information(paragraphs, model_config.model_task_config.lpmm_qa)
+            # 🔧 修复：使用 asyncio.run 调用异步函数
+            asyncio.run(extract_information(paragraphs, model_config.model_task_config.lpmm_qa))
             asyncio.run(import_data())
     elif choice == "5":
         import_from_specific_file()
     elif choice == "6":
         clear_cache()
+    elif choice == "7":
+        rebuild_faiss_only()
     elif choice == "0":
         sys.exit(0)
     else:

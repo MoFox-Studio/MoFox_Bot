@@ -5,6 +5,7 @@
 
 import asyncio
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
@@ -29,20 +30,29 @@ class MessageStatus(Enum):
 
 
 @dataclass
+class DecisionRecord(BaseDataModel):
+    """决策记录"""
+
+    thought: str
+    action: str
+
+
+@dataclass
 class StreamContext(BaseDataModel):
     """聊天流上下文信息"""
 
     stream_id: str
     chat_type: ChatType = ChatType.PRIVATE  # 聊天类型，默认为私聊
-    chat_mode: ChatMode = ChatMode.NORMAL  # 聊天模式，默认为普通模式
+    chat_mode: ChatMode = ChatMode.FOCUS  # 聊天模式，默认为专注模式
     unread_messages: list["DatabaseMessages"] = field(default_factory=list)
     history_messages: list["DatabaseMessages"] = field(default_factory=list)
     last_check_time: float = field(default_factory=time.time)
     is_active: bool = True
     processing_task: asyncio.Task | None = None
+    stream_loop_task: asyncio.Task | None = None  # 流循环任务
+    is_chatter_processing: bool = False  # Chatter 是否正在处理
     interruption_count: int = 0  # 打断计数器
     last_interruption_time: float = 0.0  # 上次打断时间
-    afc_threshold_adjustment: float = 0.0  # afc阈值调整量
 
     # 独立分发周期字段
     next_check_time: float = field(default_factory=time.time)  # 下次检查时间
@@ -52,6 +62,20 @@ class StreamContext(BaseDataModel):
     current_message: Optional["DatabaseMessages"] = None
     priority_mode: str | None = None
     priority_info: dict | None = None
+    triggering_user_id: str | None = None  # 触发当前聊天流的用户ID
+    is_replying: bool = False  # 是否正在生成回复
+    processing_message_id: str | None = None  # 当前正在规划/处理的目标消息ID，用于防止重复回复
+    decision_history: list["DecisionRecord"] = field(default_factory=list)  # 决策历史
+
+    # 消息缓存系统相关字段
+    message_cache: deque["DatabaseMessages"] = field(default_factory=deque)  # 消息缓存队列
+    is_cache_enabled: bool = False  # 是否为此流启用缓存
+    cache_stats: dict = field(default_factory=lambda: {
+        "total_cached_messages": 0,
+        "total_flushed_messages": 0,
+        "cache_hits": 0,
+        "cache_misses": 0
+    })  # 缓存统计信息
 
     def add_action_to_message(self, message_id: str, action: str):
         """
@@ -61,26 +85,33 @@ class StreamContext(BaseDataModel):
             message_id: 消息ID
             action: 要添加的动作名称
         """
-        # 在未读消息中查找并更新
+        # 在未读消息中查找并更新（统一转字符串比较）
         for message in self.unread_messages:
-            if message.message_id == message_id:
+            if str(message.message_id) == str(message_id):
                 message.add_action(action)
                 break
 
-        # 在历史消息中查找并更新
+        # 在历史消息中查找并更新（统一转字符串比较）
         for message in self.history_messages:
-            if message.message_id == message_id:
+            if str(message.message_id) == str(message_id):
                 message.add_action(action)
                 break
 
     def mark_message_as_read(self, message_id: str):
         """标记消息为已读"""
+        # 先找到要标记的消息（处理 int/str 类型不匹配问题）
+        message_to_mark = None
         for msg in self.unread_messages:
-            if msg.message_id == message_id:
-                msg.is_read = True
-                self.history_messages.append(msg)
-                self.unread_messages.remove(msg)
+            # 统一转换为字符串比较，避免 int vs str 导致的匹配失败
+            if str(msg.message_id) == str(message_id):
+                message_to_mark = msg
                 break
+
+        # 然后移动到历史消息
+        if message_to_mark:
+            message_to_mark.is_read = True
+            self.history_messages.append(message_to_mark)
+            self.unread_messages.remove(message_to_mark)
 
     def get_unread_messages(self) -> list["DatabaseMessages"]:
         """获取未读消息"""
@@ -140,22 +171,13 @@ class StreamContext(BaseDataModel):
         await self._sync_interruption_count_to_stream()
 
     async def reset_interruption_count(self):
-        """重置打断计数和afc阈值调整"""
+        """重置打断计数"""
         self.interruption_count = 0
         self.last_interruption_time = 0.0
-        self.afc_threshold_adjustment = 0.0
 
         # 同步打断计数到ChatStream
         await self._sync_interruption_count_to_stream()
 
-    def apply_interruption_afc_reduction(self, reduction_value: float):
-        """应用打断导致的afc阈值降低"""
-        self.afc_threshold_adjustment += reduction_value
-        logger.debug(f"应用afc阈值降低: {reduction_value}, 总调整量: {self.afc_threshold_adjustment}")
-
-    def get_afc_threshold_adjustment(self) -> float:
-        """获取当前的afc阈值调整量"""
-        return self.afc_threshold_adjustment
 
     async def _sync_interruption_count_to_stream(self):
         """同步打断计数到ChatStream"""
@@ -185,13 +207,12 @@ class StreamContext(BaseDataModel):
             and hasattr(self.current_message, "additional_config")
             and self.current_message.additional_config
         ):
+            import orjson
             try:
-                import json
-
-                config = json.loads(self.current_message.additional_config)
+                config = orjson.loads(self.current_message.additional_config)
                 if config.get("template_info") and not config.get("template_default", True):
                     return config.get("template_name")
-            except (json.JSONDecodeError, AttributeError):
+            except (orjson.JSONDecodeError, AttributeError):
                 pass
         return None
 
@@ -216,22 +237,27 @@ class StreamContext(BaseDataModel):
             bool: 如果消息支持所有指定的类型则返回True，否则返回False
         """
         if not self.current_message:
+            logger.warning("[问题] StreamContext.check_types: current_message 为 None")
             return False
 
         if not types:
             # 如果没有指定类型要求，默认为支持
             return True
 
+        logger.debug(f"[check_types] 检查消息是否支持类型: {types}")
+
         # 优先从additional_config中获取format_info
         if hasattr(self.current_message, "additional_config") and self.current_message.additional_config:
+            import orjson
             try:
-                import orjson
-
+                logger.debug(f"[check_types] additional_config 类型: {type(self.current_message.additional_config)}")
                 config = orjson.loads(self.current_message.additional_config)
+                logger.debug(f"[check_types] 解析后的 config 键: {config.keys() if isinstance(config, dict) else 'N/A'}")
 
                 # 检查format_info结构
                 if "format_info" in config:
                     format_info = config["format_info"]
+                    logger.debug(f"[check_types] 找到 format_info: {format_info}")
 
                     # 方法1: 直接检查accept_format字段
                     if "accept_format" in format_info:
@@ -248,8 +274,9 @@ class StreamContext(BaseDataModel):
                         # 检查所有请求的类型是否都被支持
                         for requested_type in types:
                             if requested_type not in accept_format:
-                                logger.debug(f"消息不支持类型 '{requested_type}'，支持的类型: {accept_format}")
+                                logger.debug(f"[check_types] 消息不支持类型 '{requested_type}'，支持的类型: {accept_format}")
                                 return False
+                        logger.debug("[check_types] ✅ 消息支持所有请求的类型 (来自 accept_format)")
                         return True
 
                     # 方法2: 检查content_format字段（向后兼容）
@@ -266,22 +293,30 @@ class StreamContext(BaseDataModel):
                         # 检查所有请求的类型是否都被支持
                         for requested_type in types:
                             if requested_type not in content_format:
-                                logger.debug(f"消息不支持类型 '{requested_type}'，支持的内容格式: {content_format}")
+                                logger.debug(f"[check_types] 消息不支持类型 '{requested_type}'，支持的内容格式: {content_format}")
                                 return False
+                        logger.debug("[check_types] ✅ 消息支持所有请求的类型 (来自 content_format)")
                         return True
+                else:
+                    logger.warning("[check_types] [问题] additional_config 中没有 format_info 字段")
 
             except (orjson.JSONDecodeError, AttributeError, TypeError) as e:
-                logger.debug(f"解析消息格式信息失败: {e}")
+                logger.warning(f"[check_types] [问题] 解析消息格式信息失败: {e}")
+        else:
+            logger.warning("[check_types] [问题] current_message 没有 additional_config 或为空")
 
         # 备用方案：如果无法从additional_config获取格式信息，使用默认支持的类型
         # 大多数消息至少支持text类型
+        logger.debug("[check_types] 使用备用方案：默认支持类型检查")
         default_supported_types = ["text", "emoji"]
         for requested_type in types:
             if requested_type not in default_supported_types:
-                logger.debug(f"使用默认类型检查，消息可能不支持类型 '{requested_type}'")
+                logger.debug(f"[check_types] 使用默认类型检查，消息可能不支持类型 '{requested_type}'")
                 # 对于非基础类型，返回False以避免错误
                 if requested_type not in ["text", "emoji", "reply"]:
+                    logger.warning(f"[check_types] ❌ 备用方案拒绝类型 '{requested_type}'")
                     return False
+        logger.debug("[check_types] ✅ 备用方案通过所有类型检查")
         return True
 
     def get_priority_mode(self) -> str | None:
@@ -291,6 +326,145 @@ class StreamContext(BaseDataModel):
     def get_priority_info(self) -> dict | None:
         """获取优先级信息"""
         return self.priority_info
+
+    # ==================== 消息缓存系统方法 ====================
+
+    def enable_cache(self, enabled: bool = True):
+        """
+        启用或禁用消息缓存系统
+
+        Args:
+            enabled: 是否启用缓存
+        """
+        self.is_cache_enabled = enabled
+        logger.debug(f"StreamContext {self.stream_id} 缓存系统已{'启用' if enabled else '禁用'}")
+
+    def add_message_to_cache(self, message: "DatabaseMessages") -> bool:
+        """
+        添加消息到缓存队列
+
+        Args:
+            message: 要缓存的消息
+
+        Returns:
+            bool: 是否成功添加到缓存
+        """
+        if not self.is_cache_enabled:
+            self.cache_stats["cache_misses"] += 1
+            logger.debug(f"StreamContext {self.stream_id} 缓存未启用，消息无法缓存")
+            return False
+
+        try:
+            self.message_cache.append(message)
+            self.cache_stats["total_cached_messages"] += 1
+            self.cache_stats["cache_hits"] += 1
+            logger.debug(f"消息已添加到缓存: stream={self.stream_id}, message_id={message.message_id}, 缓存大小={len(self.message_cache)}")
+            return True
+        except Exception as e:
+            logger.error(f"添加消息到缓存失败: stream={self.stream_id}, error={e}")
+            return False
+
+    def flush_cached_messages(self) -> list["DatabaseMessages"]:
+        """
+        刷新缓存消息到未读消息列表
+
+        Returns:
+            list[DatabaseMessages]: 刷新的消息列表
+        """
+        if not self.message_cache:
+            logger.debug(f"StreamContext {self.stream_id} 缓存为空，无需刷新")
+            return []
+
+        try:
+            cached_messages = list(self.message_cache)
+            cache_size = len(cached_messages)
+
+            # 清空缓存队列
+            self.message_cache.clear()
+
+            # 将缓存消息添加到未读消息列表
+            self.unread_messages.extend(cached_messages)
+
+            # 更新统计信息
+            self.cache_stats["total_flushed_messages"] += cache_size
+
+            logger.debug(f"缓存消息已刷新到未读列表: stream={self.stream_id}, 数量={cache_size}")
+            return cached_messages
+
+        except Exception as e:
+            logger.error(f"刷新缓存消息失败: stream={self.stream_id}, error={e}")
+            return []
+
+    def get_cache_size(self) -> int:
+        """
+        获取当前缓存大小
+
+        Returns:
+            int: 缓存中的消息数量
+        """
+        return len(self.message_cache)
+
+    def clear_cache(self):
+        """清空消息缓存"""
+        cache_size = len(self.message_cache)
+        self.message_cache.clear()
+        logger.debug(f"消息缓存已清空: stream={self.stream_id}, 清空数量={cache_size}")
+
+    def has_cached_messages(self) -> bool:
+        """
+        检查是否有缓存的消息
+
+        Returns:
+            bool: 是否有缓存消息
+        """
+        return len(self.message_cache) > 0
+
+    def get_cache_stats(self) -> dict:
+        """
+        获取缓存统计信息
+
+        Returns:
+            dict: 缓存统计数据
+        """
+        stats = self.cache_stats.copy()
+        stats.update({
+            "current_cache_size": len(self.message_cache),
+            "is_cache_enabled": self.is_cache_enabled,
+            "stream_id": self.stream_id
+        })
+        return stats
+
+    def add_message_with_cache_check(self, message: "DatabaseMessages", force_direct: bool = False) -> bool:
+        """
+        智能添加消息：根据缓存状态决定是缓存还是直接添加到未读列表
+
+        Args:
+            message: 要添加的消息
+            force_direct: 是否强制直接添加到未读列表（跳过缓存）
+
+        Returns:
+            bool: 是否成功添加
+        """
+        try:
+            # 如果强制直接添加或缓存未启用，直接添加到未读列表
+            if force_direct or not self.is_cache_enabled:
+                self.unread_messages.append(message)
+                logger.debug(f"消息直接添加到未读列表: stream={self.stream_id}, message_id={message.message_id}")
+                return True
+
+            # 如果正在处理中，添加到缓存
+            if self.is_chatter_processing:
+                return self.add_message_to_cache(message)
+
+            # 如果没有在处理，先刷新缓存再添加到未读列表
+            self.flush_cached_messages()
+            self.unread_messages.append(message)
+            logger.debug(f"消息添加到未读列表（已刷新缓存）: stream={self.stream_id}, message_id={message.message_id}")
+            return True
+
+        except Exception as e:
+            logger.error(f"智能添加消息失败: stream={self.stream_id}, error={e}")
+            return False
 
     def __deepcopy__(self, memo):
         """自定义深拷贝，跳过不可序列化的 asyncio.Task (processing_task)。
@@ -313,9 +487,16 @@ class StreamContext(BaseDataModel):
         memo[obj_id] = new
 
         for k, v in self.__dict__.items():
-            if k == "processing_task":
+            if k in ["processing_task", "stream_loop_task"]:
                 # 不复制 asyncio.Task，避免无法 pickling
                 setattr(new, k, None)
+            elif k == "message_cache":
+                # 深拷贝消息缓存队列
+                try:
+                    setattr(new, k, copy.deepcopy(v, memo))
+                except Exception:
+                    # 如果拷贝失败，创建新的空队列
+                    setattr(new, k, deque())
             else:
                 try:
                     setattr(new, k, copy.deepcopy(v, memo))

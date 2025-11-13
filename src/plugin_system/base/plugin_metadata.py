@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.plugin_system.base.component_types import PythonDependency
+
 
 @dataclass
 class PluginMetadata:
@@ -22,6 +24,10 @@ class PluginMetadata:
     repository_url: str | None = None  # 仓库地址
     keywords: list[str] = field(default_factory=list)  # 关键词
     categories: list[str] = field(default_factory=list)  # 分类
+
+    # 依赖关系
+    dependencies: list[str] = field(default_factory=list)  # 插件依赖
+    python_dependencies: list[str | PythonDependency] = field(default_factory=list)  # Python包依赖
 
     # 扩展字段
     extra: dict[str, Any] = field(default_factory=dict)  # 其他任意信息
