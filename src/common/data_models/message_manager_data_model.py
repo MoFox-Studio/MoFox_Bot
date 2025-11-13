@@ -43,7 +43,7 @@ class StreamContext(BaseDataModel):
 
     stream_id: str
     chat_type: ChatType = ChatType.PRIVATE  # 聊天类型，默认为私聊
-    chat_mode: ChatMode = ChatMode.NORMAL  # 聊天模式，默认为普通模式
+    chat_mode: ChatMode = ChatMode.FOCUS  # 聊天模式，默认为专注模式
     unread_messages: list["DatabaseMessages"] = field(default_factory=list)
     history_messages: list["DatabaseMessages"] = field(default_factory=list)
     last_check_time: float = field(default_factory=time.time)

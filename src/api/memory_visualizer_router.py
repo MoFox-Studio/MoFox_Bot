@@ -218,7 +218,7 @@ async def get_full_graph():
             data = _format_graph_data_from_manager(memory_manager)
         else:
             # 如果内存管理器不可用，则从文件加载
-            data = load_graph_data_from_file()
+            data = await load_graph_data_from_file()
 
         return JSONResponse(content={"success": True, "data": data})
     except Exception as e:
@@ -247,7 +247,7 @@ async def get_graph_summary():
                 "current_file": "memory_manager (实时数据)",
             }})
         else:
-            data = load_graph_data_from_file()
+            data = await load_graph_data_from_file()
             return JSONResponse(content={"success": True, "data": {
                 "stats": data.get("stats", {}),
                 "current_file": data.get("current_file", ""),
@@ -273,7 +273,7 @@ async def get_paginated_graph(
         if memory_manager and memory_manager._initialized:
             full_data = _format_graph_data_from_manager(memory_manager)
         else:
-            full_data = load_graph_data_from_file()
+            full_data = await load_graph_data_from_file()
 
         nodes = full_data.get("nodes", [])
         edges = full_data.get("edges", [])
@@ -349,7 +349,7 @@ async def get_clustered_graph(
         if memory_manager and memory_manager._initialized:
             full_data = _format_graph_data_from_manager(memory_manager)
         else:
-            full_data = load_graph_data_from_file()
+            full_data = await load_graph_data_from_file()
 
         nodes = full_data.get("nodes", [])
         edges = full_data.get("edges", [])
@@ -514,7 +514,7 @@ async def select_file(request: Request):
 
         graph_data_cache = None
         current_data_file = file_to_load
-        graph_data = load_graph_data_from_file(file_to_load)
+        graph_data = await load_graph_data_from_file(file_to_load)
 
         return JSONResponse(
             content={
@@ -532,7 +532,7 @@ async def reload_data():
     """重新加载数据"""
     global graph_data_cache
     graph_data_cache = None
-    data = load_graph_data_from_file()
+    data = await load_graph_data_from_file()
     return JSONResponse(content={"success": True, "message": "数据已重新加载", "stats": data.get("stats", {})})
 
 
@@ -560,7 +560,7 @@ async def search_memories(q: str, limit: int = 50):
                     )
         else:
             # 从文件加载的数据中搜索 (降级方案)
-            data = load_graph_data_from_file()
+            data = await load_graph_data_from_file()
             for memory in data.get("memories", []):
                 if q.lower() in memory.get("text", "").lower():
                     results.append(memory)
@@ -582,7 +582,7 @@ async def search_memories(q: str, limit: int = 50):
 async def get_statistics():
     """获取统计信息"""
     try:
-        data = load_graph_data_from_file()
+        data = await load_graph_data_from_file()
 
         node_types = {}
         memory_types = {}

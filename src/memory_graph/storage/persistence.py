@@ -56,6 +56,7 @@ class PersistenceManager:
         self.auto_save_interval = auto_save_interval
         self._auto_save_task: asyncio.Task | None = None
         self._running = False
+        self._file_lock = asyncio.Lock()  # 文件操作锁
 
         logger.info(f"初始化持久化管理器: data_dir={data_dir}")
 
@@ -66,34 +67,53 @@ class PersistenceManager:
         Args:
             graph_store: 图存储对象
         """
-        try:
-            # 转换为字典
-            data = graph_store.to_dict()
+        async with self._file_lock:  # 使用文件锁防止并发访问
+            try:
+                # 转换为字典
+                data = graph_store.to_dict()
 
-            # 添加元数据
-            data["metadata"] = {
-                "version": "0.1.0",
-                "saved_at": datetime.now().isoformat(),
-                "statistics": graph_store.get_statistics(),
-            }
+                # 添加元数据
+                data["metadata"] = {
+                    "version": "0.1.0",
+                    "saved_at": datetime.now().isoformat(),
+                    "statistics": graph_store.get_statistics(),
+                }
 
-            # 使用 orjson 序列化（更快）
-            json_data = orjson.dumps(
-                data,
-                option=orjson.OPT_INDENT_2 | orjson.OPT_SERIALIZE_NUMPY,
-            )
+                # 使用 orjson 序列化（更快）
+                json_data = orjson.dumps(
+                    data,
+                    option=orjson.OPT_INDENT_2 | orjson.OPT_SERIALIZE_NUMPY,
+                )
 
-            # 原子写入（先写临时文件，再重命名）
-            temp_file = self.graph_file.with_suffix(".tmp")
-            async with aiofiles.open(temp_file, "wb") as f:
-                await f.write(json_data)
-            temp_file.replace(self.graph_file)
+                # 原子写入（先写临时文件，再重命名）
+                temp_file = self.graph_file.with_suffix(".tmp")
+                async with aiofiles.open(temp_file, "wb") as f:
+                    await f.write(json_data)
 
-            logger.info(f"图数据已保存: {self.graph_file}, 大小: {len(json_data) / 1024:.2f} KB")
+                # 在Windows上，确保目标文件没有被占用
+                if self.graph_file.exists():
+                    import os
+                    try:
+                        os.unlink(self.graph_file)
+                    except OSError:
+                        # 如果无法删除，等待一小段时间再重试
+                        await asyncio.sleep(0.1)
+                        try:
+                            os.unlink(self.graph_file)
+                        except OSError:
+                            # 如果还是失败，使用备用策略
+                            backup_file = self.graph_file.with_suffix(".bak")
+                            if backup_file.exists():
+                                os.unlink(backup_file)
+                            self.graph_file.rename(backup_file)
 
-        except Exception as e:
-            logger.error(f"保存图数据失败: {e}", exc_info=True)
-            raise
+                temp_file.replace(self.graph_file)
+
+                logger.info(f"图数据已保存: {self.graph_file}, 大小: {len(json_data) / 1024:.2f} KB")
+
+            except Exception as e:
+                logger.error(f"保存图数据失败: {e}", exc_info=True)
+                raise
 
     async def load_graph_store(self) -> GraphStore | None:
         """
@@ -106,26 +126,36 @@ class PersistenceManager:
             logger.info("图数据文件不存在，返回空图")
             return None
 
-        try:
-            # 读取文件
-            async with aiofiles.open(self.graph_file, "rb") as f:
-                json_data = await f.read()
-            data = orjson.loads(json_data)
+        async with self._file_lock:  # 使用文件锁防止并发访问
+                try:
+                    # 读取文件，添加重试机制处理可能的文件锁定
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            async with aiofiles.open(self.graph_file, "rb") as f:
+                                json_data = await f.read()
+                            data = orjson.loads(json_data)
+                            break
+                        except OSError as e:
+                            if attempt == max_retries - 1:
+                                raise
+                            logger.warning(f"读取图数据文件失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                            await asyncio.sleep(0.1 * (attempt + 1))
 
-            # 检查版本（未来可能需要数据迁移）
-            version = data.get("metadata", {}).get("version", "unknown")
-            logger.info(f"加载图数据: version={version}")
+                    # 检查版本（未来可能需要数据迁移）
+                    version = data.get("metadata", {}).get("version", "unknown")
+                    logger.info(f"加载图数据: version={version}")
 
-            # 恢复图存储
-            graph_store = GraphStore.from_dict(data)
+                    # 恢复图存储
+                    graph_store = GraphStore.from_dict(data)
 
-            logger.info(f"图数据加载完成: {graph_store.get_statistics()}")
-            return graph_store
+                    logger.info(f"图数据加载完成: {graph_store.get_statistics()}")
+                    return graph_store
 
-        except Exception as e:
-            logger.error(f"加载图数据失败: {e}", exc_info=True)
-            # 尝试加载备份
-            return await self._load_from_backup()
+                except Exception as e:
+                    logger.error(f"加载图数据失败: {e}", exc_info=True)
+                    # 尝试加载备份
+                    return await self._load_from_backup()
 
     async def save_staged_memories(self, staged_memories: list[StagedMemory]) -> None:
         """
@@ -134,28 +164,47 @@ class PersistenceManager:
         Args:
             staged_memories: 临时记忆列表
         """
-        try:
-            data = {
-                "metadata": {
-                    "version": "0.1.0",
-                    "saved_at": datetime.now().isoformat(),
-                    "count": len(staged_memories),
-                },
-                "staged_memories": [sm.to_dict() for sm in staged_memories],
-            }
+        async with self._file_lock:  # 使用文件锁防止并发访问
+            try:
+                data = {
+                    "metadata": {
+                        "version": "0.1.0",
+                        "saved_at": datetime.now().isoformat(),
+                        "count": len(staged_memories),
+                    },
+                    "staged_memories": [sm.to_dict() for sm in staged_memories],
+                }
 
-            json_data = orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SERIALIZE_NUMPY)
+                json_data = orjson.dumps(data, option=orjson.OPT_INDENT_2 | orjson.OPT_SERIALIZE_NUMPY)
 
-            temp_file = self.staged_file.with_suffix(".tmp")
-            async with aiofiles.open(temp_file, "wb") as f:
-                await f.write(json_data)
-            temp_file.replace(self.staged_file)
+                temp_file = self.staged_file.with_suffix(".tmp")
+                async with aiofiles.open(temp_file, "wb") as f:
+                    await f.write(json_data)
 
-            logger.info(f"临时记忆已保存: {len(staged_memories)} 条")
+                # 在Windows上，确保目标文件没有被占用
+                if self.staged_file.exists():
+                    import os
+                    try:
+                        os.unlink(self.staged_file)
+                    except OSError:
+                        # 如果无法删除，等待一小段时间再重试
+                        await asyncio.sleep(0.1)
+                        try:
+                            os.unlink(self.staged_file)
+                        except OSError:
+                            # 如果还是失败，使用备用策略
+                            backup_file = self.staged_file.with_suffix(".bak")
+                            if backup_file.exists():
+                                os.unlink(backup_file)
+                            self.staged_file.rename(backup_file)
 
-        except Exception as e:
-            logger.error(f"保存临时记忆失败: {e}", exc_info=True)
-            raise
+                temp_file.replace(self.staged_file)
+
+                logger.info(f"临时记忆已保存: {len(staged_memories)} 条")
+
+            except Exception as e:
+                logger.error(f"保存临时记忆失败: {e}", exc_info=True)
+                raise
 
     async def load_staged_memories(self) -> list[StagedMemory]:
         """
@@ -168,19 +217,30 @@ class PersistenceManager:
             logger.info("临时记忆文件不存在，返回空列表")
             return []
 
-        try:
-            async with aiofiles.open(self.staged_file, "rb") as f:
-                json_data = await f.read()
-            data = orjson.loads(json_data)
+        async with self._file_lock:  # 使用文件锁防止并发访问
+                try:
+                    # 读取文件，添加重试机制处理可能的文件锁定
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            async with aiofiles.open(self.staged_file, "rb") as f:
+                                json_data = await f.read()
+                            data = orjson.loads(json_data)
+                            break
+                        except OSError as e:
+                            if attempt == max_retries - 1:
+                                raise
+                            logger.warning(f"读取临时记忆文件失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                            await asyncio.sleep(0.1 * (attempt + 1))
 
-            staged_memories = [StagedMemory.from_dict(sm) for sm in data.get("staged_memories", [])]
+                    staged_memories = [StagedMemory.from_dict(sm) for sm in data.get("staged_memories", [])]
 
-            logger.info(f"临时记忆加载完成: {len(staged_memories)} 条")
-            return staged_memories
+                    logger.info(f"临时记忆加载完成: {len(staged_memories)} 条")
+                    return staged_memories
 
-        except Exception as e:
-            logger.error(f"加载临时记忆失败: {e}", exc_info=True)
-            return []
+                except Exception as e:
+                    logger.error(f"加载临时记忆失败: {e}", exc_info=True)
+                    return []
 
     async def create_backup(self) -> Path | None:
         """
@@ -225,9 +285,19 @@ class PersistenceManager:
             latest_backup = backup_files[0]
             logger.warning(f"尝试从备份恢复: {latest_backup}")
 
-            async with aiofiles.open(latest_backup, "rb") as f:
-                json_data = await f.read()
-            data = orjson.loads(json_data)
+            # 读取备份文件，添加重试机制
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    async with aiofiles.open(latest_backup, "rb") as f:
+                        json_data = await f.read()
+                    data = orjson.loads(json_data)
+                    break
+                except OSError as e:
+                    if attempt == max_retries - 1:
+                        raise
+                    logger.warning(f"读取备份文件失败 (尝试 {attempt + 1}/{max_retries}): {e}")
+                    await asyncio.sleep(0.1 * (attempt + 1))
 
             graph_store = GraphStore.from_dict(data)
             logger.info(f"从备份恢复成功: {graph_store.get_statistics()}")

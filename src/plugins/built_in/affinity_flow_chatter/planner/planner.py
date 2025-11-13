@@ -199,7 +199,7 @@ class ChatterActionPlanner:
                 # 6. 筛选 Plan
                 available_actions = list(initial_plan.available_actions.keys())
                 plan_filter = ChatterPlanFilter(self.chat_id, available_actions)
-                filtered_plan = await plan_filter.filter(reply_not_available, initial_plan)
+                filtered_plan = await plan_filter.filter(initial_plan)
 
             # 7. 检查是否正在处理相同的目标消息，防止重复回复
             target_message_id = None
