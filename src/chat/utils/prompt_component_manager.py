@@ -2,6 +2,7 @@ import asyncio
 import copy
 import re
 from collections.abc import Awaitable, Callable
+from typing import List
 
 from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
@@ -68,7 +69,9 @@ class PromptComponentManager:
                 logger.warning(f"无法为 '{prompt_name}' 加载静态规则，因为它不是一个有效的 Prompt 组件。")
                 continue
 
-            def create_provider(cls: type[BasePrompt]) -> Callable[[PromptParameters], Awaitable[str]]:
+            def create_provider(
+                cls: type[BasePrompt],
+            ) -> Callable[[PromptParameters, str], Awaitable[str]]:
                 """
                 为静态组件创建一个内容提供者闭包 (Content Provider Closure)。
 
@@ -80,10 +83,10 @@ class PromptComponentManager:
                     cls (type[BasePrompt]): 需要为其创建提供者的 Prompt 组件类。
 
                 Returns:
-                    Callable[[PromptParameters], Awaitable[str]]: 一个符合管理器标准的异步内容提供者。
+                    Callable[[PromptParameters, str], Awaitable[str]]: 一个符合管理器标准的异步内容提供者。
                 """
 
-                async def content_provider(params: PromptParameters) -> str:
+                async def content_provider(params: PromptParameters, target_prompt_name: str) -> str:
                     """实际执行内容生成的异步函数。"""
                     try:
                         # 从注册表获取最新的组件信息，包括插件配置
@@ -92,8 +95,8 @@ class PromptComponentManager:
                         if isinstance(p_info, PromptInfo):
                             plugin_config = component_registry.get_plugin_config(p_info.plugin_name)
 
-                        # 实例化组件并执行
-                        instance = cls(params=params, plugin_config=plugin_config)
+                        # 实例化组件并执行，传入 target_prompt_name
+                        instance = cls(params=params, plugin_config=plugin_config, target_prompt_name=target_prompt_name)
                         result = await instance.execute()
                         return str(result) if result is not None else ""
                     except Exception as e:
@@ -116,31 +119,32 @@ class PromptComponentManager:
     async def add_injection_rule(
         self,
         prompt_name: str,
-        rule: InjectionRule,
+        rules: List[InjectionRule],
         content_provider: Callable[..., Awaitable[str]],
         source: str = "runtime",
     ) -> bool:
         """
-        动态添加或更新一条注入规则。
+        动态添加或更新注入规则。
 
         此方法允许在系统运行时，由外部逻辑（如插件、命令）向管理器中添加新的注入行为。
         如果已存在同名组件针对同一目标的规则，此方法会覆盖旧规则。
 
         Args:
             prompt_name (str): 动态注入组件的唯一名称。
-            rule (InjectionRule): 描述注入行为的规则对象。
+            rules (List[InjectionRule]): 描述注入行为的规则对象列表。
             content_provider (Callable[..., Awaitable[str]]):
                 一个异步函数，用于在应用注入时动态生成内容。
-                函数签名应为: `async def provider(params: "PromptParameters") -> str`
+                函数签名应为: `async def provider(params: "PromptParameters", target_prompt_name: str) -> str`
             source (str, optional): 规则的来源标识，默认为 "runtime"。
 
         Returns:
             bool: 如果成功添加或更新，则返回 True。
         """
         async with self._lock:
-            target_rules = self._dynamic_rules.setdefault(rule.target_prompt, {})
-            target_rules[prompt_name] = (rule, content_provider, source)
-        logger.info(f"成功添加/更新注入规则: '{prompt_name}' -> '{rule.target_prompt}' (来源: {source})")
+            for rule in rules:
+                target_rules = self._dynamic_rules.setdefault(rule.target_prompt, {})
+                target_rules[prompt_name] = (rule, content_provider, source)
+                logger.info(f"成功添加/更新注入规则: '{prompt_name}' -> '{rule.target_prompt}' (来源: {source})")
         return True
 
     async def remove_injection_rule(self, prompt_name: str, target_prompt: str) -> bool:
@@ -207,7 +211,7 @@ class PromptComponentManager:
             # 对于非 REMOVE 类型的注入，需要先获取内容
             if rule.injection_type != InjectionType.REMOVE:
                 try:
-                    content = await provider(params)
+                    content = await provider(params, target_prompt_name)
                 except Exception as e:
                     logger.error(f"执行规则 '{rule}' (来源: {source}) 的内容提供者时失败: {e}", exc_info=True)
                     continue  # 跳过失败的 provider，不中断整个流程
