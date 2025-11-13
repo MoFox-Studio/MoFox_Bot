@@ -1240,6 +1240,9 @@
                 return;
             }
 
+            // 先重置高亮，清除上一次的搜索结果
+            resetNodeHighlight();
+
             try {
                 const response = await fetch(`api/search?q=${encodeURIComponent(query)}&limit=50`);
                 const result = await response.json();
@@ -1257,28 +1260,98 @@
 
         // 高亮搜索结果
         function highlightSearchResults(results) {
-            const memoryIds = results.map(r => r.id);
             const relatedNodeIds = new Set();
-
-            // 找出相关的节点
-            graphData.memories.forEach(memory => {
-                if (memoryIds.includes(memory.id)) {
-                    // 这里需要找到该记忆相关的所有节点
-                    // 简化实现：高亮所有节点
-                    graphData.nodes.forEach(node => relatedNodeIds.add(node.id));
+            results.forEach(result => {
+                if (result.node_ids && result.node_ids.length > 0) {
+                    result.node_ids.forEach(id => relatedNodeIds.add(id));
                 }
             });
 
-            // 高亮节点
-            if (relatedNodeIds.size > 0) {
-                network.selectNodes([...relatedNodeIds]);
-                network.fit({
-                    nodes: [...relatedNodeIds],
-                    animation: true
-                });
-            } else {
-                alert('未找到相关节点');
+            if (relatedNodeIds.size === 0) {
+                alert('未找到与搜索结果直接关联的节点。\n这可能发生在从旧版文件加载数据时。');
+                return;
             }
+
+            console.log(`高亮 ${relatedNodeIds.size} 个搜索结果节点`);
+
+            const allNodes = network.body.data.nodes;
+            const allEdges = network.body.data.edges;
+            const nodeUpdates = [];
+            const edgeUpdates = [];
+
+            const nodesInViewIds = new Set(allNodes.getIds());
+            const highlightedNodesInView = new Set();
+            relatedNodeIds.forEach(id => {
+                if (nodesInViewIds.has(id)) {
+                    highlightedNodesInView.add(id);
+                }
+            });
+
+            if (highlightedNodesInView.size === 0) {
+                alert('搜索到的记忆节点不在当前视图中。\n请尝试切换到“完整加载”模式或调整分页/聚类设置。');
+                return;
+            }
+
+            // 找出连接高亮节点的边
+            const relatedEdgeIds = new Set();
+            allEdges.get().forEach(edge => {
+                if (highlightedNodesInView.has(edge.from) && highlightedNodesInView.has(edge.to)) {
+                    relatedEdgeIds.add(edge.id);
+                }
+            });
+
+            // 更新节点样式
+            allNodes.get().forEach(node => {
+                const originalNodeData = graphData.nodes.find(n => n.id === node.id);
+                if (!originalNodeData) return;
+
+                if (highlightedNodesInView.has(node.id)) {
+                    nodeUpdates.push({
+                        id: node.id,
+                        color: nodeColors[node.group] || '#999',
+                        opacity: 1.0,
+                        label: originalNodeData.label || '',
+                        font: { color: '#333', size: 14, strokeWidth: 2, strokeColor: 'white' }
+                    });
+                } else {
+                    const originalColor = nodeColors[node.group] || '#999';
+                    const dimmedColor = hexToRgba(originalColor, 0.1);
+                    nodeUpdates.push({
+                        id: node.id,
+                        color: { background: dimmedColor, border: dimmedColor },
+                        opacity: 0.1,
+                        label: '',
+                        font: { size: 0 }
+                    });
+                }
+            });
+
+            // 更新边样式
+            allEdges.get().forEach(edge => {
+                if (relatedEdgeIds.has(edge.id)) {
+                    edgeUpdates.push({
+                        id: edge.id,
+                        color: { color: '#667eea', opacity: 1.0 },
+                        width: 2.5
+                    });
+                } else {
+                    edgeUpdates.push({
+                        id: edge.id,
+                        color: { color: '#848484', opacity: 0.05 },
+                        width: 1
+                    });
+                }
+            });
+
+            allNodes.update(nodeUpdates);
+            allEdges.update(edgeUpdates);
+
+            network.fit({
+                nodes: [...highlightedNodesInView],
+                animation: { duration: 800, easingFunction: 'easeInOutQuad' }
+            });
+
+            alert(`高亮了 ${highlightedNodesInView.size} 个相关节点。\n注意：如果处于聚类或分页模式，可能只显示部分节点。`);
         }
 
         // 高亮与选中节点连接的节点（优化版本，使用缓存）
