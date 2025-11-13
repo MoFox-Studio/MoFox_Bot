@@ -144,7 +144,7 @@ class ChatterPlanFilter:
             plan.decided_actions = [
                 ActionPlannerInfo(action_type="no_action", reasoning=f"筛选时出错: {e}")
             ]
-
+        
         # 在返回最终计划前，打印将要执行的动作
         if plan.decided_actions:
             action_types = [action.action_type for action in plan.decided_actions]
@@ -542,12 +542,6 @@ class ChatterPlanFilter:
                         logger.error(
                             f"[{action}] 找不到目标消息，target_message_id: {action_data.get('target_message_id')}"
                         )
-
-                # 从action_data中提取should_quote_reply参数
-                should_quote_reply = action_data.get("should_quote_reply")
-                # 严格按照标准格式，只接受布尔值
-                if not isinstance(should_quote_reply, bool):
-                    should_quote_reply = None
 
                 return ActionPlannerInfo(
                     action_type=action,

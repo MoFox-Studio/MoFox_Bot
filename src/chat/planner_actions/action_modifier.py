@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, cast
 from src.chat.message_receive.chat_stream import ChatStream, get_chat_manager
 from src.chat.planner_actions.action_manager import ChatterActionManager
 from src.chat.utils.chat_message_builder import build_readable_messages, get_raw_msg_before_timestamp_with_chat
-from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
@@ -15,7 +14,7 @@ from src.plugin_system.base.component_types import ActionInfo
 from src.plugin_system.core.global_announcement_manager import global_announcement_manager
 
 if TYPE_CHECKING:
-    pass
+    from src.common.data_models.message_manager_data_model import StreamContext
 
 logger = get_logger("action_manager")
 
@@ -182,7 +181,7 @@ class ActionModifier:
 
         logger.info(f"{self.log_prefix} 当前可用动作: {available_actions_text}||移除: {removals_summary}")
 
-    def _check_action_associated_types(self, all_actions: dict[str, ActionInfo], chat_context: StreamContext):
+    def _check_action_associated_types(self, all_actions: dict[str, ActionInfo], chat_context: "StreamContext"):
         type_mismatched_actions: list[tuple[str, str]] = []
         for action_name, action_info in all_actions.items():
             if action_info.associated_types and not chat_context.check_types(action_info.associated_types):

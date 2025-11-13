@@ -200,6 +200,15 @@ class ChatterActionPlanner:
                 available_actions = list(initial_plan.available_actions.keys())
                 plan_filter = ChatterPlanFilter(self.chat_id, available_actions)
                 filtered_plan = await plan_filter.filter(initial_plan)
+                
+                # 检查reply动作是否可用
+                reply_action_available = "reply" in available_actions or "respond" in available_actions
+                if filtered_plan.decided_actions and not reply_action_available:
+                    logger.info("Focus模式 - 回复动作不可用，移除所有回复相关动作")
+                    filtered_plan.decided_actions = [
+                        action for action in filtered_plan.decided_actions
+                        if action.action_type not in ["reply", "respond"]
+                    ]
 
             # 7. 检查是否正在处理相同的目标消息，防止重复回复
             target_message_id = None

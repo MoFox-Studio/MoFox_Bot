@@ -6,14 +6,16 @@
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.chat.energy_system import energy_manager
 from src.common.data_models.database_data_model import DatabaseMessages
-from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.base.component_types import ChatType
+
+if TYPE_CHECKING:
+    from src.common.data_models.message_manager_data_model import StreamContext
 
 logger = get_logger("context_manager")
 
@@ -24,7 +26,7 @@ _background_tasks = set()
 class SingleStreamContextManager:
     """单流上下文管理器 - 每个实例只管理一个 stream 的上下文"""
 
-    def __init__(self, stream_id: str, context: StreamContext, max_context_size: int | None = None):
+    def __init__(self, stream_id: str, context: "StreamContext", max_context_size: int | None = None):
         self.stream_id = stream_id
         self.context = context
 
@@ -47,7 +49,7 @@ class SingleStreamContextManager:
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
 
-    def get_context(self) -> StreamContext:
+    def get_context(self) -> "StreamContext":
         """获取流上下文"""
         self._update_access_stats()
         return self.context

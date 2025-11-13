@@ -5,14 +5,16 @@
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.chat.chatter_manager import ChatterManager
 from src.chat.energy_system import energy_manager
-from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.config.config import global_config
 from src.plugin_system.apis.chat_api import get_chat_manager
+
+if TYPE_CHECKING:
+    from src.common.data_models.message_manager_data_model import StreamContext
 
 logger = get_logger("stream_loop_manager")
 
@@ -294,7 +296,7 @@ class StreamLoopManager:
 
             logger.info(f"🏁 [流工作器] stream={stream_id[:8]}, 任务ID={task_id}, 循环结束")
 
-    async def _get_stream_context(self, stream_id: str) -> StreamContext | None:
+    async def _get_stream_context(self, stream_id: str) -> "StreamContext" | None:
         """获取流上下文
 
         Args:
@@ -313,7 +315,7 @@ class StreamLoopManager:
             logger.error(f"获取流上下文失败 {stream_id}: {e}")
             return None
 
-    async def _has_messages_to_process(self, context: StreamContext) -> bool:
+    async def _has_messages_to_process(self, context: "StreamContext") -> bool:
         """检查是否有消息需要处理
 
         Args:
@@ -332,7 +334,7 @@ class StreamLoopManager:
             logger.error(f"检查消息状态失败: {e}")
             return False
 
-    async def _process_stream_messages(self, stream_id: str, context: StreamContext) -> bool:
+    async def _process_stream_messages(self, stream_id: str, context: "StreamContext") -> bool:
         """处理流消息 - 支持子任务管理
 
         Args:
@@ -577,7 +579,7 @@ class StreamLoopManager:
             logger.debug(f"检查流 {stream_id} 是否需要强制分发失败: {e}")
             return False
 
-    def _get_unread_count(self, context: StreamContext) -> int:
+    def _get_unread_count(self, context: "StreamContext") -> int:
         try:
             unread_messages = context.unread_messages
             if unread_messages is None:
@@ -586,7 +588,7 @@ class StreamLoopManager:
         except Exception:
             return 0
 
-    def _needs_force_dispatch_for_context(self, context: StreamContext, unread_count: int | None = None) -> bool:
+    def _needs_force_dispatch_for_context(self, context: "StreamContext", unread_count: int | None = None) -> bool:
         if not self.force_dispatch_unread_threshold or self.force_dispatch_unread_threshold <= 0:
             return False
 

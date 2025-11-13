@@ -1,12 +1,14 @@
 import asyncio
 import time
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from src.chat.planner_actions.action_manager import ChatterActionManager
-from src.common.data_models.message_manager_data_model import StreamContext
 from src.common.logger import get_logger
 from src.plugin_system.base.base_chatter import BaseChatter
 from src.plugin_system.base.component_types import ChatType
+
+if TYPE_CHECKING:
+    from src.common.data_models.message_manager_data_model import StreamContext
 
 logger = get_logger("chatter_manager")
 
@@ -82,7 +84,7 @@ class ChatterManager:
             del self.instances[stream_id]
             logger.info(f"清理不活跃聊天流实例: {stream_id}")
 
-    async def process_stream_context(self, stream_id: str, context: StreamContext) -> dict:
+    async def process_stream_context(self, stream_id: str, context: "StreamContext") -> dict:
         """处理流上下文"""
         chat_type = context.chat_type
         logger.debug(f"处理流 {stream_id}，聊天类型: {chat_type.value}")
@@ -126,17 +128,6 @@ class ChatterManager:
             else:
                 self.stats["failed_executions"] += 1
                 logger.warning(f"流 {stream_id} 处理失败，不清空未读消息")
-
-            # 从 mood_manager 获取最新的 chat_stream 并同步回 StreamContext
-            try:
-                from src.mood.mood_manager import mood_manager
-
-                mood = mood_manager.get_mood_by_chat_id(stream_id)
-                if mood and mood.chat_stream:
-                    context.chat_stream = mood.chat_stream
-                    logger.debug(f"已将最新的 chat_stream 同步回流 {stream_id} 的 StreamContext")
-            except Exception as sync_e:
-                logger.error(f"同步 chat_stream 回 StreamContext 失败: {sync_e}")
 
             # 记录处理结果
             actions_count = result.get("actions_count", 0)
