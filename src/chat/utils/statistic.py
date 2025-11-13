@@ -411,6 +411,7 @@ class StatisticOutputTask(AsyncTask):
                 (REQ_CNT_BY_USER, "user"),
                 (REQ_CNT_BY_MODEL, "model"),
                 (REQ_CNT_BY_MODULE, "module"),
+                (REQ_CNT_BY_PROVIDER, "provider"),
             ]:
                 time_cost_key = f"TIME_COST_BY_{items.upper()}"
                 avg_key = f"AVG_TIME_COST_BY_{items.upper()}"
