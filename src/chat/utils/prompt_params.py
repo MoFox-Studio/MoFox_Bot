@@ -27,6 +27,7 @@ class PromptParameters:
     enable_relation: bool = True
     enable_cross_context: bool = True
     enable_knowledge: bool = True
+    enable_attention_optimization: bool = True  # 注意力优化开关
 
     # 性能控制
     max_context_messages: int = 50

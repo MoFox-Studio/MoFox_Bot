@@ -89,12 +89,10 @@ def init_prompt():
 - {schedule_block}
 
 ## 历史记录
-### 📜 已读历史消息
 {read_history_prompt}
 
 {cross_context_block}
 
-### 📬 未读历史消息
 {unread_history_prompt}
 
 {notice_block}
@@ -175,12 +173,10 @@ If you need to use the search tool, please directly call the function "lpmm_sear
 {schedule_block}
 
 ## 历史记录
-### 📜 已读历史消息
 {read_history_prompt}
 
 {cross_context_block}
 
-### 📬 未读历史消息
 {unread_history_prompt}
 
 {notice_block}
@@ -858,7 +854,6 @@ class DefaultReplyer:
                 # 添加标题和格式化
                 notice_lines = []
                 notice_lines.append("## 📢 最近的系统通知")
-                notice_lines.append("")
                 notice_lines.append(notice_text)
                 notice_lines.append("")
 
@@ -989,7 +984,7 @@ class DefaultReplyer:
                 else:
                     unread_history_prompt = "暂无未读历史消息"
 
-                return read_history_prompt, unread_history_prompt
+                return f"### 📜 已读历史消息\n{read_history_prompt}", f"### 📬 未读历史消息\n{unread_history_prompt}"
             else:
                 # 回退到传统方法
                 return await self._fallback_build_chat_history_prompts(message_list_before_now, target_user_id, sender)
@@ -1091,7 +1086,7 @@ class DefaultReplyer:
         else:
             unread_history_prompt = "暂无未读历史消息"
 
-        return read_history_prompt, unread_history_prompt
+        return f"### 📜 已读历史消息\n{read_history_prompt}", f"### 📬 未读历史消息\n{unread_history_prompt}"
 
     async def build_prompt_reply_context(
         self,

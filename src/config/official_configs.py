@@ -531,6 +531,16 @@ class CustomPromptConfig(ValidatedConfigBase):
     planner_custom_prompt_content: str = Field(default="", description="规划器自定义提示词内容")
 
 
+class AttentionOptimizationConfig(ValidatedConfigBase):
+    """注意力优化配置类 - 防止提示词过度相似导致LLM注意力退化"""
+
+    enable_noise: bool = Field(default=True, description="启用轻量级噪声注入（空白字符调整）")
+    enable_semantic_variants: bool = Field(default=False, description="启用语义变体替换（实验性功能）")
+    noise_strength: Literal["light", "medium", "heavy"] = Field(
+        default="light", description="噪声强度: light(轻量) | medium(中等) | heavy(强力)"
+    )
+
+
 class ResponsePostProcessConfig(ValidatedConfigBase):
     """回复后处理配置类"""
 

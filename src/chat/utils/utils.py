@@ -977,9 +977,6 @@ def filter_system_format_content(content: str | None) -> str:
     # [图片(描述生成失败)] 等错误格式
     cleaned_content = re.sub(r"\[图片\([^)]*\)\]", "", cleaned_content)
 
-    # 清理多余空格
-    cleaned_content = re.sub(r"\s+", " ", cleaned_content).strip()
-
     # 记录过滤操作
     if cleaned_content != original_content.strip():
         logger.info(

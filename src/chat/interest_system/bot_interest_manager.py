@@ -1023,8 +1023,10 @@ class BotInterestManager:
                 return None
 
             # 读取缓存文件
-            with open(cache_file, "rb") as f:
-                cache_data = orjson.loads(f.read())
+            import aiofiles
+            async with aiofiles.open(cache_file, "rb") as f:
+                content = await f.read()
+                cache_data = orjson.loads(content)
 
             # 验证缓存版本和embedding模型
             cache_version = cache_data.get("version", 1)
@@ -1074,8 +1076,9 @@ class BotInterestManager:
             }
 
             # 写入文件
-            with open(cache_file, "wb") as f:
-                f.write(orjson.dumps(cache_data, option=orjson.OPT_INDENT_2))
+            import aiofiles
+            async with aiofiles.open(cache_file, "wb") as f:
+                await f.write(orjson.dumps(cache_data, option=orjson.OPT_INDENT_2))
 
             logger.debug(f"💾 已保存 {len(self.embedding_cache)} 个标签embedding和 {len(self.expanded_embedding_cache)} 个扩展embedding到缓存文件: {cache_file}")
 
