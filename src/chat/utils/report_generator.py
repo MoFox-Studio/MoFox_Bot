@@ -154,8 +154,7 @@ class HTMLReportGenerator:
         """
 
         # 增加饼图和条形图
-        # static_charts = self._generate_static_charts_div(stat_data, div_id) # 该功能尚未实现
-        static_charts = ""
+        static_charts = self._generate_static_charts_div(stat_data, div_id) # 该功能尚未实现
         return f"""
         <div id="{div_id}" class="tab-content">
             <p class="info-item">
@@ -365,3 +364,83 @@ class HTMLReportGenerator:
         """
         async with aiofiles.open(output_path, "w", encoding="utf-8") as f:
             await f.write(html_template)
+    def _generate_static_charts_div(self, stat_data: dict[str, Any], period_id: str) -> str:
+        """生成静态图表（饼图、条形图）的HTML和JS。"""
+        provider_cost_data = stat_data.get(PIE_CHART_COST_BY_PROVIDER, {})
+        model_cost_data = stat_data.get(BAR_CHART_COST_BY_MODEL, {})
+
+        if not provider_cost_data and not model_cost_data:
+            return "<h2>数据总览</h2><p>当前时段暂无足够数据生成图表。</p>"
+
+        provider_labels = provider_cost_data.get('labels', [])
+        provider_data = provider_cost_data.get('data', [])
+        model_labels = model_cost_data.get('labels', [])
+        model_data = model_cost_data.get('data', [])
+
+        return f"""
+        <h2>数据总览</h2>
+        <div class="chart-grid">
+            <div class="chart-container">
+                <canvas id="providerCostPieChart_{period_id}"></canvas>
+            </div>
+            <div class="chart-container">
+                <canvas id="modelCostBarChart_{period_id}"></canvas>
+            </div>
+        </div>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {{
+            const colors = ['#3498db', '#2ecc71', '#f1c40f', '#e74c3c', '#9b59b6', '#1abc9c', '#34495e', '#e67e22'];
+
+            // Provider Cost Pie Chart
+            const providerCtx = document.getElementById('providerCostPieChart_{period_id}');
+            if (providerCtx && {provider_data}) {{
+                new Chart(providerCtx, {{
+                    type: 'pie',
+                    data: {{
+                        labels: {provider_labels},
+                        datasets: [{{
+                            label: '按供应商花费',
+                            data: {provider_data},
+                            backgroundColor: colors,
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {{
+                            title: {{ display: true, text: '按供应商花费分布', font: {{ size: 16 }} }},
+                            legend: {{ position: 'top' }}
+                        }}
+                    }}
+                }});
+            }}
+
+            // Model Cost Bar Chart
+            const modelCtx = document.getElementById('modelCostBarChart_{period_id}');
+            if (modelCtx && {model_data}) {{
+                new Chart(modelCtx, {{
+                    type: 'bar',
+                    data: {{
+                        labels: {model_labels},
+                        datasets: [{{
+                            label: '按模型花费',
+                            data: {model_data},
+                            backgroundColor: colors,
+                        }}]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {{
+                            title: {{ display: true, text: '按模型花费排行', font: {{ size: 16 }} }},
+                            legend: {{ display: false }}
+                        }},
+                        scales: {{
+                            y: {{ beginAtZero: true, title: {{ display: true, text: '花费 (¥)' }} }}
+                        }}
+                    }}
+                }});
+            }}
+        }});
+        </script>
+        """
