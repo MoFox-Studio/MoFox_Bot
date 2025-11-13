@@ -46,12 +46,12 @@ def generate_cache_key(
 
     if args:
         args_str = ",".join(str(arg) for arg in args)
-        args_hash = hashlib.md5(args_str.encode()).hexdigest()[:8]
+        args_hash = hashlib.sha256(args_str.encode()).hexdigest()[:8]
         cache_key_parts.append(f"args:{args_hash}")
 
     if kwargs:
         kwargs_str = ",".join(f"{k}={v}" for k, v in sorted(kwargs.items()))
-        kwargs_hash = hashlib.md5(kwargs_str.encode()).hexdigest()[:8]
+        kwargs_hash = hashlib.sha256(kwargs_str.encode()).hexdigest()[:8]
         cache_key_parts.append(f"kwargs:{kwargs_hash}")
 
     return ":".join(cache_key_parts)
