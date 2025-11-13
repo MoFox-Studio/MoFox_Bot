@@ -1,0 +1,44 @@
+<div id="{{ div_id }}" class="tab-content">
+    <p class="info-item">
+        <strong>统计时段: </strong>
+        {{ start_time }} ~ {{ end_time }}
+    </p>
+    {{ summary_cards }}
+    {{ static_charts }}
+
+    <h2>按模型分类统计</h2>
+    <table>
+        <tr><th>模型名称</th><th>调用次数</th><th>平均Token数</th><th>Token总量</th><th>TPS</th><th>每K Token成本</th><th>累计花费</th><th>平均耗时(秒)</th></tr>
+        <tbody>{{ model_rows }}</tbody>
+    </table>
+
+    <h2>按供应商分类统计</h2>
+    <table>
+        <tr><th>供应商名称</th><th>调用次数</th><th>Token总量</th><th>TPS</th><th>每K Token成本</th><th>累计花费</th></tr>
+        <tbody>{{ provider_rows }}</tbody>
+    </table>
+
+    <h2>按模块分类统计</h2>
+    <table>
+        <thead>
+            <tr><th>模块名称</th><th>调用次数</th><th>输入Token</th><th>输出Token</th><th>Token总量</th><th>累计花费</th><th>平均耗时(秒)</th><th>标准差(秒)</th></tr>
+        </thead>
+        <tbody>{{ module_rows }}</tbody>
+    </table>
+
+    <h2>按请求类型分类统计</h2>
+    <table>
+        <thead>
+            <tr><th>请求类型</th><th>调用次数</th><th>输入Token</th><th>输出Token</th><th>Token总量</th><th>累计花费</th><th>平均耗时(秒)</th><th>标准差(秒)</th></tr>
+        </thead>
+        <tbody>{{ type_rows }}</tbody>
+    </table>
+
+    <h2>聊天消息统计</h2>
+    <table>
+        <thead>
+            <tr><th>联系人/群组名称</th><th>消息数量</th></tr>
+        </thead>
+        <tbody>{{ chat_rows }}</tbody>
+    </table>
+</div>

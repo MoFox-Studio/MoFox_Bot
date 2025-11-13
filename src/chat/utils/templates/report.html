@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ report_title }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>{{ report_css }}</style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ report_title }}</h1>
+        <p class="info-item"><strong>统计截止时间:</strong> {{ generation_time }}</p>
+        <div class="tabs">{{ tab_list }}</div>
+        {{ tab_content }}
+    </div>
+    <script>{{ report_js }}</script>
+</body>
+</html>
