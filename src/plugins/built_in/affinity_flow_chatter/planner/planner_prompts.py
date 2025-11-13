@@ -106,7 +106,7 @@ def init_prompts():
             }}
         }},
         {{
-            "action_type": "emoji",
+            "action_type": "reply",
             "reasoning": "理由B",
             "action_data": {{
                 "target_message_id": "m125",
