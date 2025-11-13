@@ -832,7 +832,7 @@ class ModuleColoredConsoleRenderer:
             else:
                 parts.append(Text(module_text))
 
-        # 消息内容（确保转换为字符串）
+        # 消息内容（确保转换为字符串）并支持 Rich 标记
         event_content = ""
         if isinstance(event, str):
             event_content = event
@@ -846,10 +846,10 @@ class ModuleColoredConsoleRenderer:
             # 其他类型直接转换为字符串
             event_content = str(event)
 
-        # 在 full 模式下为消息内容着色
+        # 在 full 模式下为消息内容着色，并支持 Rich 标记语言
         if self._colors and self._enable_full_content_colors:
             if "内心思考:" in event_content:
-                # 使用明亮的粉色用于“内心思考”段落
+                # 使用明亮的粉色用于"内心思考"段落
                 thought_hex_color = "#FFAFD7"
                 prefix, thought = event_content.split("内心思考:", 1)
 
@@ -859,28 +859,43 @@ class ModuleColoredConsoleRenderer:
                 # 组合为一个 Text，避免 join 时插入多余空格
                 content_text = Text()
                 if prefix:
+                    # 解析 prefix 中的 Rich 标记
                     if module_hex_color:
-                        content_text.append(prefix, style=module_hex_color)
+                        content_text.append(Text.from_markup(prefix, style=module_hex_color))
                     else:
-                        content_text.append(prefix)
+                        content_text.append(Text.from_markup(prefix))
 
-                # 与“内心思考”段落之间插入空行
+                # 与"内心思考"段落之间插入空行
                 if prefix:
                     content_text.append("\n\n")
 
-                # “内心思考”标题+内容
+                # "内心思考"标题+内容
                 content_text.append("内心思考:", style=thought_hex_color)
                 if thought:
                     content_text.append(thought, style=thought_hex_color)
 
                 parts.append(content_text)
             else:
+                # 使用 Text.from_markup 解析 Rich 标记语言
                 if module_hex_color:
-                    parts.append(Text(event_content, style=module_hex_color))
+                    try:
+                        parts.append(Text.from_markup(event_content, style=module_hex_color))
+                    except Exception:
+                        # 如果标记解析失败，回退到普通文本
+                        parts.append(Text(event_content, style=module_hex_color))
                 else:
-                    parts.append(Text(event_content))
+                    try:
+                        parts.append(Text.from_markup(event_content))
+                    except Exception:
+                        # 如果标记解析失败，回退到普通文本
+                        parts.append(Text(event_content))
         else:
-            parts.append(Text(event_content))
+            # 即使在非 full 模式下，也尝试解析 Rich 标记（但不应用颜色）
+            try:
+                parts.append(Text.from_markup(event_content))
+            except Exception:
+                # 如果标记解析失败，使用普通文本
+                parts.append(Text(event_content))
 
         # 处理其他字段
         extras = []
