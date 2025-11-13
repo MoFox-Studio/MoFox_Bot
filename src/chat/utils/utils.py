@@ -956,16 +956,11 @@ def filter_system_format_content(content: str | None) -> str:
             cleaned_content = cleaned_content[last_bracket_index + 1 :].strip()
 
     # 在处理完回复格式后，再清理其他简单的格式
-    # 移除表情包格式：[表情包：xxx]
-    cleaned_content = re.sub(r"\[表情包：[^\]]*\]", "", cleaned_content)
-    # 移除图片格式：[图片:xxx]
-    cleaned_content = re.sub(r"\[图片:[^\]]*\]", "", cleaned_content)
+    # 新增：移除所有残余的 [...] 格式，例如 [at=...] 等
+    cleaned_content = re.sub(r"\[.*?\]", "", cleaned_content)
+
     # 移除@格式：@<xxx>
     cleaned_content = re.sub(r"@<[^>]*>", "", cleaned_content)
-    # [表情包(描述生成失败)] 等错误格式
-    cleaned_content = re.sub(r"\[表情包\([^)]*\)\]", "", cleaned_content)
-    # [图片(描述生成失败)] 等错误格式
-    cleaned_content = re.sub(r"\[图片\([^)]*\)\]", "", cleaned_content)
 
     # 记录过滤操作
     if cleaned_content != original_content.strip():
