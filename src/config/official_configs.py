@@ -152,6 +152,8 @@ class ChatConfig(ValidatedConfigBase):
     multiple_replies_strategy: Literal["keep_first", "keep_best", "keep_last"] = Field(
         default="keep_first", description="多重回复处理策略：keep_first(保留第一个)，keep_best(保留最佳)，keep_last(保留最后一个)"
     )
+    # 表情包回复配置
+    allow_reply_to_emoji: bool = Field(default=True, description="是否允许回复表情包消息")
 
 
 class MessageReceiveConfig(ValidatedConfigBase):

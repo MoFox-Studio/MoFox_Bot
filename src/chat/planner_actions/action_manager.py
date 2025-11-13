@@ -241,6 +241,13 @@ class ChatterActionManager:
                     "command": command,
                 }
             else:
+                # 检查目标消息是否为表情包消息以及配置是否允许回复表情包
+                if target_message and getattr(target_message, 'is_emoji', False):
+                    # 如果是表情包消息且配置不允许回复表情包，则跳过回复
+                    if not getattr(global_config.chat, 'allow_reply_to_emoji', True):
+                        logger.info(f"{log_prefix} 目标消息为表情包且配置不允许回复表情包，跳过回复")
+                        return {"action_type": action_name, "success": True, "reply_text": "", "skip_reason": "emoji_not_allowed"}
+
                 # 生成回复 (reply 或 respond)
                 # reply: 针对单条消息的回复，使用 s4u 模板
                 # respond: 对未读消息的统一回应，使用 normal 模板
