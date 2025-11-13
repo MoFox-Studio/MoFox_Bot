@@ -550,20 +550,23 @@ async def search_memories(q: str, limit: int = 50):
             all_memories = memory_manager.graph_store.get_all_memories()
             for memory in all_memories:
                 if q.lower() in memory.to_text().lower():
+                    node_ids = [node.id for node in memory.nodes]
                     results.append(
                         {
                             "id": memory.id,
                             "type": memory.memory_type.value,
                             "importance": memory.importance,
                             "text": memory.to_text(),
+                            "node_ids": node_ids,  # 返回关联的节点ID
                         }
                     )
         else:
             # 从文件加载的数据中搜索 (降级方案)
+            # 注意：此模式下无法直接获取关联节点，前端需要做兼容处理
             data = await load_graph_data_from_file()
             for memory in data.get("memories", []):
                 if q.lower() in memory.get("text", "").lower():
-                    results.append(memory)
+                    results.append(memory)  # node_ids 可能不存在
 
         return JSONResponse(
             content={
@@ -575,7 +578,11 @@ async def search_memories(q: str, limit: int = 50):
             }
         )
     except Exception as e:
-        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+        # 确保即使在异常情况下也返回 data 字段
+        return JSONResponse(
+            content={"success": False, "error": str(e), "data": {"results": [], "count": 0}},
+            status_code=500,
+        )
 
 
 @router.get("/api/stats")
