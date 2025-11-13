@@ -327,8 +327,8 @@ class MemoryManager:
 
             memory.updated_at = datetime.now()
 
-            # 保存更新
-            await self.persistence.save_graph_store(self.graph_store)
+            # 异步保存更新（不阻塞当前操作）
+            asyncio.create_task(self._async_save_graph_store("更新记忆"))
             logger.info(f"记忆更新成功: {memory_id}")
             return True
 
@@ -363,8 +363,8 @@ class MemoryManager:
             # 从图存储删除记忆
             self.graph_store.remove_memory(memory_id)
 
-            # 保存更新
-            await self.persistence.save_graph_store(self.graph_store)
+            # 异步保存更新（不阻塞当前操作）
+            asyncio.create_task(self._async_save_graph_store("删除记忆"))
             logger.info(f"记忆删除成功: {memory_id}")
             return True
 
@@ -595,8 +595,8 @@ class MemoryManager:
                 for related_id in related_memories[:max_related]:
                     await self.activate_memory(related_id, propagation_strength)
 
-            # 保存更新
-            await self.persistence.save_graph_store(self.graph_store)
+            # 异步保存更新（不阻塞当前操作）
+            asyncio.create_task(self._async_save_graph_store("激活记忆"))
             logger.debug(f"记忆已激活: {memory_id} (level={new_activation:.3f})")
             return True
 
@@ -663,9 +663,9 @@ class MemoryManager:
                     "strength": strength
                 })
 
-            # 批量保存到数据库
+            # 批量保存到数据库（异步执行）
             if activation_updates:
-                await self.persistence.save_graph_store(self.graph_store)
+                asyncio.create_task(self._async_save_graph_store("批量激活更新"))
 
                 # 激活传播（异步执行，不阻塞主流程）
                 asyncio.create_task(self._batch_propagate_activation(memories_to_activate, base_strength))
@@ -752,8 +752,8 @@ class MemoryManager:
             base_strength: 基础激活强度
         """
         try:
-            # 批量保存到数据库
-            await self.persistence.save_graph_store(self.graph_store)
+            # 批量保存到数据库（异步执行）
+            asyncio.create_task(self._async_save_graph_store("后台激活更新"))
 
             # 简化的激活传播（仅在强度足够时执行）
             if base_strength > 0.08:  # 提高传播阈值，减少传播频率
@@ -952,8 +952,8 @@ class MemoryManager:
                 else:
                     logger.debug(f"记忆已删除: {memory_id} (删除了 {deleted_vectors} 个向量)")
 
-                # 4. 保存更新
-                await self.persistence.save_graph_store(self.graph_store)
+                # 4. 异步保存更新（不阻塞当前操作）
+                asyncio.create_task(self._async_save_graph_store("删除相关记忆"))
                 return True
             else:
                 logger.error(f"从图存储删除记忆失败: {memory_id}")
@@ -1375,9 +1375,9 @@ class MemoryManager:
                     except Exception as e:
                         logger.warning(f"删除记忆 {memory.id[:8]} 失败: {e}")
 
-                # 批量保存（一次性写入，减少I/O）
-                await self.persistence.save_graph_store(self.graph_store)
-                logger.info("💾 去重保存完成")
+                # 批量保存（一次性写入，减少I/O，异步执行）
+                asyncio.create_task(self._async_save_graph_store("记忆去重"))
+                logger.info("💾 去重保存任务已启动")
 
             # ===== 步骤4: 向量检索关联记忆 + LLM分析关系 =====
             # 过滤掉已删除的记忆
@@ -1486,9 +1486,9 @@ class MemoryManager:
                     except Exception as e:
                         logger.warning(f"添加边到图失败: {e}")
 
-                # 批量保存更新
-                await self.persistence.save_graph_store(self.graph_store)
-                logger.info("💾 关联边保存完成")
+                # 批量保存更新（异步执行）
+                asyncio.create_task(self._async_save_graph_store("记忆关联边"))
+                logger.info("💾 关联边保存任务已启动")
 
             logger.info(f"✅ 记忆整理完成: {result}")
 
@@ -1636,10 +1636,10 @@ class MemoryManager:
                         logger.warning(f"建立关联失败: {e}")
                         continue
 
-            # 保存更新后的图数据
+            # 异步保存更新后的图数据
             if result["linked_count"] > 0:
-                await self.persistence.save_graph_store(self.graph_store)
-                logger.info(f"已保存 {result['linked_count']} 条自动关联边")
+                asyncio.create_task(self._async_save_graph_store("自动关联"))
+                logger.info(f"已启动保存任务: {result['linked_count']} 条自动关联边")
 
             logger.info(f"自动关联完成: {result}")
             return result
@@ -2335,3 +2335,28 @@ class MemoryManager:
         finally:
             self._maintenance_running = False
             logger.debug("维护循环已清理完毕")
+
+    async def _async_save_graph_store(self, operation_name: str = "未知操作") -> None:
+        """
+        异步保存图存储到磁盘
+
+        此方法设计为在后台任务中执行，包含错误处理
+
+        Args:
+            operation_name: 操作名称，用于日志记录
+        """
+        try:
+            # 确保图存储存在且已初始化
+            if self.graph_store is None:
+                logger.warning(f"图存储未初始化，跳过异步保存: {operation_name}")
+                return
+
+            if self.persistence is None:
+                logger.warning(f"持久化管理器未初始化，跳过异步保存: {operation_name}")
+                return
+
+            await self.persistence.save_graph_store(self.graph_store)
+            logger.debug(f"异步保存图数据成功: {operation_name}")
+        except Exception as e:
+            logger.error(f"异步保存图数据失败 ({operation_name}): {e}", exc_info=True)
+            # 可以考虑添加重试机制或者通知机制

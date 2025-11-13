@@ -4,6 +4,7 @@ LLM 工具接口：定义记忆系统的工具 schema 和执行逻辑
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from src.common.logger import get_logger
@@ -376,8 +377,8 @@ class MemoryTools:
             # 3. 添加到存储（暂存状态）
             await self._add_memory_to_stores(memory)
 
-            # 4. 保存到磁盘
-            await self.persistence_manager.save_graph_store(self.graph_store)
+            # 4. 异步保存到磁盘（不阻塞当前操作）
+            asyncio.create_task(self._async_save_graph_store())
 
             logger.info(f"记忆创建成功: {memory.id}")
 
@@ -456,8 +457,8 @@ class MemoryTools:
                 **edge.metadata
             )
 
-            # 5. 保存
-            await self.persistence_manager.save_graph_store(self.graph_store)
+            # 5. 异步保存（不阻塞当前操作）
+            asyncio.create_task(self._async_save_graph_store())
 
             logger.info(f"记忆关联成功: {source_memory.id} -> {target_memory.id}")
 
@@ -918,7 +919,6 @@ class MemoryTools:
 
             # 获取上下文信息
             chat_history = context.get("chat_history", "") if context else ""
-            sender = context.get("sender", "") if context else ""
 
             # 处理聊天历史，提取最近5条左右的对话
             recent_chat = ""
@@ -937,6 +937,7 @@ class MemoryTools:
 **最近聊天记录（最近10条）：**
 {recent_chat if recent_chat else '无聊天历史'}
 
+**目标消息：** {query}
 ---
 
 ## 第一步：分析查询意图与记忆类型
@@ -1313,3 +1314,24 @@ class MemoryTools:
             MemoryTools.get_link_memories_schema(),
             MemoryTools.get_search_memories_schema(),
         ]
+
+    async def _async_save_graph_store(self) -> None:
+        """
+        异步保存图存储到磁盘
+
+        此方法设计为在后台任务中执行，包含错误处理
+        """
+        try:
+            # 确保组件已初始化
+            if self.graph_store is None:
+                logger.warning("图存储未初始化，跳过异步保存")
+                return
+
+            if self.persistence_manager is None:
+                logger.warning("持久化管理器未初始化，跳过异步保存")
+                return
+
+            await self.persistence_manager.save_graph_store(self.graph_store)
+            logger.debug("异步保存图数据成功")
+        except Exception as e:
+            logger.error(f"异步保存图数据失败: {e}", exc_info=True)
