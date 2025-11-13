@@ -107,15 +107,15 @@ class ChatterPlanGenerator:
         """
         try:
             # 从组件注册表获取可用动作
-            available_actions = component_registry.get_enabled_actions()
+            available_actions = self.action_manager.get_using_actions()
 
             # 根据聊天类型和模式筛选动作
             filtered_actions = {}
             for action_name, action_info in available_actions.items():
                 # 检查动作是否支持当前聊天类型
-                if chat_type in action_info.chat_types:
+                if chat_type == action_info.chat_type_allow:
                     # 检查动作是否支持当前模式
-                    if mode in action_info.chat_modes:
+                    if mode == action_info.mode_enable:
                         filtered_actions[action_name] = action_info
 
             return filtered_actions
