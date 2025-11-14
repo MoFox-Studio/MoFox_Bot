@@ -26,7 +26,7 @@ import time
 from collections import namedtuple
 from collections.abc import Callable, Coroutine
 from enum import Enum
-from typing import Any
+from typing import Any, ClassVar, Literal
 
 from rich.traceback import install
 
@@ -261,6 +261,137 @@ class _ModelSelector:
         self.model_usage[model_name] = stats._replace(penalty=stats.penalty + penalty_increment)
 
 
+class _AttentionOptimizer:
+    """
+    通过轻量级随机化技术，在保持语义不变的前提下增加提示词结构多样性，
+    避免短时间内重复发送高度相似的提示词导致模型回复趋同。
+    """
+
+    # 语义等价的文本替换模板
+    SEMANTIC_VARIANTS: ClassVar = {
+        "当前时间": ["当前时间", "现在是", "此时此刻", "时间"],
+        "最近的系统通知": ["最近的系统通知", "系统通知", "通知消息", "最新通知"],
+        "聊天历史": ["聊天历史", "对话记录", "历史消息", "之前的对话"],
+        "你的任务是": ["你的任务是", "请", "你需要", "你应当"],
+        "请注意": ["请注意", "注意", "请留意", "需要注意"],
+    }
+
+    def __init__(
+        self,
+        enable_semantic_variants: bool,
+        noise_strength: Literal["light", "medium", "heavy"],
+    ):
+        """
+        初始化注意力优化器
+        Args:
+            enable_semantic_variants: 是否启用语义变体替换
+            noise_strength: 噪声强度 (light/medium/heavy)
+        """
+        self.enable_semantic_variants = enable_semantic_variants
+        self.noise_strength = noise_strength
+
+        # 噪声强度配置
+        self.noise_config = {
+            "light": {"newline_range": (1, 2), "space_range": (0, 2), "indent_adjust": False},
+            "medium": {"newline_range": (1, 3), "space_range": (0, 4), "indent_adjust": True},
+            "heavy": {"newline_range": (1, 4), "space_range": (0, 6), "indent_adjust": True},
+        }
+
+    def optimize_prompt(self, prompt_text: str) -> str:
+        """优化提示词，增加结构多样性"""
+        try:
+            optimized = prompt_text
+
+            if self.enable_semantic_variants:
+                optimized = self._apply_semantic_variants(optimized)
+
+            optimized = self._inject_noise(optimized)
+
+            change_rate = self._calculate_change_rate(prompt_text, optimized)
+            if change_rate > 0.001:  # 仅在有实际变化时记录
+                logger.debug(f"提示词注意力优化完成，变化率: {change_rate:.2%}")
+
+            return optimized
+
+        except Exception as e:
+            logger.error(f"提示词注意力优化失败: {e}", exc_info=True)
+            return prompt_text
+
+    def _apply_semantic_variants(self, text: str) -> str:
+        """应用语义等价的文本替换"""
+        try:
+            result = text
+            for original, variants in self.SEMANTIC_VARIANTS.items():
+                if original in result:
+                    replacement = random.choice(variants)
+                    result = result.replace(original, replacement, 1)
+            return result
+        except Exception as e:
+            logger.error(f"语义变体替换失败: {e}", exc_info=True)
+            return text
+
+    def _inject_noise(self, text: str) -> str:
+        """注入轻量级噪声（空白字符调整）"""
+        try:
+            config = self.noise_config[self.noise_strength]
+            result = text
+            result = self._adjust_newlines(result, config["newline_range"])
+            result = self._adjust_spaces(result, config["space_range"])
+            if config["indent_adjust"]:
+                result = self._adjust_indentation(result)
+            return result
+        except Exception as e:
+            logger.error(f"噪声注入失败: {e}", exc_info=True)
+            return text
+
+    def _adjust_newlines(self, text: str, newline_range: tuple[int, int]) -> str:
+        """调整连续换行的数量"""
+        pattern = r"\n{2,}"
+
+        def replace_newlines(match):
+            count = random.randint(*newline_range)
+            return "\n" * count
+
+        return re.sub(pattern, replace_newlines, text)
+
+    def _adjust_spaces(self, text: str, space_range: tuple[int, int]) -> str:
+        """在某些位置添加随机空格"""
+        lines = text.split("\n")
+        result_lines = []
+        for line in lines:
+            if line.strip() and random.random() < 0.3:
+                spaces = " " * random.randint(*space_range)
+                result_lines.append(line + spaces)
+            else:
+                result_lines.append(line)
+        return "\n".join(result_lines)
+
+    def _adjust_indentation(self, text: str) -> str:
+        """微调某些行的缩进（保持语义）"""
+        lines = text.split("\n")
+        result_lines = []
+        for line in lines:
+            list_match = re.match(r"^(\s*)([-*•])\s", line)
+            if list_match and random.random() < 0.5:
+                indent = list_match.group(1)
+                marker = list_match.group(2)
+                adjust = random.choice([-2, 0, 2])
+                new_indent = " " * max(0, len(indent) + adjust)
+                new_line = line.replace(indent + marker, new_indent + marker, 1)
+                result_lines.append(new_line)
+            else:
+                result_lines.append(line)
+        return "\n".join(result_lines)
+
+    def _calculate_change_rate(self, original: str, optimized: str) -> float:
+        """计算文本变化率"""
+        if not original or not optimized:
+            return 0.0
+        diff_chars = sum(1 for a, b in zip(original, optimized) if a != b)
+        max_len = max(len(original), len(optimized))
+        return diff_chars / max_len if max_len > 0 else 0.0
+
+
 class _PromptProcessor:
     """封装所有与提示词和响应内容的预处理和后处理逻辑。"""
 
@@ -292,29 +423,39 @@ class _PromptProcessor:
         self, prompt: str, model_info: ModelInfo,  task_name: str
     ) -> str:
         """
-        为请求准备最终的提示词。
-
-        此方法会根据API提供商和模型配置，对原始提示词应用内容混淆和反截断指令，
-        生成最终发送给模型的完整提示内容。
-
-        Args:
-            prompt (str): 原始的用户提示词。
-            model_info (ModelInfo): 目标模型的信息。
-            api_provider (APIProvider): API提供商的配置。
-            task_name (str): 当前任务的名称，用于日志记录。
-
-        Returns:
-            str: 处理后的、可以直接发送给模型的完整提示词。
+        为请求准备最终的提示词,应用各种扰动和指令。
         """
-        # 步骤1: 根据API提供商的配置应用内容混淆
-        processed_prompt = await self._apply_content_obfuscation(prompt, model_info)
+        final_prompt_parts = []
+        user_prompt = prompt
 
-        # 步骤2: 检查模型是否需要注入反截断指令
+        # 步骤 A: (可选) 添加抗审查指令
+        if getattr(model_info, "prepend_noise_instruction", False):
+            final_prompt_parts.append(self.noise_instruction)
+
+        # 步骤 B: (可选) 应用提示词扰动
+        if getattr(model_info, "enable_prompt_perturbation", False):
+            logger.info(f"为模型 '{model_info.name}' 启用提示词扰动功能。")
+            
+            # B.1 注意力优化 (空白字符 + 语义变体)
+            optimizer = _AttentionOptimizer(
+                enable_semantic_variants=getattr(model_info, "enable_semantic_variants", False),
+                noise_strength=getattr(model_info, "perturbation_strength", "light"),
+            )
+            user_prompt = optimizer.optimize_prompt(user_prompt)
+
+            # B.2 内容混淆 (注入随机噪音)
+            user_prompt = await self._inject_random_noise(
+                user_prompt, getattr(model_info, "perturbation_strength", "light")
+            )
+
+        final_prompt_parts.append(user_prompt)
+
+        # 步骤 C: (可选) 添加反截断指令
         if getattr(model_info, "use_anti_truncation", False):
-            processed_prompt += self.anti_truncation_instruction
+            final_prompt_parts.append(self.anti_truncation_instruction)
             logger.info(f"模型 '{model_info.name}' (任务: '{task_name}') 已启用反截断功能。")
 
-        return processed_prompt
+        return "\n\n".join(final_prompt_parts)
 
     async def process_response(self, content: str, use_anti_truncation: bool) -> tuple[str, str, bool]:
         """
@@ -331,51 +472,16 @@ class _PromptProcessor:
             else:
                 is_truncated = True
         return content, reasoning, is_truncated
-
-    async def _apply_content_obfuscation(self, text: str, model_info: ModelInfo) -> str:
-        """
-        根据API提供商的配置对文本进行内容混淆。
-
-        如果提供商配置中启用了内容混淆，此方法会在文本前部加入抗审查指令，
-        并在文本中注入随机噪音，以降低内容被审查或修改的风险。
-
-        Args:
-            text (str): 原始文本内容。
-            api_provider (APIProvider): API提供商的配置。
-
-        Returns:
-            str: 经过混淆处理的文本。
-        """
-        # 检查当前API提供商是否启用了内容混淆功能
-        if not model_info.enable_content_obfuscation or False:
-            return text
-
-        # 获取混淆强度，默认为1
-        intensity = model_info.obfuscation_intensity or 1
-        logger.info(f"为模型 '{model_info.name}' 启用内容混淆，强度级别: {intensity}")
-
-        # 将抗审查指令和原始文本拼接
-        processed_text = self.noise_instruction + "\n\n" + text
-
-        # 在拼接后的文本中注入随机噪音
-        return await self._inject_random_noise(processed_text, intensity)
-
+        
     @staticmethod
-    async def _inject_random_noise(text: str, intensity: int) -> str:
+    async def _inject_random_noise(text: str, strength: str) -> str:
         """
         在文本中按指定强度注入随机噪音字符串。
-
-        该方法通过在文本的单词之间随机插入无意义的字符串（噪音）来实现内容混淆。
-        强度越高，插入噪音的概率和长度就越大。
-
-        Args:
-            text (str): 待处理的文本。
-            intensity (int): 混淆强度 (1-3)，决定噪音的概率和长度。
-
-        Returns:
-            str: 注入噪音后的文本。
         """
-        # 定义不同强度级别的噪音参数：概率和长度范围
+        # 强度映射，将 "light", "medium", "heavy" 映射到 1, 2, 3
+        strength_map = {"light": 1, "medium": 2, "heavy": 3}
+        intensity = strength_map.get(strength, 1)
+
         params = {
             1: {"probability": 15, "length": (3, 6)},  # 低强度
             2: {"probability": 25, "length": (5, 10)},  # 中强度
