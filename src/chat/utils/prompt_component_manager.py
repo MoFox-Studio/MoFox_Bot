@@ -304,9 +304,54 @@ class PromptComponentManager:
         return [[name, prompt.template] for name, prompt in global_prompt_manager._prompts.items()]
 
     def get_registered_prompt_component_info(self) -> list[PromptInfo]:
-        """获取所有在 ComponentRegistry 中注册的 Prompt 组件信息。"""
-        components = component_registry.get_components_by_type(ComponentType.PROMPT).values()
-        return [info for info in components if isinstance(info, PromptInfo)]
+        """
+        获取所有已注册和动态添加的Prompt组件信息，并反映当前的注入规则状态。
+
+        该方法会合并静态注册的组件信息和运行时的动态注入规则，
+        确保返回的 `PromptInfo` 列表能够准确地反映系统当前的完整状态。
+
+        Returns:
+            list[PromptInfo]: 一个包含所有静态和动态Prompt组件信息的列表。
+                             每个组件的 `injection_rules` 都会被更新为当前实际生效的规则。
+        """
+        # 步骤 1: 获取所有静态注册的组件信息，并使用深拷贝以避免修改原始数据
+        static_components = component_registry.get_components_by_type(ComponentType.PROMPT)
+        # 使用深拷贝以避免修改原始注册表数据
+        info_dict: dict[str, PromptInfo] = {
+            name: copy.deepcopy(info) for name, info in static_components.items() if isinstance(info, PromptInfo)
+        }
+
+        # 步骤 2: 遍历动态规则，识别并创建纯动态组件的 PromptInfo
+        all_dynamic_component_names = set()
+        for target, rules in self._dynamic_rules.items():
+            for prompt_name, (rule, _, source) in rules.items():
+                all_dynamic_component_names.add(prompt_name)
+
+        for name in all_dynamic_component_names:
+            if name not in info_dict:
+                # 这是一个纯动态组件，为其创建一个新的 PromptInfo
+                info_dict[name] = PromptInfo(
+                    name=name,
+                    component_type=ComponentType.PROMPT,
+                    description="Dynamically added component",
+                    plugin_name="runtime",  # 动态组件通常没有插件归属
+                    is_built_in=False,
+                )
+
+        # 步骤 3: 清空所有组件的注入规则，准备用当前状态重新填充
+        for info in info_dict.values():
+            info.injection_rules = []
+
+        # 步骤 4: 再次遍历动态规则，为每个组件重建其 injection_rules 列表
+        for target, rules in self._dynamic_rules.items():
+            for prompt_name, (rule, _, _) in rules.items():
+                if prompt_name in info_dict:
+                    # 确保规则是 InjectionRule 的实例
+                    if isinstance(rule, InjectionRule):
+                        info_dict[prompt_name].injection_rules.append(rule)
+
+        # 步骤 5: 返回最终的 PromptInfo 对象列表
+        return list(info_dict.values())
 
     async def get_injection_info(
         self,
