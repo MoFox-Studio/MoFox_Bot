@@ -281,10 +281,27 @@ class PromptComponentManager:
         from src.chat.utils.prompt import global_prompt_manager
         return list(global_prompt_manager._prompts.keys())
 
-    def get_core_prompt_contents(self) -> dict[str, str]:
-        """获取所有核心提示词模板的原始内容。"""
+    def get_core_prompt_contents(self, prompt_name: str | None = None) -> list[list[str]]:
+        """
+        获取核心提示词模板的原始内容。
+
+        Args:
+            prompt_name (str | None, optional):
+                如果指定，则只返回该名称对应的提示词模板。
+                如果为 None，则返回所有核心提示词模板。
+                默认为 None。
+
+        Returns:
+            list[list[str]]: 一个列表，每个子列表包含 [prompt_name, template_content]。
+                             如果指定了 prompt_name 但未找到，则返回空列表。
+        """
         from src.chat.utils.prompt import global_prompt_manager
-        return {name: prompt.template for name, prompt in global_prompt_manager._prompts.items()}
+
+        if prompt_name:
+            prompt = global_prompt_manager._prompts.get(prompt_name)
+            return [[prompt_name, prompt.template]] if prompt else []
+
+        return [[name, prompt.template] for name, prompt in global_prompt_manager._prompts.items()]
 
     def get_registered_prompt_component_info(self) -> list[PromptInfo]:
         """获取所有在 ComponentRegistry 中注册的 Prompt 组件信息。"""
@@ -316,7 +333,7 @@ class PromptComponentManager:
         info_map = {}
         async with self._lock:
             all_targets = set(self._dynamic_rules.keys()) | set(self.get_core_prompts())
-            
+
             # 如果指定了目标，则只处理该目标
             targets_to_process = [target_prompt] if target_prompt and target_prompt in all_targets else sorted(all_targets)
 
