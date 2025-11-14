@@ -169,6 +169,37 @@ class PromptComponentManager:
         logger.warning(f"尝试移除注入规则失败: 未找到 '{prompt_name}' on '{target_prompt}'")
         return False
 
+    async def remove_all_rules_by_component_name(self, prompt_name: str) -> bool:
+        """
+        按组件名称移除其所有相关的注入规则。
+
+        此方法会遍历管理器中所有的目标提示词，并移除所有与给定的 `prompt_name`
+        相关联的注入规则。这对于清理或禁用某个组件的所有注入行为非常有用。
+
+        Args:
+            prompt_name (str): 要移除规则的组件的名称。
+
+        Returns:
+            bool: 如果至少移除了一条规则，则返回 True；否则返回 False。
+        """
+        removed = False
+        async with self._lock:
+            # 创建一个目标列表的副本进行迭代，因为我们可能会在循环中修改字典
+            for target_prompt in list(self._dynamic_rules.keys()):
+                if prompt_name in self._dynamic_rules[target_prompt]:
+                    del self._dynamic_rules[target_prompt][prompt_name]
+                    removed = True
+                    logger.info(f"成功移除注入规则: '{prompt_name}' from '{target_prompt}'")
+                    # 如果目标下已无任何规则，则清理掉这个键
+                    if not self._dynamic_rules[target_prompt]:
+                        del self._dynamic_rules[target_prompt]
+                        logger.debug(f"目标 '{target_prompt}' 已空，已被移除。")
+
+        if not removed:
+            logger.warning(f"尝试移除组件 '{prompt_name}' 的所有规则失败: 未找到任何相关规则。")
+
+        return removed
+
     # --- 核心注入逻辑 ---
 
     async def apply_injections(
