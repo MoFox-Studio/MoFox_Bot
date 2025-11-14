@@ -375,15 +375,6 @@ class Prompt:
             # 这样做可以更早地组合模板，也使得`Prompt`类的职责更单一。
             result = main_formatted_prompt
 
-            # 步骤 4: 注意力优化（如果启用）
-            # 通过轻量级随机化避免提示词过度相似导致LLM注意力退化
-            if self.parameters.enable_attention_optimization:
-                from src.chat.utils.attention_optimizer import get_attention_optimizer
-
-                optimizer = get_attention_optimizer()
-                result = optimizer.optimize_prompt(result, context_data)
-                logger.debug("已应用注意力优化")
-
             total_time = time.time() - start_time
             logger.debug(
                 f"Prompt构建完成，模式: {self.parameters.prompt_mode}, 耗时: {total_time:.2f}s"

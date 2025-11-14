@@ -427,7 +427,7 @@ class MemoryConfig(ValidatedConfigBase):
     search_max_expand_depth: int = Field(default=2, description="检索时图扩展深度（0-3）")
     search_expand_semantic_threshold: float = Field(default=0.3, description="图扩展时语义相似度阈值（建议0.3-0.5，过低可能引入无关记忆，过高无法扩展）")
     enable_query_optimization: bool = Field(default=True, description="启用查询优化")
-    
+
     # 路径扩展配置 (新算法)
     enable_path_expansion: bool = Field(default=False, description="启用路径评分扩展算法（实验性功能）")
     path_expansion_max_hops: int = Field(default=2, description="路径扩展最大跳数")
@@ -531,16 +531,6 @@ class CustomPromptConfig(ValidatedConfigBase):
     image_prompt: str = Field(default="", description="图片提示词")
     planner_custom_prompt_enable: bool = Field(default=False, description="启用规划器自定义提示词")
     planner_custom_prompt_content: str = Field(default="", description="规划器自定义提示词内容")
-
-
-class AttentionOptimizationConfig(ValidatedConfigBase):
-    """注意力优化配置类 - 防止提示词过度相似导致LLM注意力退化"""
-
-    enable_noise: bool = Field(default=True, description="启用轻量级噪声注入（空白字符调整）")
-    enable_semantic_variants: bool = Field(default=False, description="启用语义变体替换（实验性功能）")
-    noise_strength: Literal["light", "medium", "heavy"] = Field(
-        default="light", description="噪声强度: light(轻量) | medium(中等) | heavy(强力)"
-    )
 
 
 class ResponsePostProcessConfig(ValidatedConfigBase):

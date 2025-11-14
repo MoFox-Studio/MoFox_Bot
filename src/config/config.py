@@ -13,7 +13,6 @@ from src.common.logger import get_logger
 from src.config.config_base import ValidatedConfigBase
 from src.config.official_configs import (
     AffinityFlowConfig,
-    AttentionOptimizationConfig,
     BotConfig,
     ChatConfig,
     ChineseTypoConfig,
@@ -392,9 +391,7 @@ class Config(ValidatedConfigBase):
     tool: ToolConfig = Field(..., description="工具配置")
     debug: DebugConfig = Field(..., description="调试配置")
     custom_prompt: CustomPromptConfig = Field(..., description="自定义提示配置")
-    attention_optimization: AttentionOptimizationConfig = Field(
-        default_factory=lambda: AttentionOptimizationConfig(), description="注意力优化配置"
-    )
+
     voice: VoiceConfig = Field(..., description="语音配置")
     permission: PermissionConfig = Field(..., description="权限配置")
     command: CommandConfig = Field(..., description="命令系统配置")
