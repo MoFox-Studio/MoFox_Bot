@@ -4,10 +4,12 @@
 提供权限、插件和定时任务的统一管理命令。
 """
 
+import json
 import re
 from typing import ClassVar
 
 from src.chat.utils.prompt_component_manager import prompt_component_manager
+from src.chat.utils.prompt_params import PromptParameters
 from src.plugin_system.apis import (
     plugin_manage_api,
 )
@@ -120,12 +122,18 @@ class SystemCommand(PlusCommand):
         elif target == "prompt":
             help_text = """📝 提示词注入管理帮助
 
-🔎 查询命令 (需要 `system.prompt.view` 权限):
+🔎 **查询命令** (需要 `system.prompt.view` 权限):
 • `/system prompt help` - 显示此帮助
 • `/system prompt map` - 查看全局注入关系图
 • `/system prompt targets` - 列出所有可被注入的核心提示词
 • `/system prompt components` - 列出所有已注册的提示词组件
-• `/system prompt info <目标名>` - 查看特定核心提示词的注入详情
+• `/system prompt info <目标名>` - 查看特定核心提示词的详细注入情况
+
+🔧 **调试命令** (需要 `system.prompt.view` 权限):
+• `/system prompt raw <目标名>` - 查看核心提示词的原始内容
+• `/system prompt component_info <组件名>` - 查看组件的详细信息和其定义的规则
+• `/system prompt preview <目标名> [JSON参数]` - 预览提示词在注入后的最终效果
+  (示例: `/system prompt preview core_prompt '{"input": "你好"}'`)
 """
         await self.send_text(help_text)
     # =================================================================
@@ -263,6 +271,14 @@ class SystemCommand(PlusCommand):
             await self._list_prompt_components()
         elif action in ["info", "详情"] and remaining_args:
             await self._get_prompt_injection_info(remaining_args[0])
+        elif action in ["preview", "预览"] and remaining_args:
+            target_name = remaining_args[0]
+            params_str = " ".join(remaining_args[1:]) if len(remaining_args) > 1 else "{}"
+            await self._preview_prompt(target_name, params_str)
+        elif action in ["raw", "原始内容"] and remaining_args:
+            await self._show_raw_prompt(remaining_args[0])
+        elif action in ["component_info", "组件信息"] and remaining_args:
+            await self._show_prompt_component_info(remaining_args[0])
         else:
             await self.send_text("❌ 提示词管理命令不合法\n使用 /system prompt help 查看帮助")
 
@@ -327,15 +343,85 @@ class SystemCommand(PlusCommand):
             await self.send_text(f"🎯 核心提示词 `{target_name}` 当前没有被任何组件注入。")
             return
 
-        response_parts = [f"🔎 核心提示词 `{target_name}` 的注入详情:"]
+        response_parts = [f"🔎 **核心提示词 `{target_name}` 的注入详情:**"]
         for inj in injections:
-            response_parts.append(
-                f"  • **`{inj['name']}`** (优先级: {inj['priority']})"
-            )
-            response_parts.append(f"    - 来源: `{inj['source']}`")
-            response_parts.append(f"    - 类型: `{inj['injection_type']}`")
-            if inj.get('target_content'):
-                 response_parts.append(f"    - 操作目标: `{inj['target_content']}`")
+            response_parts.append(f"  • **`{inj['name']}`** (优先级: {inj['priority']})")
+            response_parts.append(f"    - **来源**: `{inj['source']}`")
+            response_parts.append(f"    - **类型**: `{inj['injection_type']}`")
+            target_content = inj.get("target_content")
+            if target_content:
+                response_parts.append(f"    - **操作目标**: `{target_content}`")
+        await self.send_text("\n".join(response_parts))
+
+    @require_permission("prompt.view", deny_message="❌ 你没有预览提示词的权限")
+    async def _preview_prompt(self, target_name: str, params_str: str):
+        """预览核心提示词在注入后的最终效果"""
+        try:
+            user_params = json.loads(params_str)
+            if not isinstance(user_params, dict):
+                raise ValueError("参数必须是一个JSON对象。")
+        except (json.JSONDecodeError, ValueError) as e:
+            await self.send_text(f"❌ 参数解析失败: {e}\n请提供有效的JSON格式参数，例如: '{{\"key\": \"value\"}}'")
+            return
+
+        params = PromptParameters(
+            chat_id=self.message.chat_info.stream_id,
+            is_group_chat=self.message.chat_info.group_info is not None,
+            sender=self.message.user_info.user_id,
+        )
+
+        for key, value in user_params.items():
+            if hasattr(params, key):
+                setattr(params, key, value)
+
+        preview_content = await prompt_component_manager.preview_prompt_injections(
+            target_prompt_name=target_name, params=params
+        )
+
+        response = f"🔬 **`{target_name}`** 注入预览结果:\n" f"------------------------------------\n" f"{preview_content}"
+        await self._send_long_message(response)
+
+    @require_permission("prompt.view", deny_message="❌ 你没有查看提示词原始内容的权限")
+    async def _show_raw_prompt(self, target_name: str):
+        """显示核心提示词的原始内容"""
+        contents = prompt_component_manager.get_core_prompt_contents(prompt_name=target_name)
+
+        if not contents:
+            await self.send_text(f"❌ 找不到核心提示词: `{target_name}`")
+            return
+
+        raw_template = contents[0][1]
+
+        response = f"📄 **`{target_name}`** 原始内容:\n" f"------------------------------------\n" f"{raw_template}"
+        await self._send_long_message(response)
+
+    @require_permission("prompt.view", deny_message="❌ 你没有查看提示词组件信息的权限")
+    async def _show_prompt_component_info(self, component_name: str):
+        """显示特定提示词组件的详细信息"""
+        all_components = prompt_component_manager.get_registered_prompt_component_info()
+
+        target_component = next((comp for comp in all_components if comp.name == component_name), None)
+
+        if not target_component:
+            await self.send_text(f"❌ 找不到提示词组件: `{component_name}`")
+            return
+
+        response_parts = [
+            f"🧩 **组件详情: `{target_component.name}`**",
+            f"  - **来源插件**: `{target_component.plugin_name}`",
+            f"  - **描述**: {target_component.description or '无'}",
+            f"  - **内置组件**: {'是' if target_component.is_built_in else '否'}",
+        ]
+
+        if target_component.injection_rules:
+            response_parts.append("\n  **注入规则:**")
+            for rule in target_component.injection_rules:
+                response_parts.append(f"    - **目标**: `{rule.target_prompt}` (优先级: {rule.priority})")
+                response_parts.append(f"      - **类型**: `{rule.injection_type.value}`")
+                if rule.target_content:
+                    response_parts.append(f"      - **操作目标**: `{rule.target_content}`")
+        else:
+            response_parts.append("\n  **注入规则**: (无)")
 
         await self.send_text("\n".join(response_parts))
 
