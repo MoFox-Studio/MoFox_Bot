@@ -53,7 +53,9 @@ COST_BY_PROVIDER = "costs_by_provider"
 TOTAL_TOK_BY_PROVIDER = "tokens_by_provider"
 TPS_BY_PROVIDER = "tps_by_provider"
 COST_PER_KTOK_BY_PROVIDER = "cost_per_ktok_by_provider"
-TIME_COST_BY_PROVIDER = "time_cost_by_provider"
+TIME_COST_BY_PROVIDER = "time_costs_by_provider"
+AVG_TIME_COST_BY_PROVIDER = "avg_time_costs_by_provider"
+STD_TIME_COST_BY_PROVIDER = "std_time_costs_by_provider"
 
 # 新增饼图和条形图数据
 PIE_CHART_COST_BY_PROVIDER = "pie_chart_cost_by_provider"

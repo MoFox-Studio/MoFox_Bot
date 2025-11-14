@@ -157,7 +157,6 @@ class StatisticOutputTask(AsyncTask):
         :param now: 基准当前时间
         """
         # 输出最近一小时的统计数据
-
         output = [
             self.SEP_LINE,
             f"  最近1小时的统计数据  (自{now.strftime('%Y-%m-%d %H:%M:%S')}开始，详细信息见文件：{self.record_file_path})",
@@ -279,6 +278,8 @@ class StatisticOutputTask(AsyncTask):
                 STD_TIME_COST_BY_USER: defaultdict(float),
                 STD_TIME_COST_BY_MODEL: defaultdict(float),
                 STD_TIME_COST_BY_MODULE: defaultdict(float),
+                AVG_TIME_COST_BY_PROVIDER: defaultdict(float),
+                STD_TIME_COST_BY_PROVIDER: defaultdict(float),
                 # New calculated fields
                 TPS_BY_MODEL: defaultdict(float),
                 COST_PER_KTOK_BY_MODEL: defaultdict(float),
@@ -377,9 +378,9 @@ class StatisticOutputTask(AsyncTask):
         for period_key, period_stats in stats.items():
             # 计算模型相关指标
             for model_name, req_count in period_stats[REQ_CNT_BY_MODEL].items():
-                total_tok = period_stats[TOTAL_TOK_BY_MODEL].get(model_name, 0)
-                total_cost = period_stats[COST_BY_MODEL].get(model_name, 0.0)
-                time_costs = period_stats[TIME_COST_BY_MODEL].get(model_name, [])
+                total_tok = period_stats[TOTAL_TOK_BY_MODEL][model_name] or 0
+                total_cost = period_stats[COST_BY_MODEL][model_name] or 0
+                time_costs = period_stats[TIME_COST_BY_MODEL][model_name] or []
                 total_time_cost = sum(time_costs)
 
                 # TPS
@@ -393,9 +394,9 @@ class StatisticOutputTask(AsyncTask):
 
             # 计算供应商相关指标
             for provider_name, req_count in period_stats[REQ_CNT_BY_PROVIDER].items():
-                total_tok = period_stats[TOTAL_TOK_BY_PROVIDER].get(provider_name, 0)
-                total_cost = period_stats[COST_BY_PROVIDER].get(provider_name, 0.0)
-                time_costs = period_stats[TIME_COST_BY_PROVIDER].get(provider_name, [])
+                total_tok = period_stats[TOTAL_TOK_BY_PROVIDER][provider_name]
+                total_cost = period_stats[COST_BY_PROVIDER][provider_name]
+                time_costs = period_stats[TIME_COST_BY_PROVIDER][provider_name]
                 total_time_cost = sum(time_costs)
 
                 # TPS
@@ -407,23 +408,16 @@ class StatisticOutputTask(AsyncTask):
 
             # 计算平均耗时和标准差
             for category_key, items in [
-                (REQ_CNT_BY_TYPE, "type"),
                 (REQ_CNT_BY_USER, "user"),
                 (REQ_CNT_BY_MODEL, "model"),
                 (REQ_CNT_BY_MODULE, "module"),
                 (REQ_CNT_BY_PROVIDER, "provider"),
             ]:
-                time_cost_key = f"TIME_COST_BY_{items.upper()}"
-                avg_key = f"AVG_TIME_COST_BY_{items.upper()}"
-                std_key = f"STD_TIME_COST_BY_{items.upper()}"
-
-                # Ensure the stat dicts exist before trying to access them, making the process more robust.
-                period_stats.setdefault(time_cost_key, defaultdict(list))
-                period_stats.setdefault(avg_key, defaultdict(float))
-                period_stats.setdefault(std_key, defaultdict(float))
-
-                for item_name in period_stats.get(category_key, {}):
-                    time_costs = period_stats[time_cost_key].get(item_name, [])
+                time_cost_key = f"time_costs_by_{items.lower()}"
+                avg_key = f"avg_time_costs_by_{items.lower()}"
+                std_key = f"std_time_costs_by_{items.lower()}"
+                for item_name in period_stats[category_key]:
+                    time_costs = period_stats[time_cost_key][item_name]
                     if time_costs:
                         avg_time = sum(time_costs) / len(time_costs)
                         period_stats[avg_key][item_name] = round(avg_time, 3)
@@ -622,7 +616,6 @@ class StatisticOutputTask(AsyncTask):
             stat[period_key].update(model_req_stat.get(period_key, {}))
             stat[period_key].update(online_time_stat.get(period_key, {}))
             stat[period_key].update(message_count_stat.get(period_key, {}))
-
         if last_all_time_stat:
             # 若存在上次完整统计数据，则将其与当前统计数据合并
             for key, val in last_all_time_stat.items():
@@ -706,14 +699,14 @@ class StatisticOutputTask(AsyncTask):
         output = [
             " 模型名称                          调用次数    输入Token     输出Token     Token总量     累计花费    平均耗时(秒)  标准差(秒)",
         ]
-        for model_name, count in sorted(stats.get(REQ_CNT_BY_MODEL, {}).items()):
+        for model_name, count in sorted(stats[REQ_CNT_BY_MODEL].items()):
             name = f"{model_name[:29]}..." if len(model_name) > 32 else model_name
-            in_tokens = stats.get(IN_TOK_BY_MODEL, {}).get(model_name, 0)
-            out_tokens = stats.get(OUT_TOK_BY_MODEL, {}).get(model_name, 0)
-            tokens = stats.get(TOTAL_TOK_BY_MODEL, {}).get(model_name, 0)
-            cost = stats.get(COST_BY_MODEL, {}).get(model_name, 0.0)
-            avg_time_cost = stats.get(AVG_TIME_COST_BY_MODEL, {}).get(model_name, 0.0)
-            std_time_cost = stats.get(STD_TIME_COST_BY_MODEL, {}).get(model_name, 0.0)
+            in_tokens = stats[IN_TOK_BY_MODEL][model_name]
+            out_tokens = stats[OUT_TOK_BY_MODEL][model_name]
+            tokens = stats[TOTAL_TOK_BY_MODEL][model_name]
+            cost = stats[COST_BY_MODEL][model_name]
+            avg_time_cost = stats[AVG_TIME_COST_BY_MODEL][model_name]
+            std_time_cost = stats[STD_TIME_COST_BY_MODEL][model_name]
             output.append(
                 data_fmt.format(name, count, in_tokens, out_tokens, tokens, cost, avg_time_cost, std_time_cost)
             )
