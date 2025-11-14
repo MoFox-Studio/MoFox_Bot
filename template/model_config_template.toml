@@ -1,5 +1,5 @@
 [inner]
-version = "1.3.7"
+version = "1.3.8"
 
 # 配置文件版本号迭代规则同bot_config.toml
 
@@ -30,18 +30,6 @@ max_retry = 2
 timeout = 30
 retry_interval = 10
 
-# 内容混淆功能示例配置（可选）
-[[api_providers]]
-name = "ExampleProviderWithObfuscation"           # 启用混淆功能的API提供商示例
-base_url = "https://api.example.com/v1"
-api_key = "your-api-key-here"
-client_type = "openai"
-max_retry = 2
-timeout = 30
-retry_interval = 10
-enable_content_obfuscation = true                 # 启用内容混淆功能
-obfuscation_intensity = 2                         # 混淆强度（1-3级，1=低强度，2=中强度，3=高强度）
-
 
 [[models]] # 模型（可以配置多个）
 model_identifier = "deepseek-chat" # 模型标识符（API服务商提供的模型标识符）
@@ -51,6 +39,8 @@ price_in = 2.0                     # 输入价格（用于API调用统计，单�
 price_out = 8.0                    # 输出价格（用于API调用统计，单位：元/ M token）（可选，若无该字段，默认值为0）
 #force_stream_mode = true          # 强制流式输出模式（若模型不支持非流式输出，请取消该注释，启用强制流式输出，若无该字段，默认值为false）
 #use_anti_truncation = true        # [可选] 启用反截断功能。当模型输出不完整时，系统会自动重试。建议只为有需要的模型（如Gemini）开启。
+#enable_content_obfuscation = true                 # [可选] 启用内容混淆功能,用于特定场景下的内容处理(例如某些内容审查比较严的模型和稀疏注意模型)
+#obfuscation_intensity = 2                         # 混淆强度（1-3级，1=低强度，2=中强度，3=高强度）
 
 [[models]]
 model_identifier = "deepseek-ai/DeepSeek-V3.2-Exp"

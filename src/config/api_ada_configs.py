@@ -20,8 +20,6 @@ class APIProvider(ValidatedConfigBase):
         default=10, ge=1, description="API调用的超时时长（超过这个时长，本次请求将被视为'请求超时'，单位：秒）"
     )
     retry_interval: int = Field(default=10, ge=0, description="重试间隔（如果API调用失败，重试的间隔时间，单位：秒）")
-    enable_content_obfuscation: bool = Field(default=False, description="是否启用内容混淆（用于特定场景下的内容处理）")
-    obfuscation_intensity: int = Field(default=1, ge=1, le=3, description="混淆强度（1-3级，数值越高混淆程度越强）")
 
     @classmethod
     def validate_base_url(cls, v):
@@ -73,6 +71,8 @@ class ModelInfo(ValidatedConfigBase):
     force_stream_mode: bool = Field(default=False, description="是否强制使用流式输出模式")
     extra_params: dict[str, Any] = Field(default_factory=dict, description="额外参数（用于API调用时的额外配置）")
     anti_truncation: bool = Field(default=False, description="是否启用反截断功能，防止模型输出被截断")
+    enable_content_obfuscation: bool = Field(default=False, description="是否启用内容混淆（用于特定场景下的内容处理）")
+    obfuscation_intensity: int = Field(default=1, ge=1, le=3, description="混淆强度（1-3级，数值越高混淆程度越强）")
 
     @classmethod
     def validate_prices(cls, v):

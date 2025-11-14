@@ -289,7 +289,7 @@ class _PromptProcessor:
 """
 
     async def prepare_prompt(
-        self, prompt: str, model_info: ModelInfo, api_provider: APIProvider, task_name: str
+        self, prompt: str, model_info: ModelInfo,  task_name: str
     ) -> str:
         """
         为请求准备最终的提示词。
@@ -307,7 +307,7 @@ class _PromptProcessor:
             str: 处理后的、可以直接发送给模型的完整提示词。
         """
         # 步骤1: 根据API提供商的配置应用内容混淆
-        processed_prompt = await self._apply_content_obfuscation(prompt, api_provider)
+        processed_prompt = await self._apply_content_obfuscation(prompt, model_info)
 
         # 步骤2: 检查模型是否需要注入反截断指令
         if getattr(model_info, "use_anti_truncation", False):
@@ -332,7 +332,7 @@ class _PromptProcessor:
                 is_truncated = True
         return content, reasoning, is_truncated
 
-    async def _apply_content_obfuscation(self, text: str, api_provider: APIProvider) -> str:
+    async def _apply_content_obfuscation(self, text: str, model_info: ModelInfo) -> str:
         """
         根据API提供商的配置对文本进行内容混淆。
 
@@ -347,12 +347,12 @@ class _PromptProcessor:
             str: 经过混淆处理的文本。
         """
         # 检查当前API提供商是否启用了内容混淆功能
-        if not getattr(api_provider, "enable_content_obfuscation", False):
+        if not model_info.enable_content_obfuscation or False:
             return text
 
         # 获取混淆强度，默认为1
-        intensity = getattr(api_provider, "obfuscation_intensity", 1)
-        logger.info(f"为API提供商 '{api_provider.name}' 启用内容混淆，强度级别: {intensity}")
+        intensity = model_info.obfuscation_intensity or 1
+        logger.info(f"为模型 '{model_info.name}' 启用内容混淆，强度级别: {intensity}")
 
         # 将抗审查指令和原始文本拼接
         processed_text = self.noise_instruction + "\n\n" + text
@@ -679,7 +679,7 @@ class _RequestStrategy:
                 if request_type == RequestType.RESPONSE and "prompt" in request_kwargs:
                     prompt = request_kwargs.pop("prompt")
                     processed_prompt = await self.prompt_processor.prepare_prompt(
-                        prompt, model_info, api_provider, self.task_name
+                        prompt, model_info, self.task_name
                     )
                     message = MessageBuilder().add_text_content(processed_prompt).build()
                     request_kwargs["message_list"] = [message]
