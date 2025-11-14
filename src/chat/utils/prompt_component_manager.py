@@ -147,6 +147,49 @@ class PromptComponentManager:
                 logger.info(f"成功添加/更新注入规则: '{prompt_name}' -> '{rule.target_prompt}' (来源: {source})")
         return True
 
+    async def add_rule_for_component(self, prompt_name: str, rule: InjectionRule) -> bool:
+        """
+        为一个已存在的组件添加单条注入规则，自动复用其内容提供者和来源。
+
+        此方法首先会查找指定 `prompt_name` 的组件当前是否已有注入规则。
+        如果存在，则复用其 content_provider 和 source 为新的规则进行注册。
+        这对于为一个组件动态添加多个注入目标非常有用，无需重复提供 provider 或 source。
+
+        Args:
+            prompt_name (str): 已存在的注入组件的名称。
+            rule (InjectionRule): 要为该组件添加的新注入规则。
+
+        Returns:
+            bool: 如果成功添加规则，则返回 True；
+                  如果未找到该组件的任何现有规则（无法复用），则返回 False。
+        """
+        async with self._lock:
+            # 步骤 1: 查找现有的 content_provider 和 source
+            found_provider: Callable[..., Awaitable[str]] | None = None
+            found_source: str | None = None
+            for target_rules in self._dynamic_rules.values():
+                if prompt_name in target_rules:
+                    _, found_provider, found_source = target_rules[prompt_name]
+                    break
+
+            # 步骤 2: 如果找不到 provider，则操作失败
+            if not found_provider:
+                logger.warning(
+                    f"尝试为组件 '{prompt_name}' 添加规则失败: "
+                    f"未找到该组件的任何现有规则，无法复用 content_provider 和 source。"
+                )
+                return False
+
+            # 步骤 3: 使用找到的 provider 和 source 添加新规则
+            source_to_use = found_source or "runtime"  # 提供一个默认值以防万一
+            target_rules = self._dynamic_rules.setdefault(rule.target_prompt, {})
+            target_rules[prompt_name] = (rule, found_provider, source_to_use)
+            logger.info(
+                f"成功为组件 '{prompt_name}' 添加新注入规则 -> "
+                f"'{rule.target_prompt}' (来源: {source_to_use})"
+            )
+            return True
+
     async def remove_injection_rule(self, prompt_name: str, target_prompt: str) -> bool:
         """
         移除一条动态注入规则。
