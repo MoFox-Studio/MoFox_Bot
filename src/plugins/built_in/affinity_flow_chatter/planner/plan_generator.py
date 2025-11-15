@@ -3,6 +3,7 @@ PlanGenerator: 负责搜集和汇总所有决策所需的信息，生成一个�
 """
 
 import time
+from typing import TYPE_CHECKING
 
 from src.chat.utils.chat_message_builder import get_raw_msg_before_timestamp_with_chat
 from src.chat.utils.utils import get_chat_type_and_target_info
@@ -10,6 +11,9 @@ from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.data_models.info_data_model import Plan, TargetPersonInfo
 from src.config.config import global_config
 from src.plugin_system.base.component_types import ActionInfo, ChatMode, ChatType
+
+if TYPE_CHECKING:
+    from src.chat.planner_actions.action_manager import ChatterActionManager
 
 
 class ChatterPlanGenerator:
@@ -26,18 +30,16 @@ class ChatterPlanGenerator:
         action_manager (ActionManager): 用于获取可用动作列表的管理器。
     """
 
-    def __init__(self, chat_id: str):
+    def __init__(self, chat_id: str, action_manager: "ChatterActionManager"):
         """
         初始化 ChatterPlanGenerator。
 
         Args:
             chat_id (str): 当前聊天的 ID。
+            action_manager (ChatterActionManager): 一个 ChatterActionManager 实例。
         """
-        from src.chat.planner_actions.action_manager import ChatterActionManager
-
         self.chat_id = chat_id
-        # 注意：ChatterActionManager 可能需要根据实际情况初始化
-        self.action_manager = ChatterActionManager()
+        self.action_manager = action_manager
 
     async def generate(self, mode: ChatMode) -> Plan:
         """
@@ -112,10 +114,19 @@ class ChatterPlanGenerator:
             filtered_actions = {}
             for action_name, action_info in available_actions.items():
                 # 检查动作是否支持当前聊天类型
-                if chat_type == action_info.chat_type_allow:
-                    # 检查动作是否支持当前模式
-                    if mode == action_info.mode_enable:
-                        filtered_actions[action_name] = action_info
+                chat_type_allowed = (
+                    isinstance(action_info.chat_type_allow, list)
+                    and (ChatType.ALL in action_info.chat_type_allow or chat_type in action_info.chat_type_allow)
+                ) or action_info.chat_type_allow == ChatType.ALL or action_info.chat_type_allow == chat_type
+
+                # 检查动作是否支持当前模式
+                mode_allowed = (
+                    isinstance(action_info.mode_enable, list)
+                    and (ChatMode.ALL in action_info.mode_enable or mode in action_info.mode_enable)
+                ) or action_info.mode_enable == ChatMode.ALL or action_info.mode_enable == mode
+
+                if chat_type_allowed and mode_allowed:
+                    filtered_actions[action_name] = action_info
 
             return filtered_actions
 

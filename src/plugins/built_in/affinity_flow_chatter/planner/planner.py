@@ -46,7 +46,7 @@ class ChatterActionPlanner:
         """
         self.chat_id = chat_id
         self.action_manager = action_manager
-        self.generator = ChatterPlanGenerator(chat_id)
+        self.generator = ChatterPlanGenerator(chat_id, action_manager)
         self.executor = ChatterPlanExecutor(action_manager)
 
         # 使用新的统一兴趣度管理系统
