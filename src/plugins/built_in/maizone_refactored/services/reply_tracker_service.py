@@ -80,37 +80,39 @@ class ReplyTrackerService:
         if old_data_file.exists():
             logger.info(f"检测到旧的数据文件 '{old_data_file}'，开始执行一次性迁移...")
             try:
-                # 读取旧文件内容
+                # 步骤1: 读取旧文件内容并立即关闭文件
                 with open(old_data_file, "rb") as f:
                     file_content = f.read()
-                    # 如果文件为空，直接删除，无需迁移
-                    if not file_content.strip():
-                        logger.warning("旧数据文件为空，无需迁移。")
-                        os.remove(old_data_file)
-                        logger.info(f"空的旧数据文件 '{old_data_file}' 已被删除。")
-                        return
 
-                    # 解析JSON数据
-                    old_data = orjson.loads(file_content)
+                # 步骤2: 处理文件内容
+                # 如果文件为空，直接删除，无需迁移
+                if not file_content.strip():
+                    logger.warning("旧数据文件为空，无需迁移。")
+                    os.remove(old_data_file)
+                    logger.info(f"空的旧数据文件 '{old_data_file}' 已被删除。")
+                    return
 
-                    # 验证数据格式是否正确
-                    if self._validate_data(old_data):
-                        # 验证通过，将数据写入新的存储API
-                        self.storage.set("data", old_data)
-                        # 立即强制保存，确保迁移数据落盘
-                        self.storage._save_data()
-                        logger.info("旧数据已成功迁移到新的存储API。")
+                # 解析JSON数据
+                old_data = orjson.loads(file_content)
 
-                        # 将旧文件重命名为备份文件，而不是直接删除，以防万一
-                        backup_file = old_data_file.with_suffix(f".json.bak.migrated.{int(time.time())}")
-                        old_data_file.rename(backup_file)
-                        logger.info(f"旧数据文件已成功迁移并备份为: {backup_file}")
-                    else:
-                        # 如果数据格式无效，迁移中止，并备份损坏的文件
-                        logger.error("旧数据文件格式无效，迁移中止。")
-                        backup_file = old_data_file.with_suffix(f".json.bak.invalid.{int(time.time())}")
-                        old_data_file.rename(backup_file)
-                        logger.warning(f"已将无效的旧数据文件备份为: {backup_file}")
+                # 步骤3: 验证数据并执行迁移/备份
+                if self._validate_data(old_data):
+                    # 验证通过，将数据写入新的存储API
+                    self.storage.set("data", old_data)
+                    # 立即强制保存，确保迁移数据落盘
+                    self.storage._save_data()
+                    logger.info("旧数据已成功迁移到新的存储API。")
+
+                    # 将旧文件重命名为备份文件
+                    backup_file = old_data_file.with_suffix(f".json.bak.migrated.{int(time.time())}")
+                    old_data_file.rename(backup_file)
+                    logger.info(f"旧数据文件已成功迁移并备份为: {backup_file}")
+                else:
+                    # 如果数据格式无效，迁移中止，并备份损坏的文件
+                    logger.error("旧数据文件格式无效，迁移中止。")
+                    backup_file = old_data_file.with_suffix(f".json.bak.invalid.{int(time.time())}")
+                    old_data_file.rename(backup_file)
+                    logger.warning(f"已将无效的旧数据文件备份为: {backup_file}")
 
             except Exception as e:
                 # 捕获迁移过程中可能出现的任何异常
