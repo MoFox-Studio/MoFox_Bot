@@ -501,8 +501,7 @@ class _PromptProcessor:
         user_prompt = prompt
 
         # 步骤 A: (可选) 添加抗审查指令
-        if getattr(model_info, "prepend_noise_instruction", False):
-            final_prompt_parts.append(self.noise_instruction)
+        final_prompt_parts.append(self.noise_instruction)
 
         # 步骤 B: (可选) 应用统一的提示词扰动
         if getattr(model_info, "enable_prompt_perturbation", False):

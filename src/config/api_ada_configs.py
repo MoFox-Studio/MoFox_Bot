@@ -76,8 +76,6 @@ class ModelInfo(ValidatedConfigBase):
         default="light", description="扰动强度（light/medium/heavy）"
     )
     enable_semantic_variants: bool = Field(default=False, description="是否启用语义变体作为扰动策略")
-
-    prepend_noise_instruction: bool = Field(default=False, description="是否在提示词前部添加抗审查指令")
     @classmethod
     def validate_prices(cls, v):
         """验证价格必须为非负数"""

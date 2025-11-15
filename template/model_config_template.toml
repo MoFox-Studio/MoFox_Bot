@@ -1,5 +1,5 @@
 [inner]
-version = "1.3.8"
+version = "1.3.9"
 
 # 配置文件版本号迭代规则同bot_config.toml
 
@@ -37,10 +37,11 @@ name = "deepseek-v3"               # 模型名称（可随意命名，在后面�
 api_provider = "DeepSeek"          # API服务商名称（对应在api_providers中配置的服务商名称）
 price_in = 2.0                     # 输入价格（用于API调用统计，单位：元/ M token）（可选，若无该字段，默认值为0）
 price_out = 8.0                    # 输出价格（用于API调用统计，单位：元/ M token）（可选，若无该字段，默认值为0）
-#force_stream_mode = true          # 强制流式输出模式（若模型不支持非流式输出，请取消该注释，启用强制流式输出，若无该字段，默认值为false）
-#use_anti_truncation = true        # [可选] 启用反截断功能。当模型输出不完整时，系统会自动重试。建议只为有需要的模型（如Gemini）开启。
-#enable_content_obfuscation = true                 # [可选] 启用内容混淆功能,用于特定场景下的内容处理(例如某些内容审查比较严的模型和稀疏注意模型)
-#obfuscation_intensity = 2                         # 混淆强度（1-3级，1=低强度，2=中强度，3=高强度）
+#force_stream_mode = false         # [可选] 强制流式输出模式。如果模型不支持非流式输出，请取消注释以启用。默认为 false。
+#anti_truncation = false           # [可选] 启用反截断功能。当模型输出不完整时，系统会自动重试。建议只为需要的模型（如Gemini）开启。默认为 false。
+#enable_prompt_perturbation = false # [可选] 启用提示词扰动。此功能整合了内容混淆和注意力优化，默认为 false。
+#perturbation_strength = "light"  # [可选] 扰动强度。仅在 enable_prompt_perturbation 为 true 时生效。可选值为 "light", "medium", "heavy"。默认为 "light"。
+#enable_semantic_variants = false # [可选] 启用语义变体。作为一种扰动策略，生成语义上相似但表达不同的提示。默认为 false。
 
 [[models]]
 model_identifier = "deepseek-ai/DeepSeek-V3.2-Exp"
