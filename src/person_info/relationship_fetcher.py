@@ -269,7 +269,7 @@ class RelationshipFetcher:
             platform = "unknown"
             if existing_stream:
                 # 从现有记录获取platform
-                platform = getattr(existing_stream, 'platform', 'unknown') or "unknown"
+                platform = getattr(existing_stream, "platform", "unknown") or "unknown"
                 logger.debug(f"从现有ChatStream获取到platform: {platform}, stream_id: {stream_id}")
             else:
                 logger.debug(f"未找到现有ChatStream记录，使用默认platform: unknown, stream_id: {stream_id}")

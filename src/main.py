@@ -1,4 +1,5 @@
 # 再用这个就写一行注释来混提交的我直接全部🌿飞😡
+# 🌿🌿need
 import asyncio
 import signal
 import sys
@@ -21,7 +22,6 @@ from src.common.message import get_global_api
 
 # 全局背景任务集合
 _background_tasks = set()
-from src.common.remote import TelemetryHeartBeatTask
 from src.common.server import Server, get_global_server
 from src.config.config import global_config
 from src.individuality.individuality import Individuality, get_individuality

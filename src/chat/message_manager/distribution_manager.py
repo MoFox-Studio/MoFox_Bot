@@ -5,7 +5,7 @@
 
 import asyncio
 import time
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.chat.chatter_manager import ChatterManager
 from src.chat.energy_system import energy_manager
@@ -115,12 +115,12 @@ class StreamLoopManager:
         if not context:
             logger.warning(f"无法获取流上下文: {stream_id}")
             return False
-        
+
         # 快速路径：如果流已存在且不是强制启动，无需处理
         if not force and context.stream_loop_task and not context.stream_loop_task.done():
             logger.debug(f"🔄 [流循环] stream={stream_id[:8]}, 循环已在运行，跳过启动")
             return True
-        
+
         # 获取或创建该流的启动锁
         if stream_id not in self._stream_start_locks:
             self._stream_start_locks[stream_id] = asyncio.Lock()

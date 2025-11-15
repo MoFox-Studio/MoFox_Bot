@@ -63,7 +63,7 @@ class PromptParameters:
     action_descriptions: str = ""
     notice_block: str = ""
     group_chat_reminder_block: str = ""
- 
+
     # 可用动作信息
     available_actions: dict[str, Any] | None = None
 

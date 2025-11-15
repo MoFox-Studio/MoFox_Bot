@@ -3,8 +3,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 
-import aiofiles
-
 from src.common.database.compatibility import db_get, db_query
 from src.common.database.core.models import LLMUsage, Messages, OnlineTime
 from src.common.logger import get_logger
@@ -16,7 +14,7 @@ logger = get_logger("maibot_statistic")
 # 彻底异步化：删除原同步包装器 _sync_db_get，所有数据库访问统一使用 await db_get。
 
 
-from .report_generator import HTMLReportGenerator, format_online_time
+from .report_generator import HTMLReportGenerator
 from .statistic_keys import *
 
 

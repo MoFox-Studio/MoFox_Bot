@@ -6,7 +6,7 @@
 
 import asyncio
 import time
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from src.chat.energy_system import energy_manager
 from src.common.data_models.database_data_model import DatabaseMessages

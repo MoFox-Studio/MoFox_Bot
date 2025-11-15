@@ -376,7 +376,7 @@ class DefaultReplyer:
             if not prompt:
                 logger.warning("构建prompt失败，跳过回复生成")
                 return False, None, None
-            
+
             from src.plugin_system.core.event_manager import event_manager
             # 触发 POST_LLM 事件（请求 LLM 之前）
             if not from_plugin:
@@ -1878,8 +1878,8 @@ class DefaultReplyer:
     async def build_relation_info(self, sender: str, target: str):
         # 获取用户ID
         if sender == f"{global_config.bot.nickname}(你)":
-            return f"你将要回复的是你自己发送的消息。"
-        
+            return "你将要回复的是你自己发送的消息。"
+
         person_info_manager = get_person_info_manager()
         person_id = await person_info_manager.get_person_id_by_person_name(sender)
 

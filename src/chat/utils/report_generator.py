@@ -228,9 +228,9 @@ class HTMLReportGenerator:
 
         # 渲染模板
         # 读取CSS和JS文件内容
-        async with aiofiles.open(os.path.join(self.jinja_env.loader.searchpath[0], "report.css"), "r", encoding="utf-8") as f:
+        async with aiofiles.open(os.path.join(self.jinja_env.loader.searchpath[0], "report.css"), encoding="utf-8") as f:
             report_css = await f.read()
-        async with aiofiles.open(os.path.join(self.jinja_env.loader.searchpath[0], "report.js"), "r", encoding="utf-8") as f:
+        async with aiofiles.open(os.path.join(self.jinja_env.loader.searchpath[0], "report.js"), encoding="utf-8") as f:
             report_js = await f.read()
         # 渲染模板
         template = self.jinja_env.get_template("report.html")

@@ -47,10 +47,10 @@ class BlockShuffler:
 
             # 复制上下文以避免修改原始字典
             shuffled_context = context_data.copy()
-            
+
             # 示例：假设模板中的占位符格式为 {block_name}
             # 我们需要解析模板，找到可重排的组，并重新构建模板字符串。
-            
+
             # 注意：这是一个复杂的逻辑，通常需要一个简单的模板引擎或正则表达式来完成。
             # 为保持此函数职责单一，这里仅演示核心的重排逻辑，
             # 完整的模板重建逻辑应在调用此函数的地方处理。
@@ -58,14 +58,14 @@ class BlockShuffler:
             for group in BlockShuffler.SWAPPABLE_BLOCK_GROUPS:
                 # 过滤出在当前上下文中实际存在的、非空的block
                 existing_blocks = [
-                    block for block in group if block in context_data and context_data[block]
+                    block for block in group if context_data.get(block)
                 ]
 
                 if len(existing_blocks) > 1:
                     # 随机打乱顺序
                     random.shuffle(existing_blocks)
                     logger.debug(f"重排block组: {group} -> {existing_blocks}")
-                    
+
                     # 这里的实现需要调用者根据 `existing_blocks` 的新顺序
                     # 去动态地重新组织 `prompt_template` 字符串。
                     # 例如，找到模板中与 `group` 相关的占位符部分，然后按新顺序替换它们。

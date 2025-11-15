@@ -295,7 +295,7 @@ class SystemCommand(PlusCommand):
             if injections:
                 response_parts.append(f"🎯 **{target}** (注入源):")
                 for inj in injections:
-                    source_tag = f"({inj['source']})" if inj['source'] != 'static_default' else ''
+                    source_tag = f"({inj['source']})" if inj["source"] != "static_default" else ""
                     response_parts.append(f"  ⎿ `{inj['name']}` (优先级: {inj['priority']}) {source_tag}")
             else:
                 response_parts.append(f"🎯 **{target}** (无注入)")

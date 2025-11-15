@@ -242,9 +242,9 @@ class ChatterActionManager:
                 }
             else:
                 # 检查目标消息是否为表情包消息以及配置是否允许回复表情包
-                if target_message and getattr(target_message, 'is_emoji', False):
+                if target_message and getattr(target_message, "is_emoji", False):
                     # 如果是表情包消息且配置不允许回复表情包，则跳过回复
-                    if not getattr(global_config.chat, 'allow_reply_to_emoji', True):
+                    if not getattr(global_config.chat, "allow_reply_to_emoji", True):
                         logger.info(f"{log_prefix} 目标消息为表情包且配置不允许回复表情包，跳过回复")
                         return {"action_type": action_name, "success": True, "reply_text": "", "skip_reason": "emoji_not_allowed"}
 

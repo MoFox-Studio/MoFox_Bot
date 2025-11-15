@@ -12,7 +12,6 @@ from src.common.data_models.database_data_model import DatabaseMessages
 from src.common.database.core import get_db_session
 from src.common.database.core.models import Images, Messages
 from src.common.logger import get_logger
-from src.config.config import global_config
 
 from .chat_stream import ChatStream
 from .message import MessageSending

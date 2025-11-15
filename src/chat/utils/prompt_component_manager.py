@@ -2,7 +2,6 @@ import asyncio
 import copy
 import re
 from collections.abc import Awaitable, Callable
-from typing import List
 
 from src.chat.utils.prompt_params import PromptParameters
 from src.common.logger import get_logger
@@ -119,7 +118,7 @@ class PromptComponentManager:
     async def add_injection_rule(
         self,
         prompt_name: str,
-        rules: List[InjectionRule],
+        rules: list[InjectionRule],
         content_provider: Callable[..., Awaitable[str]],
         source: str = "runtime",
     ) -> bool:
@@ -521,7 +520,7 @@ class PromptComponentManager:
             else:
                 for name, (rule, _, _) in rules_for_target.items():
                     target_copy[name] = rule
-            
+
             if target_copy:
                 rules_copy[target] = target_copy
 

@@ -201,7 +201,7 @@ class ChatterActionPlanner:
                 available_actions = list(initial_plan.available_actions.keys())
                 plan_filter = ChatterPlanFilter(self.chat_id, available_actions)
                 filtered_plan = await plan_filter.filter(initial_plan)
-                
+
                 # 检查reply动作是否可用
                 has_reply_action = "reply" in available_actions or "respond" in available_actions
                 if filtered_plan.decided_actions and has_reply_action and reply_not_available:

@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 import orjson
+from json_repair import repair_json
 
 from src.chat.utils.chat_message_builder import (
     build_readable_messages_with_id,
@@ -19,7 +20,6 @@ from src.common.logger import get_logger
 from src.config.config import global_config, model_config
 from src.llm_models.utils_model import LLMRequest
 from src.mood.mood_manager import mood_manager
-from json_repair import repair_json
 from src.plugin_system.base.component_types import ActionInfo, ChatType
 from src.schedule.schedule_manager import schedule_manager
 
@@ -144,7 +144,7 @@ class ChatterPlanFilter:
             plan.decided_actions = [
                 ActionPlannerInfo(action_type="no_action", reasoning=f"筛选时出错: {e}")
             ]
-        
+
         # 在返回最终计划前，打印将要执行的动作
         if plan.decided_actions:
             action_types = [action.action_type for action in plan.decided_actions]
@@ -631,7 +631,6 @@ class ChatterPlanFilter:
             candidate_ids.add(normalized_id[1:])
 
         # 处理包含在文本中的ID格式 (如 "消息m123" -> 提取 m123)
-        import re
 
         # 尝试提取各种格式的ID
         id_patterns = [

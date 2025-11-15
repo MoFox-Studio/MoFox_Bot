@@ -537,7 +537,7 @@ class _PromptProcessor:
             else:
                 is_truncated = True
         return content, reasoning, is_truncated
-        
+
     @staticmethod
     async def _extract_reasoning(content: str) -> tuple[str, str]:
         """

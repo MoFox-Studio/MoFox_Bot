@@ -320,7 +320,7 @@ class QZoneService:
             return
 
         # 1. 将评论分为用户评论和自己的回复
-        user_comments = [c for c in comments if str(c.get("qq_account")) != str(qq_account)] 
+        user_comments = [c for c in comments if str(c.get("qq_account")) != str(qq_account)]
 
         if not user_comments:
             return

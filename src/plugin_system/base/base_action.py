@@ -742,7 +742,7 @@ class BaseAction(ABC):
         if not case_sensitive:
             search_text = search_text.lower()
 
-        matched_keywords: ClassVar = []
+        matched_keywords  = []
         for keyword in keywords:
             check_keyword = keyword if case_sensitive else keyword.lower()
             if check_keyword in search_text:

@@ -26,7 +26,6 @@ from src.memory_graph.utils.similarity import cosine_similarity
 if TYPE_CHECKING:
     import numpy as np
 
-    from src.memory_graph.models import Memory
     from src.memory_graph.storage.graph_store import GraphStore
     from src.memory_graph.storage.vector_store import VectorStore
 
@@ -71,7 +70,7 @@ class PathExpansionConfig:
     medium_score_threshold: float = 0.4  # 中分路径阈值
     max_active_paths: int = 1000  # 最大活跃路径数（防止爆炸）
     top_paths_retain: int = 500  # 超限时保留的top路径数
-    
+
     # 🚀 性能优化参数
     enable_early_stop: bool = True  # 启用早停（如果路径增长很少则提前结束）
     early_stop_growth_threshold: float = 0.1  # 早停阈值（路径增长率低于10%则停止）
@@ -121,7 +120,7 @@ class PathScoreExpansion:
         self.vector_store = vector_store
         self.config = config or PathExpansionConfig()
         self.prefer_node_types: list[str] = []  # 🆕 偏好节点类型
-        
+
         # 🚀 性能优化：邻居边缓存
         self._neighbor_cache: dict[str, list[Any]] = {}
         self._node_score_cache: dict[str, float] = {}
@@ -212,11 +211,11 @@ class PathScoreExpansion:
                         continue
 
                     edge_weight = self._get_edge_weight(edge)
-                    
+
                     # 记录候选
                     path_candidates.append((path, edge, next_node, edge_weight))
                     candidate_nodes_for_batch.add(next_node)
-                    
+
                     branch_count += 1
                     if branch_count >= max_branches:
                         break
@@ -281,7 +280,7 @@ class PathScoreExpansion:
             # 🚀 早停检测：如果路径增长很少，提前终止
             prev_path_count = len(active_paths)
             active_paths = next_paths
-            
+
             if self.config.enable_early_stop and prev_path_count > 0:
                 growth_rate = (len(active_paths) - prev_path_count) / prev_path_count
                 if growth_rate < self.config.early_stop_growth_threshold:
@@ -346,18 +345,18 @@ class PathScoreExpansion:
                 max_path_score = max(p.score for p in paths) if paths else 0
                 rough_score = len(paths) * max_path_score * memory.importance
                 memory_scores_rough.append((mem_id, rough_score))
-            
+
             # 保留top候选
             memory_scores_rough.sort(key=lambda x: x[1], reverse=True)
             retained_mem_ids = set(mem_id for mem_id, _ in memory_scores_rough[:self.config.max_candidate_memories])
-            
+
             # 过滤
             memory_paths = {
                 mem_id: (memory, paths)
                 for mem_id, (memory, paths) in memory_paths.items()
                 if mem_id in retained_mem_ids
             }
-            
+
             logger.info(
                 f"⚡ 粗排过滤: {len(memory_scores_rough)} → {len(memory_paths)} 条候选记忆"
             )
@@ -398,7 +397,7 @@ class PathScoreExpansion:
         # 🚀 缓存检查
         if node_id in self._neighbor_cache:
             return self._neighbor_cache[node_id]
-        
+
         edges = []
 
         # 从图存储中获取与该节点相关的所有边
@@ -454,7 +453,7 @@ class PathScoreExpansion:
         """
         # 从向量存储获取节点数据
         node_data = await self.vector_store.get_node_by_id(node_id)
-        
+
         if query_embedding is None:
             base_score = 0.5  # 默认中等分数
         else:
@@ -493,27 +492,27 @@ class PathScoreExpansion:
         import numpy as np
 
         scores = {}
-        
+
         if query_embedding is None:
             # 无查询向量时，返回默认分数
-            return {nid: 0.5 for nid in node_ids}
-        
+            return dict.fromkeys(node_ids, 0.5)
+
         # 批量获取节点数据
         node_data_list = await asyncio.gather(
             *[self.vector_store.get_node_by_id(nid) for nid in node_ids],
             return_exceptions=True
         )
-        
+
         # 收集有效的嵌入向量
         valid_embeddings = []
         valid_node_ids = []
         node_metadata_map = {}
-        
+
         for nid, node_data in zip(node_ids, node_data_list):
             if isinstance(node_data, Exception):
                 scores[nid] = 0.3
                 continue
-            
+
             # 类型守卫：确保 node_data 是字典
             if not node_data or not isinstance(node_data, dict) or "embedding" not in node_data:
                 scores[nid] = 0.3
@@ -521,21 +520,21 @@ class PathScoreExpansion:
                 valid_embeddings.append(node_data["embedding"])
                 valid_node_ids.append(nid)
                 node_metadata_map[nid] = node_data.get("metadata", {})
-        
+
         if valid_embeddings:
             # 批量计算相似度（使用矩阵运算）
             embeddings_matrix = np.array(valid_embeddings)
             query_norm = np.linalg.norm(query_embedding)
             embeddings_norms = np.linalg.norm(embeddings_matrix, axis=1)
-            
+
             # 向量化计算余弦相似度
             similarities = np.dot(embeddings_matrix, query_embedding) / (embeddings_norms * query_norm + 1e-8)
             similarities = np.clip(similarities, 0.0, 1.0)
-            
+
             # 应用偏好类型加成
             for nid, sim in zip(valid_node_ids, similarities):
                 base_score = float(sim)
-                
+
                 # 偏好类型加成
                 if self.prefer_node_types and nid in node_metadata_map:
                     node_type = node_metadata_map[nid].get("node_type")
@@ -546,7 +545,7 @@ class PathScoreExpansion:
                         scores[nid] = base_score
                 else:
                     scores[nid] = base_score
-        
+
         return scores
 
     def _calculate_path_score(self, old_score: float, edge_weight: float, node_score: float, depth: int) -> float:
@@ -689,19 +688,19 @@ class PathScoreExpansion:
         # 使用临时字典存储路径列表
         temp_paths: dict[str, list[Path]] = {}
         temp_memories: dict[str, Any] = {}  # 存储 Memory 对象
-        
+
         # 🚀 性能优化：收集所有需要获取的记忆ID，然后批量获取
         all_memory_ids = set()
         path_to_memory_ids: dict[int, set[str]] = {}  # path对象id -> 记忆ID集合
 
         for path in paths:
             memory_ids_in_path = set()
-            
+
             # 收集路径中所有节点涉及的记忆
             for node_id in path.nodes:
                 memory_ids = self.graph_store.node_to_memories.get(node_id, [])
                 memory_ids_in_path.update(memory_ids)
-            
+
             all_memory_ids.update(memory_ids_in_path)
             path_to_memory_ids[id(path)] = memory_ids_in_path
 
@@ -712,11 +711,11 @@ class PathScoreExpansion:
             memory = self.graph_store.get_memory_by_id(mem_id)
             if memory:
                 memory_cache[mem_id] = memory
-        
+
         # 构建映射关系
         for path in paths:
             memory_ids_in_path = path_to_memory_ids[id(path)]
-            
+
             for mem_id in memory_ids_in_path:
                 if mem_id in memory_cache:
                     if mem_id not in temp_paths:
@@ -745,10 +744,10 @@ class PathScoreExpansion:
             [(Memory, final_score, paths), ...]
         """
         scored_memories = []
-        
+
         # 🚀 性能优化：如果需要偏好类型加成，批量预加载所有节点的类型信息
         node_type_cache: dict[str, str | None] = {}
-        
+
         if self.prefer_node_types:
             # 收集所有需要查询的节点ID
             all_node_ids = set()
@@ -757,7 +756,7 @@ class PathScoreExpansion:
                 for node in memory_nodes:
                     node_id = node.id if hasattr(node, "id") else str(node)
                     all_node_ids.add(node_id)
-            
+
             # 批量获取节点数据
             if all_node_ids:
                 logger.debug(f"🔍 批量预加载 {len(all_node_ids)} 个节点的类型信息")
@@ -765,7 +764,7 @@ class PathScoreExpansion:
                     *[self.vector_store.get_node_by_id(nid) for nid in all_node_ids],
                     return_exceptions=True
                 )
-                
+
                 # 构建类型缓存
                 for nid, node_data in zip(all_node_ids, node_data_list):
                     if isinstance(node_data, Exception) or not node_data or not isinstance(node_data, dict):
@@ -805,7 +804,7 @@ class PathScoreExpansion:
                         node_type = node_type_cache.get(node_id)
                         if node_type and node_type in self.prefer_node_types:
                             matched_count += 1
-                    
+
                     if matched_count > 0:
                         match_ratio = matched_count / len(memory_nodes)
                         # 根据匹配比例给予加成（最高10%）
@@ -870,4 +869,4 @@ class PathScoreExpansion:
         return recency_score
 
 
-__all__ = ["PathScoreExpansion", "PathExpansionConfig", "Path"]
+__all__ = ["Path", "PathExpansionConfig", "PathScoreExpansion"]

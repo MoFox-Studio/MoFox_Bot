@@ -507,7 +507,7 @@ class PersistenceManager:
             GraphStore 对象
         """
         try:
-            async with aiofiles.open(input_file, "r", encoding="utf-8") as f:
+            async with aiofiles.open(input_file, encoding="utf-8") as f:
                 content = await f.read()
                 data = json.loads(content)
 

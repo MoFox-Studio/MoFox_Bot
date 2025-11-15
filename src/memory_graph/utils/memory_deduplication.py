@@ -12,7 +12,7 @@ from src.common.logger import get_logger
 from src.memory_graph.utils.similarity import cosine_similarity
 
 if TYPE_CHECKING:
-    from src.memory_graph.models import Memory
+    pass
 
 logger = get_logger(__name__)
 
@@ -41,52 +41,52 @@ async def deduplicate_memories_by_similarity(
     """
     if len(memories) <= 1:
         return memories
-    
+
     logger.info(f"开始记忆去重: {len(memories)} 条记忆 (阈值={similarity_threshold})")
-    
+
     # 准备数据结构
     memory_embeddings = []
     for memory, score, extra in memories:
         # 获取记忆的向量表示
         embedding = await _get_memory_embedding(memory)
         memory_embeddings.append((memory, score, extra, embedding))
-    
+
     # 构建相似度矩阵并找出重复组
     duplicate_groups = _find_duplicate_groups(memory_embeddings, similarity_threshold)
-    
+
     # 合并每个重复组
     deduplicated = []
     processed_indices = set()
-    
+
     for group_indices in duplicate_groups:
         if any(i in processed_indices for i in group_indices):
             continue  # 已经处理过
-        
+
         # 标记为已处理
         processed_indices.update(group_indices)
-        
+
         # 合并组内记忆
         group_memories = [memory_embeddings[i] for i in group_indices]
         merged_memory = _merge_memory_group(group_memories)
         deduplicated.append(merged_memory)
-    
+
     # 添加未被合并的记忆
     for i, (memory, score, extra, _) in enumerate(memory_embeddings):
         if i not in processed_indices:
             deduplicated.append((memory, score, extra))
-    
+
     # 按分数排序
     deduplicated.sort(key=lambda x: x[1], reverse=True)
-    
+
     # 限制数量
     if keep_top_n is not None:
         deduplicated = deduplicated[:keep_top_n]
-    
+
     logger.info(
         f"去重完成: {len(memories)} → {len(deduplicated)} 条记忆 "
         f"(合并了 {len(memories) - len(deduplicated)} 条重复)"
     )
-    
+
     return deduplicated
 
 
@@ -104,7 +104,7 @@ async def _get_memory_embedding(memory: Any) -> list[float] | None:
         # nodes 是 MemoryNode 对象列表
         first_node = memory.nodes[0]
         node_id = getattr(first_node, "id", None)
-        
+
         if node_id:
             # 直接从 embedding 属性获取（如果存在）
             if hasattr(first_node, "embedding") and first_node.embedding is not None:
@@ -114,7 +114,7 @@ async def _get_memory_embedding(memory: Any) -> list[float] | None:
                     return embedding.tolist()
                 elif isinstance(embedding, list):
                     return embedding
-    
+
     # 无法获取 embedding
     return None
 
@@ -132,13 +132,13 @@ def _find_duplicate_groups(
     """
     n = len(memory_embeddings)
     similarity_matrix = [[0.0] * n for _ in range(n)]
-    
+
     # 计算相似度矩阵
     for i in range(n):
         for j in range(i + 1, n):
             embedding_i = memory_embeddings[i][3]
             embedding_j = memory_embeddings[j][3]
-            
+
             # 跳过 None 或零向量
             if (embedding_i is None or embedding_j is None or
                 all(x == 0.0 for x in embedding_i) or all(x == 0.0 for x in embedding_j)):
@@ -146,29 +146,29 @@ def _find_duplicate_groups(
             else:
                 # cosine_similarity 会自动转换为 numpy 数组
                 similarity = float(cosine_similarity(embedding_i, embedding_j))  # type: ignore
-            
+
             similarity_matrix[i][j] = similarity
             similarity_matrix[j][i] = similarity
-    
+
     # 使用并查集找出连通分量
     parent = list(range(n))
-    
+
     def find(x):
         if parent[x] != x:
             parent[x] = find(parent[x])
         return parent[x]
-    
+
     def union(x, y):
         px, py = find(x), find(y)
         if px != py:
             parent[px] = py
-    
+
     # 合并相似的记忆
     for i in range(n):
         for j in range(i + 1, n):
             if similarity_matrix[i][j] >= threshold:
                 union(i, j)
-    
+
     # 构建组
     groups_dict: dict[int, list[int]] = {}
     for i in range(n):
@@ -176,10 +176,10 @@ def _find_duplicate_groups(
         if root not in groups_dict:
             groups_dict[root] = []
         groups_dict[root].append(i)
-    
+
     # 只返回大小 > 1 的组（真正的重复组）
     duplicate_groups = [group for group in groups_dict.values() if len(group) > 1]
-    
+
     return duplicate_groups
 
 
@@ -196,10 +196,10 @@ def _merge_memory_group(
     """
     # 按分数排序
     sorted_group = sorted(group, key=lambda x: x[1], reverse=True)
-    
+
     # 保留分数最高的记忆
     best_memory, best_score, best_extra, _ = sorted_group[0]
-    
+
     # 计算合并后的分数（加权平均，权重递减）
     total_weight = 0.0
     weighted_sum = 0.0
@@ -207,17 +207,17 @@ def _merge_memory_group(
         weight = 1.0 / (i + 1)  # 第1名权重1.0，第2名0.5，第3名0.33...
         weighted_sum += score * weight
         total_weight += weight
-    
+
     merged_score = weighted_sum / total_weight if total_weight > 0 else best_score
-    
+
     # 增强 extra_data
     merged_extra = best_extra if isinstance(best_extra, dict) else {}
     merged_extra["merged_count"] = len(sorted_group)
     merged_extra["original_scores"] = [score for _, score, _, _ in sorted_group]
-    
+
     logger.debug(
         f"合并 {len(sorted_group)} 条相似记忆: "
         f"分数 {best_score:.3f} → {merged_score:.3f}"
     )
-    
+
     return (best_memory, merged_score, merged_extra)
