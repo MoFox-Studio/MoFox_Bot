@@ -68,7 +68,7 @@ class TTSVoiceAction(BaseAction):
     parallel_action = False
 
     action_parameters: ClassVar[dict] = {
-        "text": {
+        "tts_voice_text": {
             "type": "string",
             "description": "需要转换为语音并发送的完整、自然、适合口语的文本内容。",
             "required": True
@@ -157,7 +157,7 @@ class TTSVoiceAction(BaseAction):
                 logger.error(f"{self.log_prefix} TTSService 未注册或初始化失败，静默处理。")
                 return False, "TTSService 未注册或初始化失败"
 
-            initial_text = self.action_data.get("text", "").strip()
+            initial_text = self.action_data.get("tts_voice_text", "").strip()
             voice_style = self.action_data.get("voice_style", "default")
             # 新增：从决策模型获取指定的语言模式
             text_language = self.action_data.get("text_language") # 如果模型没给，就是 None
