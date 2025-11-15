@@ -500,8 +500,9 @@ class _PromptProcessor:
         final_prompt_parts = []
         user_prompt = prompt
 
-        # 步骤 A: (可选) 添加抗审查指令
-        final_prompt_parts.append(self.noise_instruction)
+        # 步骤 A: 添加抗审查指令
+        if model_info.enable_prompt_perturbation:
+            final_prompt_parts.append(self.noise_instruction)
 
         # 步骤 B: (可选) 应用统一的提示词扰动
         if getattr(model_info, "enable_prompt_perturbation", False):
@@ -515,7 +516,7 @@ class _PromptProcessor:
         final_prompt_parts.append(user_prompt)
 
         # 步骤 C: (可选) 添加反截断指令
-        if getattr(model_info, "use_anti_truncation", False):
+        if model_info.anti_truncation:
             final_prompt_parts.append(self.anti_truncation_instruction)
             logger.info(f"模型 '{model_info.name}' (任务: '{task_name}') 已启用反截断功能。")
 
@@ -881,7 +882,7 @@ class _RequestStrategy:
 
             # --- 响应内容处理和空回复/截断检查 ---
             content = response.content or ""
-            use_anti_truncation = getattr(model_info, "use_anti_truncation", False)
+            use_anti_truncation = model_info.anti_truncation
             processed_content, reasoning, is_truncated = await self.prompt_processor.process_response(
                 content, use_anti_truncation
             )
