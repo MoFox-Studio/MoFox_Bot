@@ -250,12 +250,15 @@ class PromptComponentManager:
         """
         【核心方法】根据目标名称，应用所有匹配的注入规则，返回修改后的模板。
 
-        这是提示词构建流程中的关键步骤。它会执行以下操作：
-        1. 检查并确保静态规则已加载。
-        2. 获取所有注入到 `target_prompt_name` 的规则。
-        3. 按照规则的 `priority` 属性进行升序排序，优先级数字越小越先应用。
-        4. 依次执行每个规则的 `content_provider` 来异步获取注入内容。
-        5. 根据规则的 `injection_type` (如 PREPEND, APPEND, REPLACE 等) 将内容应用到模板上。
+        此方法实现了“意图识别与安全执行”机制，以确保注入操作的鲁棒性：
+        1.  **占位符保护**: 首先，扫描模板中的所有 `"{...}"` 占位符，
+            并用唯一的、无冲突的临时标记替换它们。这可以防止注入规则意外地修改或删除核心占位符。
+        2.  **规则预检与警告**: 在应用规则前，检查所有 `REMOVE` 和 `REPLACE` 类型的规则，
+            看它们的 `target_content` 是否可能匹配到被保护的占位符。如果可能，
+            会记录一条明确的警告日志，告知开发者该规则有风险，但不会中断流程。
+        3.  **安全执行**: 在“净化”过的模板上（即占位符已被替换的模板），
+            按优先级顺序安全地应用所有注入规则。
+        4.  **占位符恢复**: 所有注入操作完成后，将临时标记恢复为原始的占位符。
 
         Args:
             target_prompt_name (str): 目标核心提示词的名称。
@@ -268,28 +271,51 @@ class PromptComponentManager:
         if not self._initialized:
             self.load_static_rules()
 
-        # 步骤 1: 获取所有指向当前目标的规则
-        # 使用 .values() 获取 (rule, provider, source) 元组列表
         rules_for_target = list(self._dynamic_rules.get(target_prompt_name, {}).values())
         if not rules_for_target:
             return original_template
 
-        # 步骤 2: 按优先级排序，数字越小越优先
+        # --- 占位符保护机制 ---
+        placeholders = re.findall(r"({[^{}]+})", original_template)
+        placeholder_map: dict[str, str] = {
+            f"__PROMPT_PLACEHOLDER_{i}__": p for i, p in enumerate(placeholders)
+        }        
+
+        # 1. 保护: 将占位符替换为临时标记
+        protected_template = original_template
+        for marker, placeholder in placeholder_map.items():
+            protected_template = protected_template.replace(placeholder, marker)
+
+        # 2. 预检与警告: 检查危险规则
+        for rule, _, source in rules_for_target:
+            if rule.injection_type in (InjectionType.REMOVE, InjectionType.REPLACE) and rule.target_content:
+                try:
+                    for p in placeholders:
+                        if re.search(rule.target_content, p):
+                            logger.warning(
+                                f"注入规则警告 (来源: {source}): "
+                                f"规则 `target_content` ('{rule.target_content}') "
+                                f"可能会影响核心占位符 '{p}'。为保证系统稳定，该占位符已被保护，不会被此规则修改。"
+                            )
+                            # 只对每个规则警告一次
+                            break
+                except re.error:
+                    # 正则表达式本身有误，后面执行时会再次捕获，这里可忽略
+                    pass
+
+        # 3. 安全执行: 按优先级排序并应用规则
         rules_for_target.sort(key=lambda x: x[0].priority)
 
-        # 步骤 3: 依次执行内容提供者并根据注入类型修改模板
-        modified_template = original_template
+        modified_template = protected_template
         for rule, provider, source in rules_for_target:
             content = ""
-            # 对于非 REMOVE 类型的注入，需要先获取内容
             if rule.injection_type != InjectionType.REMOVE:
                 try:
                     content = await provider(params, target_prompt_name)
                 except Exception as e:
                     logger.error(f"执行规则 '{rule}' (来源: {source}) 的内容提供者时失败: {e}", exc_info=True)
-                    continue  # 跳过失败的 provider，不中断整个流程
+                    continue
 
-            # 应用注入逻辑
             try:
                 if rule.injection_type == InjectionType.PREPEND:
                     if content:
@@ -298,12 +324,10 @@ class PromptComponentManager:
                     if content:
                         modified_template = f"{modified_template}\n{content}"
                 elif rule.injection_type == InjectionType.REPLACE:
-                    # 只有在 content 不为 None 且 target_content 有效时才执行替换
                     if content is not None and rule.target_content:
                         modified_template = re.sub(rule.target_content, str(content), modified_template)
                 elif rule.injection_type == InjectionType.INSERT_AFTER:
                     if content and rule.target_content:
-                        # 使用 `\g<0>` 在正则匹配的整个内容后添加新内容
                         replacement = f"\\g<0>\n{content}"
                         modified_template = re.sub(rule.target_content, replacement, modified_template)
                 elif rule.injection_type == InjectionType.REMOVE:
@@ -314,7 +338,12 @@ class PromptComponentManager:
             except Exception as e:
                 logger.error(f"应用注入规则 '{rule}' (来源: {source}) 失败: {e}", exc_info=True)
 
-        return modified_template
+        # 4. 占位符恢复
+        final_template = modified_template
+        for marker, placeholder in placeholder_map.items():
+            final_template = final_template.replace(marker, placeholder)
+
+        return final_template
 
     async def preview_prompt_injections(
         self, target_prompt_name: str, params: PromptParameters
