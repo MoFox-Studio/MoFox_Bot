@@ -215,6 +215,7 @@ class QZoneService:
                 # 其他未知异常
                 logger.error(f"读取和处理说说时发生异常: {e}", exc_info=True)
                 return {"success": False, "message": f"处理说说时出现异常: {e}"}
+        return {"success": False, "message": "读取和处理说说时发生未知错误，循环意外结束。"}
 
     async def monitor_feeds(self, stream_id: str | None = None):
         """监控并处理所有好友的动态，包括回复自己说说的评论"""
@@ -319,8 +320,7 @@ class QZoneService:
             return
 
         # 1. 将评论分为用户评论和自己的回复
-        user_comments = [c for c in comments if str(c.get("qq_account")) != str(qq_account)]
-        [c for c in comments if str(c.get("qq_account")) == str(qq_account)]
+        user_comments = [c for c in comments if str(c.get("qq_account")) != str(qq_account)] 
 
         if not user_comments:
             return
