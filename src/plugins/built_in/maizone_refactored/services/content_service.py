@@ -375,3 +375,63 @@ class ContentService:
         except Exception as e:
             logger.error(f"生成基于活动的说说内容异常: {e}")
             return ""
+
+
+    async def generate_random_topic(self) -> str:
+        """
+        使用一个小型、高效的模型来动态生成一个随机的说说主题。
+        """
+        try:
+            # 硬编码使用 'utils_small' 模型
+            model_name = "utils_small"
+            models = llm_api.get_available_models()
+            model_config = models.get(model_name)
+
+            if not model_config:
+                logger.error(f"无法找到用于生成主题的模型: {model_name}")
+                return ""
+
+            prompt = """
+            请你扮演一个想法的“生成器”。
+            你的任务是，随机给出一个适合在QQ空间上发表说说的“主题”或“灵感”。
+            这个主题应该非常简短，通常是一个词、一个短语或一个开放性的问题，用于激发创作。
+
+            规则：
+            1.  **绝对简洁**：输出长度严格控制在15个字以内。
+            2.  **多样性**：主题可以涉及日常生活、情感、自然、科技、哲学思考等任何方面。
+            3.  **激发性**：主题应该是开放的，能够引发出一条内容丰富的说说。
+            4.  **随机性**：每次给出的主题都应该不同。
+            5.  **仅输出主题**：你的回答应该只有主题本身，不包含任何解释、引号或多余的文字。
+
+            好的例子：
+            -   一部最近看过的老电影
+            -   夏天傍晚的晚霞
+            -   关于拖延症的思考
+            -   一个奇怪的梦
+            -   雨天听什么音乐？
+
+            错误的例子：
+            -   “我建议的主题是：一部最近看过的老电影” (错误：包含了多余的文字)
+            -   “夏天傍晚的晚霞，那种橙色与紫色交织的感觉，总是能让人心生宁静。” (错误：太长了，变成了说说本身而不是主题)
+
+            现在，请给出一个随机主题。
+            """
+
+            success, topic, _, _ = await llm_api.generate_with_model(
+                prompt=prompt,
+                model_config=model_config,
+                request_type="story.generate.topic",
+                temperature=0.8,  # 提高创造性以获得更多样的主题
+                max_tokens=50,
+            )
+
+            if success and topic:
+                logger.info(f"成功生成随机主题: '{topic}'")
+                return topic.strip()
+            else:
+                logger.error("生成随机主题失败")
+                return ""
+
+        except Exception as e:
+            logger.error(f"生成随机主题时发生异常: {e}")
+            return ""
