@@ -71,8 +71,8 @@ class MaiZoneRefactoredPlugin(BasePlugin):
         },
         "schedule": {
             "enable_schedule": ConfigField(type=bool, default=False, description="是否启用定时发送"),
-            "random_interval_min_minutes": ConfigField(type=int, default=5, description="随机间隔分钟数下限"),
-            "random_interval_max_minutes": ConfigField(type=int, default=15, description="随机间隔分钟数上限"),
+            "random_interval_min_minutes": ConfigField(type=int, default=120, description="随机间隔分钟数下限"),
+            "random_interval_max_minutes": ConfigField(type=int, default=135, description="随机间隔分钟数上限"),
             "forbidden_hours_start": ConfigField(type=int, default=2, description="禁止发送的开始小时(24小时制)"),
             "forbidden_hours_end": ConfigField(type=int, default=6, description="禁止发送的结束小时(24小时制)"),
         },
