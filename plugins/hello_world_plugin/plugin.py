@@ -203,7 +203,7 @@ class HelloWorldPlugin(BasePlugin):
     """一个包含四大核心组件和高级配置功能的入门示例插件。"""
 
     plugin_name = "hello_world_plugin"
-    enable_plugin = True
+    enable_plugin = False
     dependencies: ClassVar = []
     python_dependencies: ClassVar = []
     config_file_name = "config.toml"
