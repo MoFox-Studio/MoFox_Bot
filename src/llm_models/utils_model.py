@@ -261,137 +261,6 @@ class _ModelSelector:
         self.model_usage[model_name] = stats._replace(penalty=stats.penalty + penalty_increment)
 
 
-class _AttentionOptimizer:
-    """
-    通过轻量级随机化技术，在保持语义不变的前提下增加提示词结构多样性，
-    避免短时间内重复发送高度相似的提示词导致模型回复趋同。
-    """
-
-    # 语义等价的文本替换模板
-    SEMANTIC_VARIANTS: ClassVar = {
-        "当前时间": ["当前时间", "现在是", "此时此刻", "时间"],
-        "最近的系统通知": ["最近的系统通知", "系统通知", "通知消息", "最新通知"],
-        "聊天历史": ["聊天历史", "对话记录", "历史消息", "之前的对话"],
-        "你的任务是": ["你的任务是", "请", "你需要", "你应当"],
-        "请注意": ["请注意", "注意", "请留意", "需要注意"],
-    }
-
-    def __init__(
-        self,
-        enable_semantic_variants: bool,
-        noise_strength: Literal["light", "medium", "heavy"],
-    ):
-        """
-        初始化注意力优化器
-        Args:
-            enable_semantic_variants: 是否启用语义变体替换
-            noise_strength: 噪声强度 (light/medium/heavy)
-        """
-        self.enable_semantic_variants = enable_semantic_variants
-        self.noise_strength = noise_strength
-
-        # 噪声强度配置
-        self.noise_config = {
-            "light": {"newline_range": (1, 2), "space_range": (0, 2), "indent_adjust": False},
-            "medium": {"newline_range": (1, 3), "space_range": (0, 4), "indent_adjust": True},
-            "heavy": {"newline_range": (1, 4), "space_range": (0, 6), "indent_adjust": True},
-        }
-
-    def optimize_prompt(self, prompt_text: str) -> str:
-        """优化提示词，增加结构多样性"""
-        try:
-            optimized = prompt_text
-
-            if self.enable_semantic_variants:
-                optimized = self._apply_semantic_variants(optimized)
-
-            optimized = self._inject_noise(optimized)
-
-            change_rate = self._calculate_change_rate(prompt_text, optimized)
-            if change_rate > 0.001:  # 仅在有实际变化时记录
-                logger.debug(f"提示词注意力优化完成，变化率: {change_rate:.2%}")
-
-            return optimized
-
-        except Exception as e:
-            logger.error(f"提示词注意力优化失败: {e}", exc_info=True)
-            return prompt_text
-
-    def _apply_semantic_variants(self, text: str) -> str:
-        """应用语义等价的文本替换"""
-        try:
-            result = text
-            for original, variants in self.SEMANTIC_VARIANTS.items():
-                if original in result:
-                    replacement = random.choice(variants)
-                    result = result.replace(original, replacement, 1)
-            return result
-        except Exception as e:
-            logger.error(f"语义变体替换失败: {e}", exc_info=True)
-            return text
-
-    def _inject_noise(self, text: str) -> str:
-        """注入轻量级噪声（空白字符调整）"""
-        try:
-            config = self.noise_config[self.noise_strength]
-            result = text
-            result = self._adjust_newlines(result, config["newline_range"])
-            result = self._adjust_spaces(result, config["space_range"])
-            if config["indent_adjust"]:
-                result = self._adjust_indentation(result)
-            return result
-        except Exception as e:
-            logger.error(f"噪声注入失败: {e}", exc_info=True)
-            return text
-
-    def _adjust_newlines(self, text: str, newline_range: tuple[int, int]) -> str:
-        """调整连续换行的数量"""
-        pattern = r"\n{2,}"
-
-        def replace_newlines(match):
-            count = random.randint(*newline_range)
-            return "\n" * count
-
-        return re.sub(pattern, replace_newlines, text)
-
-    def _adjust_spaces(self, text: str, space_range: tuple[int, int]) -> str:
-        """在某些位置添加随机空格"""
-        lines = text.split("\n")
-        result_lines = []
-        for line in lines:
-            if line.strip() and random.random() < 0.3:
-                spaces = " " * random.randint(*space_range)
-                result_lines.append(line + spaces)
-            else:
-                result_lines.append(line)
-        return "\n".join(result_lines)
-
-    def _adjust_indentation(self, text: str) -> str:
-        """微调某些行的缩进（保持语义）"""
-        lines = text.split("\n")
-        result_lines = []
-        for line in lines:
-            list_match = re.match(r"^(\s*)([-*•])\s", line)
-            if list_match and random.random() < 0.5:
-                indent = list_match.group(1)
-                marker = list_match.group(2)
-                adjust = random.choice([-2, 0, 2])
-                new_indent = " " * max(0, len(indent) + adjust)
-                new_line = line.replace(indent + marker, new_indent + marker, 1)
-                result_lines.append(new_line)
-            else:
-                result_lines.append(line)
-        return "\n".join(result_lines)
-
-    def _calculate_change_rate(self, original: str, optimized: str) -> float:
-        """计算文本变化率"""
-        if not original or not optimized:
-            return 0.0
-        diff_chars = sum(1 for a, b in zip(original, optimized) if a != b)
-        max_len = max(len(original), len(optimized))
-        return diff_chars / max_len if max_len > 0 else 0.0
-
-
 class _PromptProcessor:
     """封装所有与提示词和响应内容的预处理和后处理逻辑。"""
 
@@ -419,6 +288,209 @@ class _PromptProcessor:
 这有助于我判断你的输出是否被截断。请不要在 `{self.end_marker}` 前后添加任何其他文字或标点。
 """
 
+    # ==============================================================================
+    # 提示词扰动 (Prompt Perturbation) 模块
+    #
+    # 本模块通过引入一系列轻量级的、保持语义的随机化技术，
+    # 旨在增加输入提示词的结构多样性。这有助于：
+    # 1. 避免因短时间内发送高度相似的提示词而导致模型产生趋同或重复的回复。
+    # 2. 增强模型对不同输入格式的鲁棒性。
+    # 3. 在某些情况下，通过引入“噪音”来激发模型更具创造性的响应。
+    # ==============================================================================
+
+    # 定义语义等价的文本替换模板。
+    # Key 是原始文本，Value 是一个包含多种等价表达的列表。
+    SEMANTIC_VARIANTS: ClassVar = {
+        "当前时间": ["当前时间", "现在是", "此时此刻", "时间"],
+        "最近的系统通知": ["最近的系统通知", "系统通知", "通知消息", "最新通知"],
+        "聊天历史": ["聊天历史", "对话记录", "历史消息", "之前的对话"],
+        "你的任务是": ["你的任务是", "请", "你需要", "你应当"],
+        "请注意": ["请注意", "注意", "请留意", "需要注意"],
+    }
+
+    async def _apply_prompt_perturbation(
+        self,
+        prompt_text: str,
+        enable_semantic_variants: bool,
+        strength: Literal["light", "medium", "heavy"],
+    ) -> str:
+        """
+        统一的提示词扰动处理函数。
+
+        该方法按顺序应用三种扰动技术：
+        1. 语义变体 (Semantic Variants): 将特定短语替换为语义等价的其它表达。
+        2. 空白噪声 (Whitespace Noise): 随机调整换行、空格和缩进。
+        3. 内容混淆 (Content Confusion): 注入随机的、无意义的字符串。
+
+        Args:
+            prompt_text (str): 原始的用户提示词。
+            enable_semantic_variants (bool): 是否启用语义变体替换。
+            strength (Literal["light", "medium", "heavy"]): 扰动的强度，会影响所有扰动操作的程度。
+
+        Returns:
+            str: 经过扰动处理后的提示词。
+        """
+        try:
+            perturbed_text = prompt_text
+
+            # 步骤 1: 应用语义变体
+            if enable_semantic_variants:
+                perturbed_text = self._apply_semantic_variants(perturbed_text)
+
+            # 步骤 2: 注入空白噪声
+            perturbed_text = self._inject_whitespace_noise(perturbed_text, strength)
+
+            # 步骤 3: 注入内容混淆（随机噪声字符串）
+            perturbed_text = self._inject_random_noise(perturbed_text, strength)
+
+            # 计算并记录变化率，用于调试和监控
+            change_rate = self._calculate_change_rate(prompt_text, perturbed_text)
+            if change_rate > 0.001:  # 仅在有实际变化时记录日志
+                logger.debug(f"提示词扰动完成，强度: '{strength}'，变化率: {change_rate:.2%}")
+
+            return perturbed_text
+
+        except Exception as e:
+            logger.error(f"提示词扰动处理失败: {e}", exc_info=True)
+            return prompt_text  # 发生异常时返回原始文本，保证流程不中断
+
+    @staticmethod
+    def _apply_semantic_variants(text: str) -> str:
+        """
+        应用语义等价的文本替换。
+
+        遍历 SEMANTIC_VARIANTS 字典，对文本中首次出现的 key 进行随机替换。
+
+        Args:
+            text (str): 输入文本。
+
+        Returns:
+            str: 替换后的文本。
+        """
+        try:
+            result = text
+            for original, variants in _PromptProcessor.SEMANTIC_VARIANTS.items():
+                if original in result:
+                    # 从变体列表中随机选择一个进行替换
+                    replacement = random.choice(variants)
+                    # 只替换第一次出现的地方，避免过度修改
+                    result = result.replace(original, replacement, 1)
+            return result
+        except Exception as e:
+            logger.error(f"语义变体替换失败: {e}", exc_info=True)
+            return text
+
+    @staticmethod
+    def _inject_whitespace_noise(text: str, strength: str) -> str:
+        """
+        注入轻量级噪声（空白字符调整）。
+
+        根据指定的强度，调整文本中的换行、行尾空格和列表项缩进。
+
+        Args:
+            text (str): 输入文本。
+            strength (str): 噪声强度 ('light', 'medium', 'heavy')。
+
+        Returns:
+            str: 调整空白字符后的文本。
+        """
+        try:
+            # 噪声强度配置，定义了不同强度下各种操作的参数范围
+            noise_config = {
+                "light": {"newline_range": (1, 2), "space_range": (0, 2), "indent_adjust": False, "probability": 0.3},
+                "medium": {"newline_range": (1, 3), "space_range": (0, 4), "indent_adjust": True, "probability": 0.5},
+                "heavy": {"newline_range": (1, 4), "space_range": (0, 6), "indent_adjust": True, "probability": 0.7},
+            }
+            config = noise_config.get(strength, noise_config["light"])
+
+            lines = text.split("\n")
+            result_lines = []
+            for line in lines:
+                processed_line = line
+                # 随机调整行尾空格
+                if line.strip() and random.random() < config["probability"]:
+                    spaces = " " * random.randint(*config["space_range"])
+                    processed_line += spaces
+
+                # 随机调整列表项缩进（仅在中等和重度模式下）
+                if config["indent_adjust"]:
+                    list_match = re.match(r"^(\s*)([-*•])\s", processed_line)
+                    if list_match and random.random() < 0.5:
+                        indent, marker = list_match.group(1), list_match.group(2)
+                        adjust = random.choice([-2, 0, 2])
+                        new_indent = " " * max(0, len(indent) + adjust)
+                        processed_line = processed_line.replace(indent + marker, new_indent + marker, 1)
+
+                result_lines.append(processed_line)
+
+            result = "\n".join(result_lines)
+
+            # 调整连续换行的数量
+            newline_pattern = r"\n{2,}"
+            def replace_newlines(match):
+                count = random.randint(*config["newline_range"])
+                return "\n" * count
+            result = re.sub(newline_pattern, replace_newlines, result)
+
+            return result
+        except Exception as e:
+            logger.error(f"空白字符噪声注入失败: {e}", exc_info=True)
+            return text
+
+    @staticmethod
+    def _inject_random_noise(text: str, strength: str) -> str:
+        """
+        在文本中按指定强度注入随机噪音字符串（内容混淆）。
+
+        Args:
+            text (str): 输入文本。
+            strength (str): 噪音强度 ('light', 'medium', 'heavy')。
+
+        Returns:
+            str: 注入随机噪音后的文本。
+        """
+        try:
+            # 不同强度下的噪音注入参数配置
+            # probability: 在每个单词后注入噪音的百分比概率
+            # length: 注入噪音字符串的随机长度范围
+            strength_config = {
+                "light": {"probability": 15, "length": (3, 6)},
+                "medium": {"probability": 25, "length": (5, 10)},
+                "heavy": {"probability": 35, "length": (8, 15)},
+            }
+            config = strength_config.get(strength, strength_config["light"])
+
+            words = text.split()
+            if not words:
+                return text
+
+            result = []
+            for word in words:
+                result.append(word)
+                # 根据概率决定是否在此单词后注入噪音
+                if random.randint(1, 100) <= config["probability"]:
+                    noise_length = random.randint(*config["length"])
+                    # 定义噪音字符集
+                    chars = string.ascii_letters + string.digits
+                    noise = "".join(random.choice(chars) for _ in range(noise_length))
+                    result.append(f" {noise} ") # 添加前后空格以分隔
+
+            return "".join(result)
+        except Exception as e:
+            logger.error(f"随机噪音注入失败: {e}", exc_info=True)
+            return text
+
+    @staticmethod
+    def _calculate_change_rate(original: str, modified: str) -> float:
+        """计算文本变化率，用于衡量扰动程度。"""
+        if not original or not modified:
+            return 0.0
+        # 使用 Levenshtein 距离等更复杂的算法可能更精确，但为了性能，这里使用简单的字符差异计算
+        diff_chars = sum(1 for a, b in zip(original, modified) if a != b) + abs(len(original) - len(modified))
+        max_len = max(len(original), len(modified))
+        return diff_chars / max_len if max_len > 0 else 0.0
+
+
     async def prepare_prompt(
         self, prompt: str, model_info: ModelInfo,  task_name: str
     ) -> str:
@@ -432,20 +504,13 @@ class _PromptProcessor:
         if getattr(model_info, "prepend_noise_instruction", False):
             final_prompt_parts.append(self.noise_instruction)
 
-        # 步骤 B: (可选) 应用提示词扰动
+        # 步骤 B: (可选) 应用统一的提示词扰动
         if getattr(model_info, "enable_prompt_perturbation", False):
             logger.info(f"为模型 '{model_info.name}' 启用提示词扰动功能。")
-            
-            # B.1 注意力优化 (空白字符 + 语义变体)
-            optimizer = _AttentionOptimizer(
+            user_prompt = await self._apply_prompt_perturbation(
+                prompt_text=user_prompt,
                 enable_semantic_variants=getattr(model_info, "enable_semantic_variants", False),
-                noise_strength=getattr(model_info, "perturbation_strength", "light"),
-            )
-            user_prompt = optimizer.optimize_prompt(user_prompt)
-
-            # B.2 内容混淆 (注入随机噪音)
-            user_prompt = await self._inject_random_noise(
-                user_prompt, getattr(model_info, "perturbation_strength", "light")
+                strength=getattr(model_info, "perturbation_strength", "light"),
             )
 
         final_prompt_parts.append(user_prompt)
@@ -473,41 +538,6 @@ class _PromptProcessor:
                 is_truncated = True
         return content, reasoning, is_truncated
         
-    @staticmethod
-    async def _inject_random_noise(text: str, strength: str) -> str:
-        """
-        在文本中按指定强度注入随机噪音字符串。
-        """
-        # 强度映射，将 "light", "medium", "heavy" 映射到 1, 2, 3
-        strength_map = {"light": 1, "medium": 2, "heavy": 3}
-        intensity = strength_map.get(strength, 1)
-
-        params = {
-            1: {"probability": 15, "length": (3, 6)},  # 低强度
-            2: {"probability": 25, "length": (5, 10)},  # 中强度
-            3: {"probability": 35, "length": (8, 15)},  # 高强度
-        }
-        # 根据传入的强度选择配置，如果强度无效则使用默认值
-        config = params.get(intensity, params[1])
-
-        words = text.split()
-        result = []
-        # 遍历每个单词
-        for word in words:
-            result.append(word)
-            # 根据概率决定是否在此单词后注入噪音
-            if random.randint(1, 100) <= config["probability"]:
-                # 确定噪音的长度
-                noise_length = random.randint(*config["length"])
-                # 定义噪音字符集
-                chars = string.ascii_letters + string.digits + "!@#$%^&*()_+-=[]{}|;:,.<>?"
-                # 生成噪音字符串
-                noise = "".join(random.choice(chars) for _ in range(noise_length))
-                result.append(noise)
-
-        # 将处理后的单词列表重新组合成字符串
-        return " ".join(result)
-
     @staticmethod
     async def _extract_reasoning(content: str) -> tuple[str, str]:
         """
