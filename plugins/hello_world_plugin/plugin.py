@@ -1,8 +1,8 @@
 import random
 from typing import Any, ClassVar
 
-from mmc.src.plugin_system.base.base_http_component import BaseRouterComponent
 from src.common.logger import get_logger
+from src.common.security import VerifiedDep
 
 # 修正导入路径，让Pylance不再抱怨
 from src.plugin_system import (
@@ -21,6 +21,7 @@ from src.plugin_system import (
     register_plugin,
 )
 from src.plugin_system.base.base_event import HandlerResult
+from src.plugin_system.base.base_http_component import BaseRouterComponent
 from src.plugin_system.base.component_types import InjectionRule, InjectionType
 
 logger = get_logger("hello_world_plugin")
@@ -208,7 +209,7 @@ class HelloWorldRouter(BaseRouterComponent):
 
     def register_endpoints(self) -> None:
         @self.router.get("/greet", summary="返回一个问候消息")
-        def greet():
+        def greet(_=VerifiedDep):
             """这个端点返回一个固定的问候语。"""
             return {"message": "Hello from your new API endpoint!"}
 
@@ -218,7 +219,7 @@ class HelloWorldPlugin(BasePlugin):
     """一个包含四大核心组件和高级配置功能的入门示例插件。"""
 
     plugin_name = "hello_world_plugin"
-    enable_plugin = True
+    enable_plugin: bool = True
     dependencies: ClassVar = []
     python_dependencies: ClassVar = []
     config_file_name = "config.toml"

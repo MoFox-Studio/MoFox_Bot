@@ -449,8 +449,6 @@ class MaiMessages:
 class RouterInfo(ComponentInfo):
     """路由组件信息"""
 
-    auth_required: bool = False
-
     def __post_init__(self):
         super().__post_init__()
         self.component_type = ComponentType.ROUTER

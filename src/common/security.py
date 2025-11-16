@@ -30,3 +30,8 @@ async def get_api_key(api_key: str = Security(api_key_header_auth)) -> str:
             detail="无效的API密钥",
         )
     return api_key
+
+# 创建一个可重用的依赖项，供插件开发者在其需要验证的端点上使用
+# 用法: @router.get("/protected_route", dependencies=[VerifiedDep])
+# 或者: async def my_endpoint(_=VerifiedDep): ...
+VerifiedDep = Depends(get_api_key)

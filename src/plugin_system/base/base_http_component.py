@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
+
 from fastapi import APIRouter
+
 from .component_types import ComponentType, RouterInfo
+
 
 class BaseRouterComponent(ABC):
     """

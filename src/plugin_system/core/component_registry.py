@@ -390,7 +390,6 @@ class ComponentRegistry:
             logger.info("插件HTTP端点功能已禁用，跳过路由注册")
             return True
         try:
-            from src.common.security import get_api_key
             from src.common.server import get_global_server
 
             router_name = router_info.name
@@ -408,14 +407,10 @@ class ComponentRegistry:
             # 5. 生成唯一的URL前缀
             prefix = f"/plugins/{plugin_name}"
 
-            # 6. 根据需要应用安全依赖项
-            dependencies = []
-            if router_info.auth_required:
-                dependencies.append(Depends(get_api_key))
-
-            # 7. 注册路由，并使用插件名作为API文档的分组标签
+            # 6. 注册路由，并使用插件名作为API文档的分组标签
+            # 移除了dependencies参数，因为现在由每个端点自行决定是否需要验证
             server.app.include_router(
-                plugin_router, prefix=prefix, tags=[plugin_name], dependencies=dependencies
+                plugin_router, prefix=prefix, tags=[plugin_name]
             )
 
             logger.debug(f"成功将插件 '{plugin_name}' 的路由组件 '{router_name}' 挂载到: {prefix}")
@@ -880,6 +875,7 @@ class ComponentRegistry:
     def get_plugin_components(self, plugin_name: str) -> list["ComponentInfo"]:
         """获取插件的所有组件"""
         plugin_info = self.get_plugin_info(plugin_name)
+        logger.info(plugin_info.components)
         return plugin_info.components if plugin_info else []
 
     def get_plugin_config(self, plugin_name: str) -> dict:
