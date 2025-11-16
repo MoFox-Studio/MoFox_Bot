@@ -12,6 +12,7 @@ faiss-cpu
 fastapi
 fastmcp
 filetype
+slowapi
 rjieba
 jsonlines
 maim_message
