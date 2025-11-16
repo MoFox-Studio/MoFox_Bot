@@ -736,6 +736,23 @@ class CommandConfig(ValidatedConfigBase):
     command_prefixes: list[str] = Field(default_factory=lambda: ["/", "!", ".", "#"], description="支持的命令前缀列表")
 
 
+class PluginHttpSystemConfig(ValidatedConfigBase):
+    """插件http系统相关配置"""
+
+    enable_plugin_http_endpoints: bool = Field(
+        default=True, description="总开关，是否允许插件创建HTTP端点"
+    )
+    plugin_api_rate_limit_enable: bool = Field(
+        default=True, description="是否为插件API启用全局速率限制"
+    )
+    plugin_api_rate_limit_default: str = Field(
+        default="100/minute", description="插件API的默认速率限制策略"
+    )
+    plugin_api_valid_keys: list[str] = Field(
+        default_factory=list, description="有效的API密钥列表，用于插件认证"
+    )
+
+
 class MasterPromptConfig(ValidatedConfigBase):
     """主人身份提示词配置"""
 

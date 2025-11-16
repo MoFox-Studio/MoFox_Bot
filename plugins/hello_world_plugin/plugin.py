@@ -1,6 +1,7 @@
 import random
 from typing import Any, ClassVar
 
+from mmc.src.plugin_system.base.base_http_component import BaseRouterComponent
 from src.common.logger import get_logger
 
 # 修正导入路径，让Pylance不再抱怨
@@ -23,6 +24,7 @@ from src.plugin_system.base.base_event import HandlerResult
 from src.plugin_system.base.component_types import InjectionRule, InjectionType
 
 logger = get_logger("hello_world_plugin")
+
 
 class StartupMessageHandler(BaseEventHandler):
     """启动时打印消息的事件处理器。"""
@@ -198,12 +200,25 @@ class WeatherPrompt(BasePrompt):
         return "当前天气：晴朗，温度25°C。"
 
 
+class HelloWorldRouter(BaseRouterComponent):
+    """一个简单的HTTP端点示例。"""
+
+    component_name = "hello_world_router"
+    component_description = "提供一个简单的 /greet HTTP GET 端点。"
+
+    def register_endpoints(self) -> None:
+        @self.router.get("/greet", summary="返回一个问候消息")
+        def greet():
+            """这个端点返回一个固定的问候语。"""
+            return {"message": "Hello from your new API endpoint!"}
+
+
 @register_plugin
 class HelloWorldPlugin(BasePlugin):
     """一个包含四大核心组件和高级配置功能的入门示例插件。"""
 
     plugin_name = "hello_world_plugin"
-    enable_plugin = False
+    enable_plugin = True
     dependencies: ClassVar = []
     python_dependencies: ClassVar = []
     config_file_name = "config.toml"
@@ -225,7 +240,7 @@ class HelloWorldPlugin(BasePlugin):
 
     def get_plugin_components(self) -> list[tuple[ComponentInfo, type]]:
         """根据配置文件动态注册插件的功能组件。"""
-        components: ClassVar[list[tuple[ComponentInfo, type]] ] = []
+        components: list[tuple[ComponentInfo, type]] = []
 
         components.append((StartupMessageHandler.get_handler_info(), StartupMessageHandler))
         components.append((GetSystemInfoTool.get_tool_info(), GetSystemInfoTool))
@@ -238,5 +253,8 @@ class HelloWorldPlugin(BasePlugin):
 
         # 注册新的Prompt组件
         components.append((WeatherPrompt.get_prompt_info(), WeatherPrompt))
+
+        # 注册新的Router组件
+        components.append((HelloWorldRouter.get_router_info(), HelloWorldRouter))
 
         return components

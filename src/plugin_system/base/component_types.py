@@ -53,6 +53,7 @@ class ComponentType(Enum):
     CHATTER = "chatter"  # 聊天处理器组件
     INTEREST_CALCULATOR = "interest_calculator"  # 兴趣度计算组件
     PROMPT = "prompt"  # Prompt组件
+    ROUTER = "router"  # 路由组件
 
     def __str__(self) -> str:
         return self.value
@@ -145,6 +146,7 @@ class PermissionNodeField:
 
     node_name: str  # 节点名称 (例如 "manage" 或 "view")
     description: str  # 权限描述
+
 
 @dataclass
 class ComponentInfo:
@@ -442,3 +444,13 @@ class MaiMessages:
     def __post_init__(self):
         if self.message_segments is None:
             self.message_segments = []
+
+@dataclass
+class RouterInfo(ComponentInfo):
+    """路由组件信息"""
+
+    auth_required: bool = False
+
+    def __post_init__(self):
+        super().__post_init__()
+        self.component_type = ComponentType.ROUTER

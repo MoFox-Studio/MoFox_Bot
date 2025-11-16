@@ -1,16 +1,17 @@
 import time
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.chat.message_receive.chat_stream import get_chat_manager
 from src.common.logger import get_logger
+from src.common.security import get_api_key
 from src.config.config import global_config
 from src.plugin_system.apis import message_api, person_api
 
 logger = get_logger("HTTP消息API")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_api_key)])
 
 
 @router.get("/messages/recent")
@@ -161,5 +162,3 @@ async def get_message_stats_by_chat(
         # 统一异常处理
         logger.error(f"获取消息统计时发生错误: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-

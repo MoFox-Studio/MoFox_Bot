@@ -1,31 +1,59 @@
 import os
 import socket
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from rich.traceback import install
 from uvicorn import Config
 from uvicorn import Server as UvicornServer
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
+
 from src.common.logger import get_logger
+from src.config.config import global_config as bot_config
 
 install(extra_lines=3)
 
 logger = get_logger("Server")
 
 
+def rate_limit_exceeded_handler(request: Request, exc: Exception) -> Response:
+    """自定义速率限制超出处理器以解决类型提示问题"""
+    # 由于此处理器专门用于 RateLimitExceeded，我们可以安全地断言异常类型。
+    # 这满足了类型检查器的要求，并确保了运行时安全。
+    assert isinstance(exc, RateLimitExceeded)
+    return _rate_limit_exceeded_handler(request, exc)
+
+
 class Server:
-    def __init__(self, host: str | None = None, port: int | None = None, app_name: str = "MaiMCore"):
+    def __init__(self, host: str | None = None, port: int | None = None, app_name: str = "MoFox-Bot"):
+        # 根据配置初始化速率限制器
+        limiter = Limiter(
+            key_func=get_remote_address,
+            default_limits=[bot_config.plugin_http_system.plugin_api_rate_limit_default],
+        )
+
         self.app = FastAPI(title=app_name)
         self.host: str = "127.0.0.1"
         self.port: int = 8080
         self._server: UvicornServer | None = None
         self.set_address(host, port)
 
+        # 设置速率限制
+        self.app.state.limiter = limiter
+        self.app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+        # 根据配置决定是否添加中间件
+        if bot_config.plugin_http_system.plugin_api_rate_limit_enable:
+            logger.info(f"已为插件API启用全局速率限制: {bot_config.plugin_http_system.plugin_api_rate_limit_default}")
+            self.app.add_middleware(SlowAPIMiddleware)
+
         # 配置 CORS
         origins = [
             "http://localhost:3000",  # 允许的前端源
-            "http://127.0.0.1:3000",
             "http://127.0.0.1:3000",
             # 在生产环境中，您应该添加实际的前端域名
         ]

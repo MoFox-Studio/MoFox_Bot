@@ -1,16 +1,17 @@
 from datetime import datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from src.chat.utils.statistic import (
     StatisticOutputTask,
 )
 from src.common.logger import get_logger
+from src.common.security import get_api_key
 
 logger = get_logger("LLM统计API")
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_api_key)])
 
 # 定义统计数据的键,以减少魔法字符串
 TOTAL_REQ_CNT = "total_requests"

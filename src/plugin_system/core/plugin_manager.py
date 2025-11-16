@@ -405,13 +405,14 @@ class PluginManager:
         plus_command_count = stats.get("plus_command_components", 0)
         chatter_count = stats.get("chatter_components", 0)
         prompt_count = stats.get("prompt_components", 0)
+        router_count = stats.get("router_components", 0)
         total_components = stats.get("total_components", 0)
 
         # 📋 显示插件加载总览
         if total_registered > 0:
             logger.info("🎉 插件系统加载完成!")
             logger.info(
-                f"📊 总览: {total_registered}个插件, {total_components}个组件 (Action: {action_count}, Command: {command_count}, Tool: {tool_count}, PlusCommand: {plus_command_count}, EventHandler: {event_handler_count}, Chatter: {chatter_count}, Prompt: {prompt_count})"
+                f"📊 总览: {total_registered}个插件, {total_components}个组件 (Action: {action_count}, Command: {command_count}, Tool: {tool_count}, PlusCommand: {plus_command_count}, EventHandler: {event_handler_count}, Chatter: {chatter_count}, Prompt: {prompt_count}, Router: {router_count})"
             )
 
             # 显示详细的插件列表
@@ -452,6 +453,9 @@ class PluginManager:
                         prompt_components = [
                             c for c in plugin_info.components if c.component_type == ComponentType.PROMPT
                         ]
+                        router_components = [
+                            c for c in plugin_info.components if c.component_type == ComponentType.ROUTER
+                        ]
 
                         if action_components:
                             action_details = [format_component(c) for c in action_components]
@@ -478,6 +482,9 @@ class PluginManager:
                         if prompt_components:
                             prompt_details = [format_component(c) for c in prompt_components]
                             logger.info(f"    📝 Prompt组件: {', '.join(prompt_details)}")
+                        if router_components:
+                            router_details = [format_component(c) for c in router_components]
+                            logger.info(f"    🌐 Router组件: {', '.join(router_details)}")
 
                     # 权限节点信息
                     if plugin_instance := self.loaded_plugins.get(plugin_name):

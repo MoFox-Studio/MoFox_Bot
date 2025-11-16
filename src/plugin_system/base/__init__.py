@@ -7,6 +7,7 @@
 from .base_action import BaseAction
 from .base_command import BaseCommand
 from .base_events_handler import BaseEventHandler
+from .base_http_component import BaseRouterComponent
 from .base_plugin import BasePlugin
 from .base_prompt import BasePrompt
 from .base_tool import BaseTool
@@ -55,7 +56,7 @@ __all__ = [
     "PluginMetadata",
     # 增强命令系统
     "PlusCommand",
-    "PlusCommandAdapter",
+    "BaseRouterComponent"
     "PlusCommandInfo",
     "PythonDependency",
     "ToolInfo",

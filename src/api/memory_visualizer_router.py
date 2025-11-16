@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Any
 
 import orjson
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+
+from src.common.security import get_api_key
 
 # 调整项目根目录的计算方式
 project_root = Path(__file__).parent.parent.parent
@@ -23,7 +25,7 @@ graph_data_cache = None
 current_data_file = None
 
 # FastAPI 路由
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(get_api_key)])
 
 # Jinja2 模板引擎
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))

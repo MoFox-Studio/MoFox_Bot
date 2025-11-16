@@ -5,11 +5,15 @@ from pathlib import Path
 from re import Pattern
 from typing import Any, cast
 
+from fastapi import Depends
+
 from src.common.logger import get_logger
+from src.config.config import global_config as bot_config
 from src.plugin_system.base.base_action import BaseAction
 from src.plugin_system.base.base_chatter import BaseChatter
 from src.plugin_system.base.base_command import BaseCommand
 from src.plugin_system.base.base_events_handler import BaseEventHandler
+from src.plugin_system.base.base_http_component import BaseRouterComponent
 from src.plugin_system.base.base_interest_calculator import BaseInterestCalculator
 from src.plugin_system.base.base_prompt import BasePrompt
 from src.plugin_system.base.base_tool import BaseTool
@@ -24,6 +28,7 @@ from src.plugin_system.base.component_types import (
     PluginInfo,
     PlusCommandInfo,
     PromptInfo,
+    RouterInfo,
     ToolInfo,
 )
 from src.plugin_system.base.plus_command import PlusCommand, create_legacy_command_adapter
@@ -40,6 +45,7 @@ ComponentClassType = (
     | type[BaseChatter]
     | type[BaseInterestCalculator]
     | type[BasePrompt]
+    | type[BaseRouterComponent]
 )
 
 
@@ -194,6 +200,10 @@ class ComponentRegistry:
                 assert isinstance(component_info, PromptInfo)
                 assert issubclass(component_class, BasePrompt)
                 ret = self._register_prompt_component(component_info, component_class)
+            case ComponentType.ROUTER:
+                assert isinstance(component_info, RouterInfo)
+                assert issubclass(component_class, BaseRouterComponent)
+                ret = self._register_router_component(component_info, component_class)
             case _:
                 logger.warning(f"未知组件类型: {component_type}")
                 ret = False
@@ -372,6 +382,48 @@ class ComponentRegistry:
 
         logger.debug(f"已注册Prompt组件: {prompt_name}")
         return True
+
+    def _register_router_component(self, router_info: RouterInfo, router_class: type[BaseRouterComponent]) -> bool:
+        """注册Router组件并将其端点挂载到主服务器"""
+        # 1. 检查总开关是否开启
+        if not bot_config.plugin_http_system.enable_plugin_http_endpoints:
+            logger.info("插件HTTP端点功能已禁用，跳过路由注册")
+            return True
+        try:
+            from src.common.security import get_api_key
+            from src.common.server import get_global_server
+
+            router_name = router_info.name
+            plugin_name = router_info.plugin_name
+
+            # 2. 实例化组件以触发其 __init__ 和 register_endpoints
+            component_instance = router_class()
+
+            # 3. 获取配置好的 APIRouter
+            plugin_router = component_instance.router
+
+            # 4. 获取全局服务器实例
+            server = get_global_server()
+
+            # 5. 生成唯一的URL前缀
+            prefix = f"/plugins/{plugin_name}"
+
+            # 6. 根据需要应用安全依赖项
+            dependencies = []
+            if router_info.auth_required:
+                dependencies.append(Depends(get_api_key))
+
+            # 7. 注册路由，并使用插件名作为API文档的分组标签
+            server.app.include_router(
+                plugin_router, prefix=prefix, tags=[plugin_name], dependencies=dependencies
+            )
+
+            logger.debug(f"成功将插件 '{plugin_name}' 的路由组件 '{router_name}' 挂载到: {prefix}")
+            return True
+
+        except Exception as e:
+            logger.error(f"注册路由组件 '{router_info.name}' 时出错: {e}", exc_info=True)
+            return False
 
     # === 组件移除相关 ===
 
@@ -616,6 +668,7 @@ class ComponentRegistry:
             | BaseChatter
             | BaseInterestCalculator
             | BasePrompt
+            | BaseRouterComponent
         ]
         | None
     ):
@@ -643,6 +696,8 @@ class ComponentRegistry:
                 | type[PlusCommand]
                 | type[BaseChatter]
                 | type[BaseInterestCalculator]
+                | type[BasePrompt]
+                | type[BaseRouterComponent]
                 | None,
                 self._components_classes.get(namespaced_name),
             )
@@ -867,6 +922,7 @@ class ComponentRegistry:
         plus_command_components: int = 0
         chatter_components: int = 0
         prompt_components: int = 0
+        router_components: int = 0
         for component in self._components.values():
             if component.component_type == ComponentType.ACTION:
                 action_components += 1
@@ -882,6 +938,8 @@ class ComponentRegistry:
                 chatter_components += 1
             elif component.component_type == ComponentType.PROMPT:
                 prompt_components += 1
+            elif component.component_type == ComponentType.ROUTER:
+                router_components += 1
         return {
             "action_components": action_components,
             "command_components": command_components,
@@ -891,6 +949,7 @@ class ComponentRegistry:
             "plus_command_components": plus_command_components,
             "chatter_components": chatter_components,
             "prompt_components": prompt_components,
+            "router_components": router_components,
             "total_components": len(self._components),
             "total_plugins": len(self._plugins),
             "components_by_type": {

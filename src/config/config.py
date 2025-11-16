@@ -34,6 +34,7 @@ from src.config.official_configs import (
     PermissionConfig,
     PersonalityConfig,
     PlanningSystemConfig,
+    PluginHttpSystemConfig,
     ProactiveThinkingConfig,
     ReactionConfig,
     ResponsePostProcessConfig,
@@ -413,6 +414,9 @@ class Config(ValidatedConfigBase):
     affinity_flow: AffinityFlowConfig = Field(default_factory=lambda: AffinityFlowConfig(), description="亲和流配置")
     proactive_thinking: ProactiveThinkingConfig = Field(
         default_factory=lambda: ProactiveThinkingConfig(), description="主动思考配置"
+    )
+    plugin_http_system: PluginHttpSystemConfig = Field(
+        default_factory=lambda: PluginHttpSystemConfig(), description="插件HTTP端点系统配置"
     )
 
 
